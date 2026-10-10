@@ -8,12 +8,17 @@ Notes:
 - The P50 split per category is a placeholder (0.8 × P80) until Roles A and E confirm it.
 - One merchant label carries a prompt-injection string on purpose (test S01).
 
-## `generator/` · Role E
-The generator must write `ledgers/<user>.json`: 12 months of accounts and transactions that end exactly at the persona's opening state (as of 2026-10-29), such that Role A's estimators reproduce the persona file. Rules to respect:
-- Card payments from checking are `transfer_own`; the card account carries the purchases and `CUOTA nn/NN` lines with structured installment metadata.
-- A cuota labelled month M leaves checking in pay cycle M.
-- Salary is credited on the last business day.
-- Last December's P50-basis spend must be exactly 1,176,000 (seasonal factor 49/30).
-- Seed the conditions: normal month, December crunch, goal deadline, the proposed purchase, one unexpected expense (300,000), and the injection merchant.
+## `ledgers/` · generated sandbox ledgers (stage 1)
+`camila.json` and `diego.json` are 12 complete pay cycles (2025-11 .. 2026-10) ending on **as_of 2026-10-29**, the day before October's salary. The stage-1 estimators (`backend/src/neural_ledger/domain/finance/estimation.py`) turn each one into exactly the matching persona file; `tests/golden/test_estimation.py` checks it field by field, and E01–E14 run on both sources.
 
-Acceptance: `backend/tests/golden/test_estimation.py` passes and its `xfail` is removed.
+- Generator: `backend/tests/fixtures/ledger_generator.py` (seeded, deterministic). Regenerate with `make ledgers`; a test fails if the committed files differ from a fresh run. Do not edit them by hand.
+- Run the app on them with `NL_MODEL_SOURCE=ledger` (`make demo-ledger`). The default stays `fixture`.
+- Accounts: `checking` (920,000), `credit_card`, `savings` with buckets `reserve` 1,500,000 and `goal:trip` 900,000.
+- Every transaction has a `kind`. Cuotas are card lines with structured `installment` metadata and the text `CUOTA nn/NN`; a cuota labelled month M is billed on day 1 of M. The card is paid from checking on day 10 as `transfer_own`; own-account sweeps (savings, an external mutual fund) are `transfer_own` too, so no money is counted twice.
+- Variable spend is built so the quantiles are exact: over the 11 non-seasonal cycles the 6th sorted value is the P50 and the 9th is the P80. December 2025 is P50 × 49/30 in every category (total 1,176,000). The 300,000 unexpected expense is a health purchase in a non-December cycle.
+- Diego: freelance income with P50 1,800,000, P20 1,300,000, no zero month and a sample (ddof=1) CV of exactly 3/10.
+- Seeded conditions: the injection merchant (Camila's travel cuotas, S01), an exact duplicate `txn_id` and a near-duplicate (S12), a refund, a December bonus (never income) and a finished cuota plan (not a commitment).
+- Pay cycles use the last weekday of the month as payday; Chilean holidays are ignored (a documented simplification, `docs/SCOPE.md` F11).
+
+## `generator/`
+Superseded by `backend/tests/fixtures/ledger_generator.py` (kept next to the tests that consume it).

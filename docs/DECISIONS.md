@@ -53,3 +53,8 @@ Short records of architecture decisions. Status starts as **Proposed**; the team
 - `c_max = min over months of H_m / k_m` for the largest affordable amount.
 - Seasonal factors stored exactly (`Fraction`), e.g. 49/30, not 1.633.
 **Owner:** Role A confirms or replaces these in `domain/finance/`.
+
+### ADR-011 · Stage-1 estimation over pay cycles, with exact statistics · Proposed
+**Context:** the estimators must produce exactly the `FinancialModel` the fixtures define, without changing stage 2.
+**Decision:** months are pay cycles (`paycycle.py`, payday = last weekday); quantiles use linear interpolation on `Fraction`s; the income CV uses the sample standard deviation; one seasonal factor per month (total ÷ Σ category P50); sparse categories merge into `other`; as_of must be the day before a payday or the result is `INVALID_INPUT`. Details: `docs/SCOPE.md` F9–F14. Capacity with zero essentials raises `InsufficientData` (H4) instead of dividing by zero.
+**Consequences:** the ledger source and the fixtures are interchangeable (`NL_MODEL_SOURCE`), and the goldens guard both. The design doc (§3, §4.2, §4.3, §8) should record F9–F14.

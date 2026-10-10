@@ -47,10 +47,11 @@ Implement `respond(request: ModelRequest) -> ModelTurn` and map `UserEntry` / `A
 ### Implement Jev (Role B)
 Map `ChoiceQuestion → Choice`, `ScoreQuestion → Score`, `YesNoQuestion → Noul`, and return `Judgment(label, probabilities, confidence, source)`. Confirm field names in the TypeSafe docs first. Raise `DecisionModelUnavailable` on errors. Then set `NL_DECISION_CHAIN=jev,rules`.
 
-### Switch from fixtures to the ledger (Roles A, C, E)
-1. E: the generator writes `data/ledgers/<user>.json` (a `LedgerSnapshot`) from the calibration targets.
-2. A: implement `domain/finance/estimation.py:estimate_model`. Remove the `xfail` in `tests/golden/test_estimation.py`; it must pass.
-3. C: add a `LedgerModelSource` adapter (load snapshot → `estimate_model`) and `NL_MODEL_SOURCE=ledger` in `container.py`. No use case changes.
+### Switch from fixtures to the ledger (done)
+- `data/ledgers/<user>.json` is written by `backend/tests/fixtures/ledger_generator.py` (`make ledgers`).
+- `domain/finance/estimation.py:estimate_model` turns a `LedgerSnapshot` into the `FinancialModel`; pay cycles come from `domain/finance/paycycle.py`, the same labelling as the forecast.
+- `adapters/outbound/fixtures/ledger_source.py:LedgerModelSource` parses the ledger and runs the estimators; `NL_MODEL_SOURCE=ledger` selects it in `container.py`. User records (tolerance) still come from the persona files.
+- The persona fixtures stay as the golden reference: `tests/golden/test_estimation.py` compares both field by field, and E01–E14 run on both.
 
 ## Domain model (for the empty Class Diagram page)
 

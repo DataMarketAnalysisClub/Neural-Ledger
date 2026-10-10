@@ -52,7 +52,8 @@ evidence/    exported audit logs and test results for the submission
 - ✅ Offline end-to-end demo arc (six scenes), verified replies, hash-chained audit
 - ✅ Financial core stage 2 (forecast, simulator, surplus, capacity, plan): all 14 golden answers E01–E14
 - ✅ Security suite S01–S12 · contracts · architecture tests · SQLite adapter · CI workflow (first run on push)
-- ⏳ Stage 1 estimators (Role A) and ledger generator (Role E) · real LLM provider choice (Role B) · Jev adapter (Role B) · frontend (Role D)
+- ✅ Stage 1: deterministic ledger generator + estimators reproduce both personas exactly; E01–E14 also pass on the estimated models (`NL_MODEL_SOURCE=ledger`, `make demo-ledger`)
+- ⏳ Real LLM provider choice (Role B) · Jev adapter (Role B) · frontend (Role D)
 
 ## Team
 
