@@ -17,6 +17,8 @@ from neural_ledger.domain.finance.profile import RiskProfile
 from neural_ledger.domain.finance.surplus import protected_surplus
 from tests.property.strategies import PROPERTY_SETTINGS, raw_ledgers, snapshot_of
 
+pytestmark = pytest.mark.property
+
 KNOWN_PLAN_ISSUE = pytest.mark.xfail(
     strict=False,
     reason="false in general: see the minimal counterexamples in test_plan_counterexamples.py (team decision pending)",

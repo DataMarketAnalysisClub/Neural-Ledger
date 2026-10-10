@@ -22,6 +22,8 @@ from neural_ledger.domain.shared.month import Month
 from tests.fixtures.ledger_generator import GeneratorConfig, generate_ledger
 from tests.property.test_engine_properties import PROFILES, _model, _overlay
 
+pytestmark = pytest.mark.property
+
 _SANDBOX = dict(user_id="prop", seed=0, plans=(), savings_opening=50_000_000, savings_buckets=None, strict_balances=False)
 
 # Available 55,200 every month and -596,636 in December: a rule must survive the next December.

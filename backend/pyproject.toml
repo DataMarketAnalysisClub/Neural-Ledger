@@ -38,9 +38,12 @@ known-first-party = ["neural_ledger", "tests"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-addopts = "-q"
+# Fast default: property tests (hypothesis) are deselected. `-m property` selects only them and
+# `-m ""` (make test-all) runs everything; a later -m on the command line overrides this one.
+addopts = "-q -m 'not property'"
 xfail_strict = true
 markers = [
     "golden: expected answers from the Financial Core calibration (E01-E14)",
     "security: security suite S01-S12",
+    "property: hypothesis property tests (slow); excluded by default, run with make test-all",
 ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import replace
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -15,6 +16,8 @@ from neural_ledger.domain.finance.paycycle import cycle_start
 from neural_ledger.domain.shared.month import Month
 from tests.fixtures.ledger_generator import CYCLES, INJECTION_MERCHANT
 from tests.property.strategies import PROPERTY_SETTINGS, raw_ledgers, snapshot_of
+
+pytestmark = pytest.mark.property
 
 
 def _estimate(raw: dict) -> FinancialModel:
