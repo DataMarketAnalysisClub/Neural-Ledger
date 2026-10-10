@@ -395,6 +395,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | D-10 | Official deadline and deliverables | Confirm in the rules (X3) |
 | D-11 | License for the public repository | MIT or Apache-2.0 (team decision) |
 | D-12 | Agent language | English for the judges; Spanish is stretch |
+| D-13 | Plan sizing when the start month shifts (hypothesis counterexamples, ADR-014) | Profile as a ceiling: try share(profile), step down to the next share if no start month is feasible. **Not implemented**; goldens unchanged until decided |
 
 ## 11. Plan to submission (adjusted)
 

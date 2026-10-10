@@ -67,3 +67,10 @@ Short records of architecture decisions. Status starts as **Proposed**; the team
 ### ADR-013 · Content-addressed snapshot ids and a parameter lock · Proposed
 **Decision:** a ledger's `source_version` is `ledger:<user>:<sha256[:16]>` of its canonical content (user, currency, as_of, accounts, buckets, goals, income profile and the effective transactions, one per `txn_id`, sorted; card rates as exact text), never a version label. Every `snapshot_id` hashes `source_version`, `as_of` and `params_version`. `FinanceParams.fingerprint()` hashes every value exactly (Fraction as n/d); `tests/unit/test_params_lock.py` pins it per version, so changing a value without bumping `params_version` fails the build.
 **Consequences:** one peso anywhere changes the snapshot id; order and exact duplicates do not. The audit log's `forecast_snapshot_id` and `policy_version` always name the data and the numbers used.
+
+### ADR-014 · size_plan is not monotone in the profile or in purchases · Proposed (team decision)
+**Context:** the hypothesis invariants (design §8) found two minimal counterexamples (`tests/property/test_plan_counterexamples.py`):
+1. A higher profile gives a smaller rule: conservative 20,000 (from 2027-02), moderate 30,000 (from 2027-06), aggressive 0 (H2). Available is 55,200 a month and −596,636 every December; 40,000 a month breaches before every next December within the 12 start months searched.
+2. A purchase raises the plan: without it the rule is 80,000 from 2026-11 (capped by Required 81,819); a purchase in 3 cuotas from 2026-11 pushes the start to 2027-01, fewer months remain to the trip deadline, Required rises to 100,000 and the rule becomes 90,000.
+**Proposal (not implemented):** the profile is a ceiling: try share(profile); if no start month is feasible, step down to the next lower share. Case 2 needs a separate choice (e.g. size Required from the unconstrained start). The engine and E01–E14 are unchanged; the two properties are marked xfail and the minimal cases are strict xfails that will flag the fix.
+

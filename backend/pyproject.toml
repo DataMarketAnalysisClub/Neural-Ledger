@@ -14,7 +14,7 @@ dependencies = []
 
 [project.optional-dependencies]
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
-dev = ["pytest>=8", "jsonschema>=4.21", "httpx>=0.27", "ruff>=0.6"]
+dev = ["pytest>=8", "jsonschema>=4.21", "httpx>=0.27", "ruff>=0.6", "hypothesis>=6.100"]
 
 [project.scripts]
 neural-ledger = "neural_ledger.bootstrap.cli:main"
