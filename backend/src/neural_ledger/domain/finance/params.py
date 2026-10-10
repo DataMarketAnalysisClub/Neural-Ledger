@@ -45,6 +45,10 @@ class FinanceParams:
     recurring_interval_days: tuple[int, int]
     recurring_amount_tolerance: Fraction
     commitment_confidence_cutoff: Fraction
+    recurring_end_days: int  # no occurrence for this many days before as_of -> the item has ended
+    installment_parsed_confidence: Fraction  # "CUOTA nn/NN" parsed from text instead of structured metadata
+    income_cv_ddof: int  # 1 = sample standard deviation (more conservative than population with 12 points)
+    essential_categories: frozenset[str]  # spend categories counted as essentials (section 4.7)
     # Capacity bands (section 4.7). "up" factors: higher is better; "down" factors: lower is better.
     reserve_coverage_bands: tuple[Fraction, Fraction]  # up: low < a <= medium < b <= high
     income_cv_bands: tuple[Fraction, Fraction]  # down: high < a <= medium <= b < low
@@ -87,6 +91,10 @@ FC_0_1 = FinanceParams(
     recurring_interval_days=(28, 35),
     recurring_amount_tolerance=Fraction(5, 100),
     commitment_confidence_cutoff=Fraction(8, 10),
+    recurring_end_days=45,
+    installment_parsed_confidence=Fraction(9, 10),
+    income_cv_ddof=1,
+    essential_categories=frozenset({"groceries", "transport", "utilities", "health"}),
     reserve_coverage_bands=(Fraction(1), Fraction(3)),
     income_cv_bands=(Fraction(10, 100), Fraction(25, 100)),
     debt_service_bands=(Fraction(20, 100), Fraction(35, 100)),
