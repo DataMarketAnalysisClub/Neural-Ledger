@@ -314,7 +314,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 
 ## 8. Financial core (summary of Bruno's design, as implemented)
 
-- **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Implemented: commitments (4.1), income (4.2), spend (4.3) over pay cycles. It reproduces `data/personas/camila.json` and `diego.json` field by field from `data/ledgers/*.json`, and E01–E14 pass on the estimated models. Switch the app with `NL_MODEL_SOURCE=ledger` (default stays `fixture`). Implementation choices: F9–F14.
+- **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Implemented: commitments (4.1), income (4.2), spend (4.3) over pay cycles. It reproduces `data/personas/camila.json` and `diego.json` field by field from `data/ledgers/*.json`, and E01–E14 pass on the estimated models. Switch the app with `NL_MODEL_SOURCE=ledger` (default stays `fixture`). Implementation choices: F9–F15.
 - **Stage 2, projection** (model → answers): implemented in `domain/finance/` as a reference for Role A to own, review or replace. Trough recurrence `B_m = B_(m-1) + I − K − V − R − P − S`; protected surplus = minimum conservative headroom; rule sizing `R = floor_10k(share × min A over [s, s+5])` with H5; cuota `c = P·r/(1−(1+r)^−n)`; capacity = weakest band.
 - **Parameters** `fc-0.1` live in `domain/finance/params.py`. Changing one means a new version, which the audit log records.
 - **All 14 golden answers (E01–E14) reproduce** and are tests. Invariants are property-tested on 25 perturbed fixtures.
@@ -367,6 +367,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | F12 | §4.3 "fall back to the total-level model" for a category with < 6 months is not defined in the current types. | Sparse categories are merged into one `other` category (quantiles of their combined per-cycle totals, zeros included), essential if any merged category was, flagged `CATEGORY_SPARSE`. |
 | F13 | The "largest one-off expense" (stress shock) is not defined precisely. | Largest single purchase or fee in the window, excluding cuota lines, recurring commitments, `transfer_own` and income. |
 | F14 | §8 "as_of in the middle of a cycle" (pro-rating). | Out of scope for v1: if as_of is not the day before a payday the estimator returns `INVALID_INPUT` (field `as_of`) instead of computing a partial cycle. Ended recurring items (45 days) are not commitments, and their history stays in variable spend (conservative). |
+| F15 | §4.1 misses recurring items that change: a new landlord with fewer than 3 payments, a rent increase, an item that ended before the 6-cycle lookback. | The pattern is checked on each counterparty's own last 6 cycles; consecutive amounts within ±5% with one level change allowed (amount = last observed). An ended item's history leaves variable spend only if an active item in the same category replaces it. A replacement with exactly 2 regular payments is a **provisional** commitment at its last amount (`RECURRING_PROVISIONAL`), so a recent move never understates the rent. |
 
 ### Security
 | # | Finding | Fix (in the skeleton) |
@@ -387,7 +388,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | D-03 | Database | Memory → SQLite; no Mongo or DynamoDB |
 | D-04 | Frontend framework | Vicente's fastest stack, web first |
 | D-05 | Role C owner and integration owner | **Taken by Baptiste (Oct 10):** Role C and integration owner |
-| D-06 | Bruno's D1–D10 | Accept, with corrections F1–F14 |
+| D-06 | Bruno's D1–D10 | Accept, with corrections F1–F15 |
 | D-07 | Decision chain | `jev,rules` at runtime; build rules first; Jev go/no-go Oct 14 |
 | D-08 | User record | Typed profile (reply to David's proposal) |
 | D-09 | Demo path | Camila declines the laptop → 100k rule |

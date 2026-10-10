@@ -12,11 +12,14 @@ partial cycles are out of scope and return INVALID_INPUT.
     card line as fallback (params.installment_parsed_confidence). A cuota line with neither
     stays in variable spend with an INSTALLMENT_UNPARSED warning. Plans whose last cuota is
     before the first projected cycle have ended and are not commitments.
-    Recurring items: same counterparty and category, >= 3 hits in the last 6 cycles, 28-35 days
-    apart, every amount within 5% of the last one; amount = last observed; confidence =
+    Recurring items: same counterparty and category, >= 3 hits in the last 6 cycles of the
+    counterparty's own activity, 28-35 days apart, consecutive amounts within 5% with at most
+    one level change (a rent increase); amount = last observed; confidence =
     cycles present / cycles expected since the first occurrence in the window (< 0.8 -> stays
-    in variable spend). No occurrence for 45 days -> ended: not a commitment, and its history
-    stays in variable spend (the conservative choice, design principle 3). commitment_id = the category, suffixed with the counterparty
+    in variable spend). No occurrence for 45 days -> ended: not a commitment; its history
+    leaves variable spend only when an active item in the same category replaces it, else it
+    stays (conservative, design principle 3). A replacement with only 2 regular payments is a
+    provisional commitment at its last amount (F15, RECURRING_PROVISIONAL). commitment_id = the category, suffixed with the counterparty
     slug when one category has several recurring counterparties.
 4.2 Income
     Salaried: contracted net, cross-checked against the median of the last 3 salary credits;
@@ -46,6 +49,7 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, localcontext
 from fractions import Fraction
 
@@ -284,51 +288,8 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
         ))
 
     # 4.1 recurring items ------------------------------------------------------------------------
-    groups: dict[tuple[str, str], list[tuple[Transaction, Month]]] = defaultdict(list)
-    for txn, cycle in in_window:
-        if txn.kind in SPEND_KINDS and txn.amount < 0 and txn.txn_id not in cuota_txn_ids:
-            groups[(_category(txn), _counterparty(txn.merchant_raw))].append((txn, cycle))
-    lookback_start = last_cycle.plus(-(params.recurring_lookback_months - 1))
-    low_days, high_days = params.recurring_interval_days
-    recurring: list[tuple[str, list[tuple[Transaction, Month]]]] = []
-    recurring_txn_ids: set[str] = set()
-    for (category, _), occurrences in sorted(groups.items()):
-        recent = [(t, c) for t, c in occurrences if c >= lookback_start]
-        if len(recent) < params.recurring_min_hits:
-            continue
-        intervals = [(b[0].date - a[0].date).days for a, b in zip(recent, recent[1:])]
-        if not all(low_days <= d <= high_days for d in intervals):
-            continue
-        last_amount = -recent[-1][0].amount
-        if not all(abs(-t.amount - last_amount) <= params.recurring_amount_tolerance * last_amount for t, _ in recent):
-            continue
-        first_seen = occurrences[0][1]
-        expected = first_seen.months_until(last_cycle) + 1
-        present = len({c for _, c in occurrences})
-        if (snapshot.as_of - recent[-1][0].date).days > params.recurring_end_days:
-            continue  # ended: not a commitment; its history stays in variable spend (conservative)
-        if Fraction(present, expected) < params.commitment_confidence_cutoff:
-            continue  # stays in variable spend, where P80 covers it
-        recurring.append((category, occurrences))
-        recurring_txn_ids.update(t.txn_id for t, _ in occurrences)
-    per_category: dict[str, int] = defaultdict(int)
-    for category, _ in recurring:
-        per_category[category] += 1
-    for category, occurrences in recurring:
-        last_txn = occurrences[-1][0]
-        suffix = f"-{_slug(last_txn.merchant_raw)}" if per_category[category] > 1 else ""
-        expected = occurrences[0][1].months_until(last_cycle) + 1
-        commitments.append(Commitment(
-            commitment_id=f"{category}{suffix}",
-            type=RECURRING_TYPES.get(category, CommitmentType.SUBSCRIPTION),
-            label=" ".join(last_txn.merchant_raw.split()),
-            amount=-last_txn.amount,
-            first_due=occurrences[0][1],
-            last_due=None,
-            confidence=float(Fraction(len({c for _, c in occurrences}), expected)),
-            installments_total=None,
-            evidence_txn_ids=tuple(t.txn_id for t, _ in occurrences),
-        ))
+    recurring_commitments, recurring_txn_ids = _recurring_items(snapshot.as_of, last_cycle, in_window, cuota_txn_ids, params, warnings)
+    commitments.extend(recurring_commitments)
 
     # 4.2 income ---------------------------------------------------------------------------------
     income = _income_model(snapshot, params, in_window, window, last_cycle, warnings)
@@ -380,6 +341,110 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
         facts=facts,
         warnings=tuple(warnings),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Group:
+    category: str
+    occurrences: tuple[tuple[Transaction, Month], ...]  # in date order
+
+    @property
+    def last(self) -> Transaction:
+        return self.occurrences[-1][0]
+
+    @property
+    def cycles(self) -> frozenset[Month]:
+        return frozenset(c for _, c in self.occurrences)
+
+
+def _steady(amounts: Sequence[int], tolerance: Fraction) -> bool:
+    """Consecutive amounts within the tolerance, allowing ONE level change (e.g. a rent increase)."""
+    jumps = sum(1 for a, b in zip(amounts, amounts[1:]) if abs(b - a) > tolerance * a)
+    return jumps <= 1
+
+
+def _regular(occurrences: Sequence[tuple[Transaction, Month]], params: FinanceParams) -> bool:
+    low, high = params.recurring_interval_days
+    days = [(b[0].date - a[0].date).days for a, b in zip(occurrences, occurrences[1:])]
+    return all(low <= d <= high for d in days) and _steady([-t.amount for t, _ in occurrences], params.recurring_amount_tolerance)
+
+
+def _recurring_items(
+    as_of: date,
+    last_cycle: Month,
+    in_window: Sequence[tuple[Transaction, Month]],
+    cuota_txn_ids: set[str],
+    params: FinanceParams,
+    warnings: list[Caveat],
+) -> tuple[list[Commitment], set[str]]:
+    """Recurring commitments (4.1) and the txn ids that must stay out of variable spend.
+
+    The pattern (>= 3 hits, 28-35 days apart, steady amounts) is checked on the last
+    `recurring_lookback_months` cycles of each counterparty's OWN activity, so an item that
+    ended before the lookback is still recognized as ended. Classification:
+      active    last hit within `recurring_end_days` -> commitment if confidence >= cutoff
+      ended     -> not a commitment. Its history leaves variable spend only if an active
+                   item in the same category replaces it (a move, a new plan); otherwise it
+                   stays (conservative).
+      provisional (F15) -> a counterparty with exactly 2 regular hits, active, in a category
+                   where an item ended: it replaces it at its last amount, flagged
+                   RECURRING_PROVISIONAL, so a recent move never understates the rent.
+    """
+    buckets: dict[tuple[str, str], list[tuple[Transaction, Month]]] = defaultdict(list)
+    for txn, cycle in in_window:
+        if txn.kind in SPEND_KINDS and txn.amount < 0 and txn.txn_id not in cuota_txn_ids:
+            buckets[(_category(txn), _counterparty(txn.merchant_raw))].append((txn, cycle))
+    groups = [_Group(category, tuple(occ)) for (category, _), occ in sorted(buckets.items())]
+
+    active: list[_Group] = []
+    ended: list[_Group] = []
+    candidates: list[_Group] = []
+    for group in groups:
+        anchor = group.occurrences[-1][1].plus(-(params.recurring_lookback_months - 1))
+        trailing = [(t, c) for t, c in group.occurrences if c >= anchor]
+        is_active = (as_of - group.last.date).days <= params.recurring_end_days
+        if len(trailing) >= params.recurring_min_hits and _regular(trailing, params):
+            if not is_active:
+                ended.append(group)
+                continue
+            expected = group.occurrences[0][1].months_until(last_cycle) + 1
+            if Fraction(len(group.cycles), expected) >= params.commitment_confidence_cutoff:
+                active.append(group)
+        elif len(group.occurrences) == 2 and is_active and _regular(group.occurrences, params):
+            candidates.append(group)
+
+    ended_categories = {g.category for g in ended}
+    provisional = [g for g in candidates if g.category in ended_categories]
+    if provisional:
+        warnings.append(_caveat(
+            "RECURRING_PROVISIONAL",
+            f"{len(provisional)} recurring item(s) with only 2 payments replace an item that ended; "
+            "they were taken as commitments at their last amount.",
+        ))
+    kept = active + provisional
+    replaced = {g.category for g in kept}
+    excluded = {t.txn_id for g in kept for t, _ in g.occurrences}
+    excluded |= {t.txn_id for g in ended if g.category in replaced for t, _ in g.occurrences}
+
+    per_category: dict[str, int] = defaultdict(int)
+    for group in kept:
+        per_category[group.category] += 1
+    commitments = []
+    for group in kept:
+        suffix = f"-{_slug(group.last.merchant_raw)}" if per_category[group.category] > 1 else ""
+        expected = group.occurrences[0][1].months_until(last_cycle) + 1
+        commitments.append(Commitment(
+            commitment_id=f"{group.category}{suffix}",
+            type=RECURRING_TYPES.get(group.category, CommitmentType.SUBSCRIPTION),
+            label=" ".join(group.last.merchant_raw.split()),
+            amount=-group.last.amount,
+            first_due=group.occurrences[0][1],
+            last_due=None,
+            confidence=float(Fraction(len(group.cycles), expected)),
+            installments_total=None,
+            evidence_txn_ids=tuple(t.txn_id for t, _ in group.occurrences),
+        ))
+    return commitments, excluded
 
 
 def _income_model(

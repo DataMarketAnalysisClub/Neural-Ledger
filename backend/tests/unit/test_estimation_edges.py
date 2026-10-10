@@ -305,7 +305,7 @@ def test_freelance_income_includes_zero_months(params):
 
 
 def test_injection_in_a_merchant_name_is_only_data(params):
-    lines = [txn(cycle_start(c) + timedelta(days=6), -(20_000 + 1_000 * i), INJECTION, "") for i, c in enumerate(cycles(8))]
+    lines = [txn(cycle_start(c) + timedelta(days=6), -(20_000 + 9_000 * (i % 3)), INJECTION, "") for i, c in enumerate(cycles(8))]
     plan = [_cuota(c, f"{INJECTION} CUOTA {k:02d}/03", 10_000, InstallmentInfo("inj", k, 3, 30_000)) for k, c in enumerate(cycles(2), start=1)]
     envelope = estimate(base_transactions(8) + lines + plan, params)
     assert envelope.ok
