@@ -61,9 +61,10 @@ from ..ledger.entities import (
     TransactionKind,
 )
 from ..shared.envelope import Caveat, Envelope, Fact
-from ..shared.hashing import content_id
+from ..shared.hashing import canonical_json, content_id, sha256_hex
 from ..shared.month import Month, month_range
 from ..shared.numbers import round_half_up
+from ..shared.serialization import to_primitive
 from .model import (
     Balances,
     CategorySpend,
@@ -192,6 +193,34 @@ def _parse_cuota(txn: Transaction, cycle: Month, params: FinanceParams) -> _Cuot
     return _CuotaLine(txn, cycle, f"text:{_counterparty(label)}", _slug(label), label, number, total, params.installment_parsed_confidence)
 
 
+def ledger_digest(snapshot: LedgerSnapshot, transactions: Sequence[Transaction]) -> str:
+    """Hash of the canonical content the model is computed from (not a version label).
+
+    Covers user, currency, as_of, accounts, savings buckets, goals, income profile and the
+    effective transactions (one per txn_id, sorted), so the same data in any order gives the
+    same id and changing one peso anywhere changes it.
+    """
+    content = {
+        "user_id": snapshot.user_id,
+        "currency": snapshot.currency,
+        "as_of": snapshot.as_of,
+        "accounts": sorted(snapshot.accounts, key=lambda a: a.account_id),
+        "buckets": sorted(snapshot.buckets, key=lambda b: b.bucket),
+        "goals": sorted(snapshot.goals, key=lambda g: g.goal_id),
+        "income_profile": snapshot.income_profile,
+        "transactions": [_exact_record(t) for t in sorted(transactions, key=lambda t: t.txn_id)],
+    }
+    return sha256_hex(canonical_json(content))[:16]
+
+
+def _exact_record(txn: Transaction) -> dict:
+    """Primitive form with the card rate kept as exact text (canonical_json rounds decimals)."""
+    record = to_primitive(txn)
+    if txn.installment is not None and txn.installment.monthly_rate is not None:
+        record["installment"]["monthly_rate"] = str(txn.installment.monthly_rate)
+    return record
+
+
 # ---- the estimator --------------------------------------------------------------------------
 
 
@@ -309,7 +338,7 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
     checking = sum(a.balance for a in snapshot.accounts if a.type is AccountType.CHECKING)
     buckets = {b.bucket: b.amount for b in snapshot.buckets}
     goal_buckets = {k.split(":", 1)[1]: v for k, v in buckets.items() if k.startswith("goal:")}
-    source_version = f"ledger:{snapshot.user_id}:{snapshot.ledger_version}"
+    source_version = f"ledger:{snapshot.user_id}:{ledger_digest(snapshot, txns)}"
     model = FinancialModel(
         user_id=snapshot.user_id,
         currency=snapshot.currency,
