@@ -68,11 +68,72 @@ Short records of architecture decisions. Status starts as **Proposed**; the team
 **Decision:** a ledger's `source_version` is `ledger:<user>:<sha256[:16]>` of its canonical content (user, currency, as_of, accounts, buckets, goals, income profile and the effective transactions, one per `txn_id`, sorted; card rates as exact text), never a version label. Every `snapshot_id` hashes `source_version`, `as_of` and `params_version`. `FinanceParams.fingerprint()` hashes every value exactly (Fraction as n/d); `tests/unit/test_params_lock.py` pins it per version, so changing a value without bumping `params_version` fails the build.
 **Consequences:** one peso anywhere changes the snapshot id; order and exact duplicates do not. The audit log's `forecast_snapshot_id` and `policy_version` always name the data and the numbers used.
 
-### ADR-014 · size_plan is not monotone in the profile or in purchases · Proposed (team decision)
-**Context:** the hypothesis invariants (design §8) found two minimal counterexamples (`tests/property/test_plan_counterexamples.py`):
-1. A higher profile gives a smaller rule: conservative 20,000 (from 2027-02), moderate 30,000 (from 2027-06), aggressive 0 (H2). Available is 55,200 a month and −596,636 every December; 40,000 a month breaches before every next December within the 12 start months searched.
-2. A purchase raises the plan: without it the rule is 80,000 from 2026-11 (capped by Required 81,819); a purchase in 3 cuotas from 2026-11 pushes the start to 2027-01, fewer months remain to the trip deadline, Required rises to 100,000 and the rule becomes 90,000.
-**Updated proposal (NOT accepted or implemented):** treat the permitted profile's share as a ceiling. For **every** eligible share at or below that ceiling, compute the feasible rule amount at its earliest feasible start. Select the share with the **maximum feasible RULE AMOUNT**, breaking ties by earlier start. Taking merely the highest feasible share is not equivalent and is not authorized. Separately propose that adding a purchase never increases cumulative planned savings **at each month** over the horizon (the prefix sum of rule amount over funded months), not merely the final horizon total. This replaces the earlier suggestion to size Required from an unconstrained/no-purchase start; do not adopt that workaround. Team approval and engine design are pending; E01–E14 and existing strict xfails/non-strict xpasses stay unchanged.
+### ADR-014 · Profile-ceiling sizing and purchase-prefix investigation · Proposed (team decision)
+**Context:** the hypothesis invariants (design §8) found two recorded cases (`tests/property/test_plan_counterexamples.py`):
+1. Before Part 1, a higher profile gave a smaller rule: conservative 20,000 (from 2027-02), moderate 30,000 (from 2027-06), aggressive 0 (H2). Available is 55,200 a month and −596,636 every December; 40,000 a month breaches before every next December within the 12 start months searched.
+2. Still unresolved, a purchase raises the rule: without it 80,000 from 2026-11 (Required 81,819); a purchase in 3 cuotas from 2026-11 delays the start to 2027-01, Required rises to 100,000, and the rule becomes 90,000.
+
+**Part 1, Proposed and implemented for review (not accepted):** the requested/permitted profile's share is a ceiling. Compute each discrete eligible share's **earliest H5-feasible** rule with the prior per-share sizing arithmetic; take the **maximum rule amount**, breaking ties by earlier start and then higher share (preserves the existing `share` metadata on a complete money/start tie). The base projection is shared; H2, H5 and allocation rules remain. `SavingsPlan.profile` remains the requested/effective profile and `share` reports the selected share, which can be lower. If no candidate exists, H2 retains the ceiling share. A higher ceiling only adds candidates to the lower ceiling's set, so taking the maximum amount cannot reduce the rule. On the recorded profile case, the results are conservative 20,000 from 2027-02 at 2/5; moderate 30,000 from 2027-06 at 3/5; aggressive 30,000 from 2027-06 at 3/5, no H2. The profile strict xfail and the general profile property now pass normally; the old purchase xfail and non-strict purchase marker are unchanged. Contract `outputs/savings_plan.schema.json` describes the selected-share meaning; focused tests validate actual plans against it. Conservative Camila stays 100,000 from 2027-01 at 2/5; E01–E14 and both demo outputs are unchanged.
+
+**Part 2 STOP (not implemented or adopted):** replacing purchase amount monotonicity with the proposed *cumulative planned savings at every prefix month* is **also false**. The recorded 80,000-versus-90,000 case satisfies 80,000 × k ≥ 90,000 × max(k − 2, 0) for every k=1..12 (through the 2027-09 trip deadline at k=11). But a separate Hypothesis test with the existing `raw_ledgers()`, `purchases` and `PROFILES` strategies found a counterexample. Its shrunk generator configuration is salaried 600,000, rent 150,000, subscriptions 10,000, `p80` groceries/dining/transport/shopping/utilities 10,000 each and health 145,000, seed 0, no prior plans, no bonus, savings opening 50,000,000, derived reserve, no strict-balance restriction. Conservative profile; new purchase principal 277,000 in 3 cuotas, offset 0 (2026-11), monthly rate 0.025. Without purchase: 40,000 from 2026-11, share 2/5. With purchase: 50,000 from 2027-01, share 2/5. At the **first failing prefix, 2027-09 (k=11)**, baseline funded 11 × 40,000 = 440,000 while purchase case funded 9 × 50,000 = 450,000. At k=12 it remains false: 480,000 < 500,000. The purchase engine and both existing purchase markers are untouched; a team decision is required before adopting any replacement invariant.
+
+The full exploratory property is executable as `/tmp/opencode/test_wp3_prefix.py` from `backend/` with `PYTHONPATH=src:. /home/brunoc/Projects/Universidad/Neural-Ledger/.venv/bin/python -m pytest /tmp/opencode/test_wp3_prefix.py -q -x --hypothesis-seed=20261010 --hypothesis-show-statistics`. It uses `@given(raw_ledgers(), purchases, st.sampled_from(PROFILES))`, `@settings(max_examples=1200, deadline=None, derandomize=False, suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large])`, computes `prefix(plan, model, k) = plan.amount * sum(model.first_cycle.plus(offset) >= plan.start_month for offset in range(k))` (zero for no start), and asserts `prefix(with_purchase, model, k) <= prefix(without, model, k)` for **every** k in 1..12. The actual run failed: 336 passing / 5 failing / 38 invalid generated examples, then 945 shrink attempts (311 successful), one distinct failure. The shrunk raw ledger and purchase are preserved at `/tmp/opencode/wp3_prefix_counterexample.json`; the compact configuration above independently reproduces the same plans. This property was not added to the shipped test suite or xfailed.
+
+Recreate the property in scratch (the imports and test below are complete; run from `backend/` with `PYTHONPATH=src:.`):
+
+```python
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
+from neural_ledger.domain.finance.params import FC_0_1
+from neural_ledger.domain.finance.plan import size_plan
+from tests.property.strategies import raw_ledgers
+from tests.property.test_engine_properties import HORIZON, PROFILES, _model, _overlay, purchases
+
+@settings(max_examples=1200, deadline=None, derandomize=False,
+          suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large])
+@given(raw_ledgers(), purchases, st.sampled_from(PROFILES))
+def test_purchase_never_raises_cumulative_planned_savings(raw, purchase, profile):
+    model = _model(raw)
+    without = size_plan(model, FC_0_1, profile)
+    with_purchase = size_plan(model, FC_0_1, profile, purchases=(_overlay(model, purchase),))
+    for months in range(1, HORIZON + 1):
+        before = (without.amount * sum(model.first_cycle.plus(offset) >= without.start_month
+                                       for offset in range(months))) if without.start_month else 0
+        after = (with_purchase.amount * sum(model.first_cycle.plus(offset) >= with_purchase.start_month
+                                           for offset in range(months))) if with_purchase.start_month else 0
+        assert after <= before, (months, without, with_purchase, purchase)
+```
+
+Compact deterministic reproducer (also executable from `backend/`):
+
+```python
+from decimal import Decimal
+from neural_ledger.domain.finance.params import FC_0_1
+from neural_ledger.domain.finance.plan import size_plan
+from neural_ledger.domain.finance.profile import RiskProfile
+from tests.fixtures.ledger_generator import GeneratorConfig, generate_ledger
+from tests.property.test_engine_properties import _model, _overlay
+
+config = GeneratorConfig(
+    user_id="prop", seed=0, plans=(), salary=600_000, rent=150_000,
+    subscriptions=10_000, p80={
+        "groceries": 10_000, "dining": 10_000, "transport": 10_000,
+        "shopping": 10_000, "utilities": 10_000, "health": 145_000,
+    }, unexpected_expense=300_000, bonus=0, savings_opening=50_000_000,
+    savings_buckets=None, strict_balances=False,
+)
+model = _model(generate_ledger(config))
+before = size_plan(model, FC_0_1, RiskProfile.CONSERVATIVE)
+after = size_plan(model, FC_0_1, RiskProfile.CONSERVATIVE,
+                  purchases=(_overlay(model, (277_000, 3, 0, Decimal("0.025"))),))
+assert (before.amount, str(before.start_month)) == (40_000, "2026-11")
+assert (after.amount, str(after.start_month)) == (50_000, "2027-01")
+assert before.amount * 11 == 440_000 < 450_000 == after.amount * 9
+```
+
+**WP3 validation:** `make test-all` 379 passed / 1 xfailed / 1 xpassed; `make test-property` 17 passed / 1 xfailed / 1 xpassed; `make test-golden` 55 passed; `make test-security` 14 passed; focused plan tests 14 passed / 1 xfailed / 1 xpassed. The xfail and xpass are the original purchase cases. Fixture and ledger demo stdout are each byte-identical to the cfe1c81 baseline. Ruff and diff-check pass. ADR-014 remains Proposed; Part 2 is stopped pending a policy decision.
+
+**Part 2 specification:** the original "a purchase never raises the monthly rule" invariant was wrong, not evidence by itself of a purchase-engine bug: delaying the start can raise the required monthly funding rate. No purchase-engine change is proposed here. The independently reproduced prefix counterexample above also falsifies the proposed replacement, so that replacement is stopped rather than adopted.
 
 ### ADR-015 · Seeded synthetic rolling-origin implementation backtest · Proposed
 **Decision proposed:** opt-in independent lognormal category spend and freelance income, with December factor 49/30, fixed seed lists and no changes to calibrated persona ledgers. Origins after 6/7/8/9 cycles with horizon 3 plus a separately labelled origin after 18 cycles evaluate a second December after observing the first. Truncate the ledger at each origin before estimation. Bernoulli coverage alone gets Wilson intervals; continuous error and recovery get n, median, p10/p90 and mean absolute value. Overlapping trials cluster by seed, so Wilson intervals are optimistic. This validates implementation on known synthetic distributions, not predictive accuracy. Measured results and limitations: `docs/BACKTEST.md`. No estimator parameters were tuned to improve coverage.
