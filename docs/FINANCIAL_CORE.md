@@ -1,6 +1,6 @@
 # Financial core: implemented behavior and handoff (Role A)
 
-**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-016 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
+**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-017 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
 
 ## 4.1 Commitments
 
@@ -36,11 +36,25 @@
 
 ## Deviations and validation
 
-F9 one aggregate seasonal factor; F10 sample CV; F11 weekday-only payday; F12 sparse-to-other; F13 precise one-off shock; F14 no partial pay-cycle estimates; F15 provisional recurring replacement are implemented in `estimation.py`. F16 is an **opt-in, synthetic-only** seeded lognormal generator in `backend/tests/fixtures/stochastic.py`; calibrated persona outputs do not change. F17 documents the existing no-December factor=1 path, now flagged by `SEASONALITY_UNOBSERVED` without changing any number. F1-F8 definition fixes are recorded in `docs/SCOPE.md`. ADR-011 (estimation), ADR-012 (transfer classification trust), ADR-013 (snapshot/version lock), ADR-014 (plan counterexamples), ADR-015 (synthetic backtest) and ADR-016 (unobserved seasonal months flagged; the stronger H4 hard stop is a team option, not implemented) all remain Proposed. The committed backtest JSON predates ADR-016 and its `diagnostics.warning_codes` do not count the new warning. `tests/golden` has E01-E14 over both sources; unit/robustness tests cover malformed ledgers, reconciliation and traceability; hypothesis property tests retain two strict xfails and two non-strict xpasses under ADR-014. Run `make test-all`, `make test-golden`, `make test-security` and `make backtest` using absolute `PY`. The measured adverse synthetic coverage and parameter recovery are in `docs/BACKTEST.md` and its JSON; they are not real-world predictive accuracy.
+F9 one aggregate seasonal factor; F10 sample CV; F11 weekday-only payday; F12 sparse-to-other; F13 precise one-off shock; F14 no partial pay-cycle estimates; F15 provisional recurring replacement are implemented in `estimation.py`. F16 is an **opt-in, synthetic-only** seeded lognormal generator in `backend/tests/fixtures/stochastic.py`; calibrated persona outputs do not change. F17 documents the existing no-December factor=1 path, now flagged by `SEASONALITY_UNOBSERVED` without changing any number. F1-F8 definition fixes are recorded in `docs/SCOPE.md`. ADR-011 (estimation), ADR-012 (transfer classification trust), ADR-013 (snapshot/version lock), ADR-014 (plan counterexamples), ADR-015 (synthetic backtest), ADR-016 (unobserved seasonal months flagged; the stronger H4 hard stop is a team option, not implemented) and ADR-017 (estimator facts and warnings forwarded to ledger-mode tool envelopes) all remain Proposed. The committed backtest JSON predates ADR-016 and its `diagnostics.warning_codes` do not count the new warning. `tests/golden` has E01-E14 over both sources; unit/robustness tests cover malformed ledgers, reconciliation and traceability; hypothesis property tests retain two strict xfails and two non-strict xpasses under ADR-014. Run `make test-all`, `make test-golden`, `make test-security` and `make backtest` using absolute `PY`. The measured adverse synthetic coverage and parameter recovery are in `docs/BACKTEST.md` and its JSON; they are not real-world predictive accuracy.
 
 ## Security inputs and pending gates
 
-Merchant strings are untrusted; source labels are wrapped as data (`domain/agent/untrusted.py`). `contracts/ledger/ledger.schema.json` and `estimation.py:validate_snapshot` bound amounts, CLP, dates and data shape. ADR-012 deliberately trusts `transfer_own`: a misclassification can hide an outflow even if the synthetic ledger reconciles. `LedgerModelSource.load` currently drops stage-1 facts/warnings, so the verifier cannot enforce those warnings, including `SEASONALITY_UNOBSERVED` and its non-empty `must_mention`; a December under-forecast without an observed December therefore remains a residual risk. See `docs/EXPLANATION_HANDOFF.md`. The verifier sees only facts/warnings received from tools per turn, not an estimator envelope that was discarded. These are residual risks, not delivered mitigations.
+Merchant strings are untrusted; source labels are wrapped as data (`domain/agent/untrusted.py`). `contracts/ledger/ledger.schema.json` and `estimation.py:validate_snapshot` bound amounts, CLP, dates and data shape. ADR-012 deliberately trusts `transfer_own`: a misclassification can hide an outflow even if the synthetic ledger reconciles. Under ADR-017 (Proposed), ledger-mode tool envelopes carry the stage-1 facts and warnings (`LedgerModelSource.load_with_evidence`), so the verifier enforces them, including `SEASONALITY_UNOBSERVED`. The fixture default forwards nothing, and the flag does not change the December number: a December under-forecast without an observed December remains a residual risk. The five unbounded-count warnings have count-free wording and none of the estimator warnings carries raw ledger text; ADR-016's bounded seasonal-month count is unchanged. See `docs/EXPLANATION_HANDOFF.md` and `docs/proposals/WARNING_FORWARDING.md`. These are residual risks, not delivered mitigations.
+
+### Estimator warnings (forwarded in ledger mode, ADR-017 Proposed)
+
+| Code | Trigger | `must_mention` |
+|---|---|---|
+| `DUPLICATE_TXN_ID` | Repeated identical txn_id dropped | `exact duplicate` |
+| `NEAR_DUPLICATE` | Same date, amount and counterparty kept | `possible duplicate` |
+| `INSTALLMENT_UNPARSED` | Cuota line without metadata or readable `CUOTA nn/NN` | `variable spend` |
+| `RECURRING_PROVISIONAL` | Two regular payments replace an ended item (F15) | `provisional` |
+| `SALARY_MISSING` | Salary credit missing in the last 3 cycles | `missing` |
+| `SALARY_DIFFERS` | Recent salary median differs from contracted net by more than 5% | `differ` |
+| `CONTRACT_UNKNOWN` | Salaried without contracted net | `contracted net` |
+| `CATEGORY_SPARSE` | Categories with fewer than 6 observed months merged into `other` (F12) | `modelled together` |
+| `SEASONALITY_UNOBSERVED` | Seasonal month absent from the window (F17, ADR-016) | month names, `seasonal` |
 
 | Milestone | Status | Gate |
 |---|---|---|
