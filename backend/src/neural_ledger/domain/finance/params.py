@@ -6,7 +6,9 @@ version produced each decision. Values marked (A+E) need confirmation by Roles A
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+import json
+from dataclasses import dataclass, fields
 from decimal import Decimal
 from fractions import Fraction
 
@@ -58,6 +60,29 @@ class FinanceParams:
 
     def share_for(self, profile: RiskProfile) -> Fraction:
         return self.profile_share[profile.rank]
+
+    def fingerprint(self) -> str:
+        """Hash of every value except `version`, serialized exactly (Fraction as n/d, Decimal as text).
+
+        tests/unit/test_params_lock.py pins it per version: changing a value without bumping
+        `version` fails the build, so the audit log's policy_version always names the numbers used.
+        """
+        values = {f.name: _exact(getattr(self, f.name)) for f in fields(self) if f.name != "version"}
+        return hashlib.sha256(json.dumps(values, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _exact(value: object) -> object:
+    if isinstance(value, Fraction):
+        return f"{value.numerator}/{value.denominator}"
+    if isinstance(value, Decimal):
+        return f"decimal:{value}"
+    if isinstance(value, (frozenset, set)):
+        return sorted(_exact(v) for v in value)
+    if isinstance(value, (tuple, list)):
+        return [_exact(v) for v in value]
+    if isinstance(value, (int, str)) and not isinstance(value, bool):
+        return value
+    raise TypeError(f"unsupported parameter type {type(value).__name__}")
 
 
 FC_0_1 = FinanceParams(
