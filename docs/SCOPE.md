@@ -317,7 +317,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 - **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Implemented: commitments (4.1), income (4.2), spend (4.3) over pay cycles. It reproduces `data/personas/camila.json` and `diego.json` field by field from `data/ledgers/*.json`, and E01–E14 pass on the estimated models. Switch the app with `NL_MODEL_SOURCE=ledger` (default stays `fixture`). Implementation choices: F9–F15.
 - **Stage 2, projection** (model → answers): implemented in `domain/finance/` as a reference for Role A to own, review or replace. Trough recurrence `B_m = B_(m-1) + I − K − V − R − P − S`; protected surplus = minimum conservative headroom; rule sizing `R = floor_10k(share × min A over [s, s+5])` with H5; cuota `c = P·r/(1−(1+r)^−n)`; capacity = weakest band.
 - **Parameters** `fc-0.1` live in `domain/finance/params.py`. Changing one means a new version, which the audit log records.
-- **All 14 golden answers (E01–E14) reproduce** and are tests. Invariants are property-tested on 25 perturbed fixtures.
+- **All 14 golden answers (E01–E14) reproduce** on fixture and ledger sources. Unit invariant, malformed-ledger/robustness and hypothesis property suites guard the implementation; ADR-014 retains two strict counterexample xfails and two non-strict xpasses. The opt-in synthetic backtest (F16-F17) is implementation validation only; see `docs/FINANCIAL_CORE.md` and `docs/BACKTEST.md`.
 
 ## 9. What the review found
 
@@ -368,6 +368,8 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | F13 | The "largest one-off expense" (stress shock) is not defined precisely. | Largest single purchase or fee in the window, excluding cuota lines, recurring commitments, `transfer_own` and income. |
 | F14 | §8 "as_of in the middle of a cycle" (pro-rating). | Out of scope for v1: if as_of is not the day before a payday the estimator returns `INVALID_INPUT` (field `as_of`) instead of computing a partial cycle. Ended recurring items (45 days) are not commitments, and their history stays in variable spend (conservative). |
 | F15 | §4.1 misses recurring items that change: a new landlord with fewer than 3 payments, a rent increase, an item that ended before the 6-cycle lookback. | The pattern is checked on each counterparty's own last 6 cycles; consecutive amounts within ±5% with one level change allowed (amount = last observed). An ended item's history leaves variable spend only if an active item in the same category replaces it. A replacement with exactly 2 regular payments is a **provisional** commitment at its last amount (`RECURRING_PROVISIONAL`), so a recent move never understates the rent. |
+| F16 | A calibrated deterministic persona alone cannot test statistical recovery. | Opt-in synthetic-only seeded independent lognormal variable-spend categories and freelance income, 100 CLP rounding; December draws receive a 49/30 multiplier. No calibrated persona or ledger bytes change; see `docs/BACKTEST.md`. |
+| F17 | The design does not describe a December prediction without December in the fitted window. | The existing `SpendModel.factor` defaults to 1 without prior December evidence; Grid A measures the resulting adverse out-of-sample December coverage. No estimator change. |
 
 ### Security
 | # | Finding | Fix (in the skeleton) |
@@ -395,7 +397,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | D-10 | Official deadline and deliverables | Confirm in the rules (X3) |
 | D-11 | License for the public repository | MIT or Apache-2.0 (team decision) |
 | D-12 | Agent language | English for the judges; Spanish is stretch |
-| D-13 | Plan sizing when the start month shifts (hypothesis counterexamples, ADR-014) | Profile as a ceiling: try share(profile), step down to the next share if no start month is feasible. **Not implemented**; goldens unchanged until decided |
+| D-13 | Plan sizing when the start month shifts (hypothesis counterexamples, ADR-014) | **PROPOSED, not accepted:** evaluate every eligible share ≤ permitted share; select the maximal feasible **rule amount** at its earliest feasible start, earlier-start tie-break. Highest feasible share alone is not equivalent. Separately propose that a purchase never raises cumulative planned savings **at each month**, not just the final sum. Existing engine and xfails unchanged pending team approval. |
 
 ## 11. Plan to submission (adjusted)
 
