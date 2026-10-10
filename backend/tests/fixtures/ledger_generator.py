@@ -17,7 +17,9 @@ Seeded conditions: injection merchant for Camila (S01), an exact duplicate txn_i
 (S12), a refund, a bonus (excluded from income), a finished cuota plan (not a commitment).
 
 The personas are two GeneratorConfig values; property tests (tests/property) build random
-valid configs to generate many other ledgers with the same structure.
+valid configs to generate many other ledgers with the same structure. `stochastic` (opt-in,
+tests/fixtures/stochastic.py, docs/SCOPE.md F16) draws spend and freelance income from known
+distributions over another calendar instead; the personas never use it.
 
 Usage (from backend/):  python -m tests.fixtures.ledger_generator --out ../data/ledgers
 """
@@ -36,6 +38,7 @@ from typing import Any
 
 from neural_ledger.domain.finance.paycycle import cycle_end, cycle_start, payday
 from neural_ledger.domain.shared.month import Month, month_range
+from tests.fixtures.stochastic import StochasticSpec, draw_income, draw_spend
 
 AS_OF = date(2026, 10, 29)
 FIRST_CYCLE = Month(2025, 11)
@@ -103,11 +106,14 @@ def persona_plans(travel_merchant: str) -> tuple[Plan, ...]:
 
 @dataclass(frozen=True)
 class GeneratorConfig:
-    """Everything that varies between ledgers. The calendar (12 cycles to as_of) is fixed.
+    """Everything that varies between ledgers. The calendar (12 cycles to as_of) is fixed
+    unless `stochastic` is set.
 
     Salaried when `salary` is set, otherwise freelance with `freelance_income` (12 values,
     shuffled over the cycles). `savings_buckets=None` lets the savings closing balance follow
     from the flows (all of it in "reserve"); `strict_balances` asserts no account goes negative.
+    `stochastic` replaces the calibrated variable spend (and, with `salary=None`, the freelance
+    series) by seeded draws over its own calendar, without the seeded edge cases.
     """
 
     user_id: str
@@ -124,6 +130,12 @@ class GeneratorConfig:
     savings_opening: int = SAVINGS_OPENING
     savings_buckets: Mapping[str, int] | None = field(default_factory=lambda: dict(SAVINGS_BUCKETS))
     strict_balances: bool = True
+    stochastic: StochasticSpec | None = None
+
+
+def _calendar(config: GeneratorConfig) -> tuple[Month, ...]:
+    spec = config.stochastic
+    return CYCLES if spec is None else month_range(spec.first_cycle, spec.n_cycles)
 
 
 PERSONAS = {
@@ -156,6 +168,7 @@ class Builder:
     rng: random.Random
     txns: list[dict[str, Any]] = field(default_factory=list)
     counter: int = 0
+    truth: dict[str, Any] = field(default_factory=dict)  # stochastic draws, for the backtest
 
     def add(self, account: str, day: date, amount: int, merchant: str, category: str, kind: str, installment: dict | None = None) -> dict:
         self.counter += 1
@@ -178,7 +191,18 @@ class Builder:
         return min(end, start + timedelta(days=self.rng.randint(low, high)))
 
 
-def _variable_spend(b: Builder, config: GeneratorConfig) -> None:
+def _stochastic_spend(b: Builder, spec: StochasticSpec, cycles: tuple[Month, ...]) -> None:
+    b.truth["spend"] = totals = draw_spend(spec, b.rng, cycles)
+    for category, (merchants, account, pieces) in SPEND_LAYOUT.items():
+        for cycle in cycles:
+            for n, amount in enumerate(_split(totals[category][cycle], pieces)):
+                low = 1 + n * (26 // pieces)
+                b.add(account, b.day_in(cycle, low, low + 26 // pieces - 1), -amount, b.rng.choice(merchants), category, "purchase")
+
+
+def _variable_spend(b: Builder, config: GeneratorConfig, cycles: tuple[Month, ...]) -> None:
+    if config.stochastic is not None:
+        return _stochastic_spend(b, config.stochastic, cycles)
     non_seasonal = [c for c in CYCLES if c != DECEMBER]
     shock_total = config.unexpected_expense + UNEXPECTED_REST
     for category, (merchants, account, pieces) in SPEND_LAYOUT.items():
@@ -214,14 +238,18 @@ def _variable_spend(b: Builder, config: GeneratorConfig) -> None:
                     b.txns.append(dict(txn))  # exact duplicate txn_id (e.g. a double import)
 
 
-def _income(b: Builder, config: GeneratorConfig) -> None:
+def _income(b: Builder, config: GeneratorConfig, cycles: tuple[Month, ...]) -> None:
     if config.salary is not None:
-        for cycle in CYCLES:
+        for cycle in cycles:
             b.add("checking", cycle_start(cycle), config.salary, "EMPLOYER PAYROLL", "salary", "income")
     else:
-        series = list(config.freelance_income or ())
-        b.rng.shuffle(series)
-        for cycle, total in zip(CYCLES, series):
+        if config.stochastic is not None:
+            b.truth["income"] = drawn = draw_income(config.stochastic, b.rng, cycles)
+            series = [drawn[c] for c in cycles]
+        else:
+            series = list(config.freelance_income or ())
+            b.rng.shuffle(series)
+        for cycle, total in zip(cycles, series):
             if total <= 0:
                 continue  # a month without income: no credit at all
             first = total * 3 // 5
@@ -231,8 +259,8 @@ def _income(b: Builder, config: GeneratorConfig) -> None:
         b.add("checking", BONUS_DAY, config.bonus, BONUS_NAME, "bonus", "income")
 
 
-def _fixed_and_cuotas(b: Builder, config: GeneratorConfig) -> None:
-    for cycle in CYCLES:
+def _fixed_and_cuotas(b: Builder, config: GeneratorConfig, cycles: tuple[Month, ...]) -> None:
+    for cycle in cycles:
         b.add("checking", date(cycle.year, cycle.month, RENT_DAY), -config.rent, "Rent", "rent", "purchase")
         b.add("checking", date(cycle.year, cycle.month, SUBSCRIPTIONS_DAY), -config.subscriptions, "Subscriptions", "subscriptions", "purchase")
         for plan in config.plans:
@@ -266,11 +294,11 @@ def _unique(txns: list[dict]) -> list[dict]:
     return out
 
 
-def _card_payments(b: Builder) -> int:
+def _card_payments(b: Builder, cycles: tuple[Month, ...]) -> int:
     """Pay the card on day 10 of each cycle month; returns the card balance at as_of."""
     card = sorted((t for t in _unique(b.txns) if t["account_id"] == "credit_card"), key=lambda t: t["date"])
     previous = date.min
-    for cycle in CYCLES:
+    for cycle in cycles:
         pay_day = date(cycle.year, cycle.month, CARD_PAYMENT_DAY)
         due = -sum(t["amount"] for t in card if previous <= date.fromisoformat(t["date"]) < pay_day)
         previous = pay_day
@@ -280,7 +308,7 @@ def _card_payments(b: Builder) -> int:
     return sum(t["amount"] for t in _unique(b.txns) if t["account_id"] == "credit_card")
 
 
-def _savings_transfers(b: Builder, config: GeneratorConfig) -> int:
+def _savings_transfers(b: Builder, config: GeneratorConfig, cycles: tuple[Month, ...]) -> int:
     """Keep every checking trough at `checking_closing` with own-account transfers (all `transfer_own`).
 
     A cycle's positive net flow is swept to the sandbox savings account (up to what savings
@@ -290,7 +318,7 @@ def _savings_transfers(b: Builder, config: GeneratorConfig) -> int:
     of this touches the calibration.
     """
     unique = _unique(b.txns)
-    nets = [sum(t["amount"] for t in unique if t["account_id"] == "checking" and cycle_start(c) <= date.fromisoformat(t["date"]) <= cycle_end(c)) for c in CYCLES]
+    nets = [sum(t["amount"] for t in unique if t["account_id"] == "checking" and cycle_start(c) <= date.fromisoformat(t["date"]) <= cycle_end(c)) for c in cycles]
     covered = sum(-n for n in nets if n < 0)
     positive = sum(n for n in nets if n > 0)
     if config.savings_buckets is None:
@@ -303,7 +331,7 @@ def _savings_transfers(b: Builder, config: GeneratorConfig) -> int:
     if positive:
         last_positive = max(i for i, n in enumerate(nets) if n > 0)
         shares[last_positive] += to_savings_total - sum(shares)
-    for cycle, net, share in zip(CYCLES, nets, shares):
+    for cycle, net, share in zip(cycles, nets, shares):
         if net < 0:  # cover the deficit early in the cycle
             day = cycle_start(cycle) + timedelta(days=1)
             b.add("savings", day, net, "TRASPASO A CUENTA CORRIENTE", "transfer", "transfer_own")
@@ -327,19 +355,28 @@ def _check_balances(txns: list[dict], openings: dict[str, int]) -> None:
 
 
 def generate_ledger(config: GeneratorConfig) -> dict[str, Any]:
+    return generate_ledger_with_truth(config)[0]
+
+
+def generate_ledger_with_truth(config: GeneratorConfig) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The ledger and the generator's own draws ({} unless `stochastic`), keyed by cycle."""
+    if config.stochastic is not None and config.salary is None and config.stochastic.freelance is None:
+        raise ValueError("a stochastic freelance config needs StochasticSpec.freelance")
+    cycles = _calendar(config)
+    as_of = cycle_end(cycles[-1])
     b = Builder(config.user_id, random.Random(config.seed))
-    _income(b, config)
-    _fixed_and_cuotas(b, config)
-    _variable_spend(b, config)
-    card_balance = _card_payments(b)
-    savings_closing = _savings_transfers(b, config)
+    _income(b, config, cycles)
+    _fixed_and_cuotas(b, config, cycles)
+    _variable_spend(b, config, cycles)
+    card_balance = _card_payments(b, cycles)
+    savings_closing = _savings_transfers(b, config, cycles)
     unique = _unique(b.txns)
     if config.strict_balances:
         _check_balances(unique, {"checking": config.checking_closing, "savings": config.savings_opening, "credit_card": 0})
     closing = {acc: sum(t["amount"] for t in unique if t["account_id"] == acc) for acc in ("checking", "savings")}
     assert closing["checking"] == 0  # every cycle's checking flows net to zero after the sweeps
     assert config.savings_opening + closing["savings"] == savings_closing
-    assert payday(Month(2026, 10)) == AS_OF + timedelta(days=1)
+    assert payday(cycles[-1]) == as_of + timedelta(days=1)
     buckets = config.savings_buckets if config.savings_buckets is not None else {"reserve": savings_closing}
 
     transactions = sorted(b.txns, key=lambda t: (t["date"], t["txn_id"]))
@@ -347,7 +384,7 @@ def generate_ledger(config: GeneratorConfig) -> dict[str, Any]:
         "schema_version": "0.1",
         "user_id": config.user_id,
         "currency": CURRENCY,
-        "as_of": AS_OF.isoformat(),
+        "as_of": as_of.isoformat(),
         "ledger_version": f"{GENERATOR_VERSION}-seed{config.seed}",
         "_note": "Synthetic. Generated by backend/tests/fixtures/ledger_generator.py; do not edit by hand.",
         "income_profile": {
@@ -363,7 +400,7 @@ def generate_ledger(config: GeneratorConfig) -> dict[str, Any]:
         "buckets": [{"bucket": k, "amount": v} for k, v in buckets.items()],
         "goals": [dict(TRIP_GOAL)],
         "transactions": transactions,
-    }
+    }, b.truth
 
 
 def generate(persona: str) -> dict[str, Any]:
