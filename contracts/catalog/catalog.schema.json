@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["warnings", "facts", "error_fields"],
+  "additionalProperties": false,
+  "properties": {
+    "warnings": {"type": "array", "items": {"type": "object", "required": ["code", "source", "trigger", "must_mention", "reaches_tool_envelope"], "additionalProperties": false, "properties": {"code": {"type": "string"}, "source": {"type": "string"}, "trigger": {"type": "string"}, "must_mention": {"type": "boolean"}, "reaches_tool_envelope": {"type": "boolean"}}}},
+    "facts": {"type": "array", "items": {"type": "object", "required": ["template", "pattern", "domains", "unit", "source"], "additionalProperties": false, "properties": {"template": {"type": "string"}, "pattern": {"type": "string"}, "domains": {"type": "object", "additionalProperties": {"type": "string"}}, "unit": {"type": "string"}, "source": {"type": "string"}}}},
+    "error_fields": {"type": "array", "items": {"type": "object", "required": ["status", "template", "pattern", "source"], "additionalProperties": false, "properties": {"status": {"enum": ["INVALID_INPUT", "INSUFFICIENT_DATA"]}, "template": {"type": "string"}, "pattern": {"type": "string"}, "source": {"type": "string"}}}}
+  }
+}
