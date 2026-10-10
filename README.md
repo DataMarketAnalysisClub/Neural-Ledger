@@ -16,10 +16,12 @@ docker compose up --build          # API on http://localhost:8000  (GET /health)
 
 # Or locally
 make install                       # pip install -e "backend[api,dev]" (use a virtualenv)
-make test                          # architecture, golden answers, security suite, contracts, HTTP
+make test                          # fast lane: architecture, golden, security, contracts, HTTP (no property tests)
+make test-all                      # full suite incl. hypothesis property tests: required for CI and PRs
+make test-property                 # only the property tests (pytest -m property)
 make demo                          # the six-scene demo arc in the terminal
 make api                           # dev server on :8000
-make evidence                      # audit log + test results into evidence/
+make evidence                      # audit log + full-suite test results into evidence/
 ```
 
 On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
