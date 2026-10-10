@@ -11,6 +11,7 @@ from enum import Enum
 from fractions import Fraction
 
 from ..shared.envelope import Fact
+from ..shared.errors import InsufficientData
 from ..shared.month import month_range
 from ..shared.numbers import round_half_up
 from .forecast import Scenario, project
@@ -73,6 +74,9 @@ def essentials_exact(model: FinancialModel, params: FinanceParams) -> Fraction:
 
 def assess_capacity(model: FinancialModel, params: FinanceParams) -> CapacityAssessment:
     essentials = essentials_exact(model, params)
+    if essentials <= 0:
+        # every coverage factor is a ratio over essentials: unknown, not infinite (hard rule H4)
+        raise InsufficientData(("spend.essentials",), "monthly essentials are zero, so capacity cannot be assessed")
     horizon = params.dashboard_horizon_months
     months = month_range(model.first_cycle, horizon)
 

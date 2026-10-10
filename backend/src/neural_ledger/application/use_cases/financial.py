@@ -44,7 +44,7 @@ from ...domain.finance.purchase import (
 )
 from ...domain.finance.surplus import SurplusResult, protected_surplus, surplus_facts
 from ...domain.shared.envelope import Caveat, Envelope, Fact
-from ...domain.shared.errors import InvalidInput
+from ...domain.shared.errors import InsufficientData, InvalidInput
 from ...domain.shared.hashing import content_id
 from ...domain.shared.month import Month, month_range
 from ..ports import (
@@ -139,6 +139,8 @@ class FinancialUseCases:
             model = self._source.load(user_id)
         except NotFound as exc:
             return Envelope.insufficient(("financial_model",), params_version=version, message=str(exc))
+        except InsufficientData as exc:
+            return Envelope.insufficient(exc.missing, params_version=version, message=exc.message)
         missing = model.missing_fields()
         if missing:
             return Envelope.insufficient(missing, params_version=version, message="financial state is incomplete")
@@ -146,6 +148,8 @@ class FinancialUseCases:
             return body(model)
         except InvalidInput as exc:
             return Envelope.invalid(exc.field, exc.allowed, params_version=version, message=exc.message)
+        except InsufficientData as exc:
+            return Envelope.insufficient(exc.missing, params_version=version, message=exc.message)
 
     def _ok(self, model: FinancialModel, data: T, facts, warnings=(), *, kind: str, parts: tuple = ()) -> Envelope[T]:
         snapshot_id = content_id(kind, model.source_version, model.as_of, self._params.version, *parts)
@@ -162,7 +166,7 @@ class FinancialUseCases:
         """(as_of, currency) for prompts and verification. Defaults if the user is unknown."""
         try:
             model = self._source.load(user_id)
-        except NotFound:
+        except (NotFound, InsufficientData):
             return ("unknown", "CLP")
         return (model.as_of.isoformat(), model.currency)
 
