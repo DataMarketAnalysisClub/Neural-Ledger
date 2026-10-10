@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T2",
+  "x-owner": "C",
+  "description": "Execute an action the user already confirmed, by its authorization_id (see get_pending_actions). The terms are read from the stored authorization. If you pass requested_terms they are only compared: any difference from what the user authorized is blocked and logged. Expired, reused or altered authorizations are blocked.",
+  "type": "object",
+  "required": ["authorization_id"],
+  "properties": {
+    "authorization_id": {"type": "string"},
+    "requested_terms": {
+      "type": ["object", "null"],
+      "required": ["action", "amount", "currency", "frequency", "source_account", "destination", "effective_date"],
+      "properties": {
+        "action": {"enum": ["create_savings_rule"]},
+        "amount": {"type": "integer", "minimum": 1},
+        "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+        "frequency": {"enum": ["monthly"]},
+        "source_account": {"type": "string"},
+        "destination": {"type": "string"},
+        "effective_date": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

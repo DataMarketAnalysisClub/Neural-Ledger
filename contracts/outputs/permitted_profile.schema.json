@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/permitted_profile.schema.json",
+  "title": "PermittedProfile",
+  "description": "data of derive_permitted_profile: permitted = min(tolerance, capacity) + hard rules.",
+  "type": "object",
+  "required": ["permitted", "tolerance", "capacity", "hard_rules_triggered"],
+  "properties": {
+    "permitted": {"enum": ["conservative", "moderate", "aggressive"]},
+    "tolerance": {"enum": ["conservative", "moderate", "aggressive"]},
+    "capacity": {"enum": ["conservative", "moderate", "aggressive"]},
+    "hard_rules_triggered": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

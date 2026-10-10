@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/chat/chat_reply.schema.json",
+  "title": "ChatReply",
+  "description": "Reply to a chat turn. When pending_proposal is present, the UI shows a confirmation card with exactly its terms; confirming calls POST /v1/actions/proposals/{proposal_id}/confirm.",
+  "type": "object",
+  "required": ["session_id", "text", "intent", "intent_confidence", "gate", "tools_called", "facts", "warnings", "fallback_used", "actions"],
+  "properties": {
+    "session_id": {"type": "string"},
+    "text": {"type": "string"},
+    "intent": {"enum": ["afford_purchase", "forecast", "protected_surplus", "savings_plan", "execute_action", "explain", "out_of_scope", "smalltalk"]},
+    "intent_confidence": {"type": "number"},
+    "gate": {"enum": ["proceed", "clarify", "read_only"]},
+    "decision_model": {"type": ["string", "null"]},
+    "language_model": {"type": ["string", "null"]},
+    "tools_called": {"type": "array", "items": {"type": "string"}},
+    "facts": {"type": "array", "items": {"$ref": "../common/envelope.schema.json#/$defs/fact"}},
+    "warnings": {"type": "array", "items": {"$ref": "../common/envelope.schema.json#/$defs/caveat"}},
+    "verification": {
+      "type": ["object", "null"],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "issues": {"type": "array", "items": {"type": "object", "properties": {"kind": {"type": "string"}, "detail": {"type": "string"}}}},
+        "numbers_checked": {"type": "integer"}
+      }
+    },
+    "fallback_used": {"type": "boolean", "description": "True when the text is the deterministic narration (offline mode, or the model's explanation failed verification)."},
+    "pending_proposal": {"type": ["object", "null"]},
+    "actions": {"type": "array", "items": {"$ref": "../actions/action_outcome.schema.json"}},
+    "blocked_reason": {"type": ["string", "null"]}
+  }
+}

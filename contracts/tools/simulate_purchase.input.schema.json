@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "A",
+  "description": "Check whether a purchase paid in cuotas (installments) fits the user's future commitments. Returns the cuota, total cost, interest and effective annual rate, a verdict (FITS_ALL, FITS_TYPICAL_ONLY, BREACHES_ALL or BASELINE_BREACH) and up to three deterministic alternatives that fit. If the user does not say when the first cuota is billed, omit first_installment_month and the next month is assumed (and flagged). If no rate is given, a default monthly rate is assumed and flagged.",
+  "type": "object",
+  "required": ["amount", "installments"],
+  "properties": {
+    "amount": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "Price in minor units of the user's currency."},
+    "installments": {"enum": [3, 6, 12, 18, 24]},
+    "first_installment_month": {"type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"},
+    "monthly_rate": {"type": "number", "minimum": 0, "maximum": 0.2, "description": "Monthly interest rate as a fraction, e.g. 0.025."},
+    "include_plan": {"enum": ["none", "recommended", "active"], "default": "none"}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/audit/audit_event.schema.json",
+  "title": "AuditEvent",
+  "description": "Spec v0 section 10 fields plus a hash chain (sequence, prev_hash, event_hash). event_hash = sha256 of the canonical JSON of every other field. No hidden model reasoning is ever logged.",
+  "type": "object",
+  "required": ["event_id", "sequence", "timestamp", "session_id", "actor", "kind", "prev_hash", "event_hash"],
+  "properties": {
+    "event_id": {"type": "string"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "timestamp": {"type": "string"},
+    "session_id": {"type": "string"},
+    "actor": {"enum": ["user", "agent", "system"]},
+    "kind": {"enum": ["DECISION", "TOOL_CALL", "CLARIFICATION_REQUESTED", "INJECTION_FLAGGED", "OUT_OF_SCOPE", "VERIFICATION_FAILED", "PROPOSAL_CREATED", "ACTION_CONFIRMED", "EXECUTION_STARTED", "ACTION_EXECUTED", "ACTION_FAILED", "ACTION_BLOCKED"]},
+    "user_intent": {"type": ["string", "null"]},
+    "intent_confidence": {"type": ["number", "null"]},
+    "tool_requested": {"type": ["string", "null"]},
+    "tool_parameters_hash": {"type": ["string", "null"]},
+    "forecast_snapshot_id": {"type": ["string", "null"]},
+    "policy_version": {"type": ["string", "null"]},
+    "decision_model_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["model", "key", "label", "confidence"],
+        "properties": {"model": {"type": "string"}, "key": {"type": "string"}, "label": {"type": "string"}, "confidence": {"type": "number"}}
+      }
+    },
+    "permission_tier": {"type": ["string", "null"], "enum": [null, "T0", "T1", "T2", "T3"]},
+    "authorization_id": {"type": ["string", "null"]},
+    "execution_result": {"type": ["string", "null"]},
+    "blocked_reason": {"type": ["string", "null"]},
+    "model_version": {"type": ["string", "null"]},
+    "detail": {"type": ["string", "null"]},
+    "prev_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "event_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false
+}

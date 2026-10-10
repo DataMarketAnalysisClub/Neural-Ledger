@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Secrets and local state (the repo is public)
+.env
+.env.*
+!.env.example
+var/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Frontend (web/)
+node_modules/
+.angular/
+web/www/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated evidence: use `git add -f` for the final submission export
+evidence/sandbox-logs/*.jsonl
+evidence/test-results/*.xml
+
+# Commit message
+comit_message.txt

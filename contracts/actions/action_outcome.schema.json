@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/actions/action_outcome.schema.json",
+  "title": "ActionOutcome",
+  "description": "Result of propose / confirm / execute. BLOCKED always carries a reason and is always audited.",
+  "type": "object",
+  "required": ["status"],
+  "properties": {
+    "status": {"enum": ["PROPOSED", "CONFIRMED", "EXECUTED", "FAILED", "BLOCKED", "INVALID_INPUT", "INSUFFICIENT_DATA"]},
+    "proposal": {
+      "type": ["object", "null"],
+      "required": ["proposal_id", "session_id", "user_id", "terms", "source_snapshot_id", "created_at", "expires_at", "status"],
+      "properties": {
+        "proposal_id": {"type": "string"},
+        "session_id": {"type": "string"},
+        "user_id": {"type": "string"},
+        "terms": {"$ref": "action_terms.schema.json"},
+        "source_snapshot_id": {"type": "string"},
+        "created_at": {"type": "string"},
+        "expires_at": {"type": "string"},
+        "status": {"enum": ["pending", "confirmed"]}
+      }
+    },
+    "authorization": {
+      "type": ["object", "null"],
+      "description": "Public view: the signature (action_hash) never leaves the server.",
+      "required": ["authorization_id", "proposal_id", "terms", "expires_at", "used"],
+      "properties": {
+        "authorization_id": {"type": "string"},
+        "proposal_id": {"type": "string"},
+        "terms": {"$ref": "action_terms.schema.json"},
+        "expires_at": {"type": "string"},
+        "used": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "receipt": {
+      "type": ["object", "null"],
+      "properties": {
+        "execution_id": {"type": "string"},
+        "ok": {"type": "boolean"},
+        "reference": {"type": ["string", "null"]},
+        "error": {"type": ["string", "null"]}
+      }
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "enum": [null, "UNKNOWN_TOOL", "NEW_BENEFICIARY", "UNKNOWN_DESTINATION", "LIMIT_CHANGE", "CREDENTIAL_CHANGE", "POLICY_OVERRIDE", "SELF_ESCALATION", "TIER_NOT_ALLOWED", "INJECTION_SUSPECTED", "LOW_CONFIDENCE", "AUTHORIZATION_NOT_FOUND", "AUTHORIZATION_EXPIRED", "AUTHORIZATION_REPLAYED", "AUTHORIZATION_TAMPERED", "AUTHORIZATION_MISMATCH", "WRONG_OWNER", "ACTION_NOT_ALLOWED", "UNKNOWN_SOURCE", "AMOUNT_OVER_LIMIT", "PROPOSAL_NOT_FOUND", "PROPOSAL_EXPIRED", "PROPOSAL_NOT_PENDING", "TERMS_CHANGED", "AUDIT_UNAVAILABLE"]
+    },
+    "detail": {"type": ["string", "null"]},
+    "field": {"type": ["string", "null"]},
+    "authorized_amount": {"type": ["integer", "null"]},
+    "requested_amount": {"type": ["integer", "null"]}
+  }
+}

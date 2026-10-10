@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T0",
+  "x-owner": "B",
+  "description": "Read the typed user record: display name, language and the risk tolerance the user declared in the questionnaire. The record holds no free-text instructions.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T0",
+  "x-owner": "C",
+  "description": "Read the user's current balances: checking (the balance just before the next payday), the reserve bucket and goal buckets. Use it when the user asks what they have right now. It does not forecast anything; use forecast_cashflow for the future.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "A",
+  "description": "Project the balance just before each payday (the trough) for the coming months. 'typical' uses typical income and median spending; 'conservative' uses conservative income and 80th-percentile spending and is the one used for every decision; 'stress' adds one unexpected expense. A month breaches when its trough falls below the liquidity floor. include_plan adds the recommended or the active savings rule to the path.",
+  "type": "object",
+  "properties": {
+    "horizon_months": {"type": "integer", "minimum": 1, "maximum": 24, "default": 6},
+    "scenario": {"enum": ["typical", "conservative", "stress"], "default": "conservative"},
+    "include_plan": {"enum": ["none", "recommended", "active"], "default": "none"}
+  },
+  "additionalProperties": false
+}

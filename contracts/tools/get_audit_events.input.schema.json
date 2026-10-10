@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T0",
+  "x-owner": "C",
+  "description": "Read this session's audit events (decisions, tool calls, confirmations, executions and blocked attempts) and whether the hash chain is intact. Use it when the user asks why something was blocked.",
+  "type": "object",
+  "properties": {
+    "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 50}
+  },
+  "additionalProperties": false
+}

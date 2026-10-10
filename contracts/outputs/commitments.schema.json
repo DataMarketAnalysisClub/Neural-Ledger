@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/commitments.schema.json",
+  "title": "Commitments",
+  "description": "data of get_commitments. Labels are untrusted third-party text.",
+  "type": "object",
+  "required": ["horizon_months", "commitments", "schedule"],
+  "properties": {
+    "horizon_months": {"type": "integer"},
+    "commitments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["commitment_id", "type", "label", "amount", "first_due", "last_due", "is_debt"],
+        "properties": {
+          "commitment_id": {"type": "string"},
+          "type": {"enum": ["installment", "rent", "subscription", "loan"]},
+          "label": {"type": "object", "required": ["untrusted_text"], "properties": {"untrusted_text": {"type": "string", "maxLength": 120}}, "additionalProperties": false},
+          "amount": {"type": "integer"},
+          "first_due": {"type": "string"},
+          "last_due": {"type": ["string", "null"]},
+          "is_debt": {"type": "boolean"}
+        }
+      }
+    },
+    "schedule": {
+      "type": "array",
+      "items": {"type": "object", "required": ["month", "total", "debt"], "properties": {"month": {"type": "string"}, "total": {"type": "integer"}, "debt": {"type": "integer"}}}
+    }
+  }
+}

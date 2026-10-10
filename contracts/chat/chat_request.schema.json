@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/chat/chat_request.schema.json",
+  "title": "ChatRequest",
+  "description": "POST /v1/chat. The user is identified by the X-User-Id header (sandbox only).",
+  "type": "object",
+  "required": ["message"],
+  "properties": {
+    "session_id": {"type": "string", "default": "default"},
+    "message": {"type": "string", "minLength": 1, "maxLength": 4000}
+  },
+  "additionalProperties": false
+}

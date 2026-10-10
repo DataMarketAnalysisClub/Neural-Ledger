@@ -1,0 +1,45 @@
+{
+  "schema_version": "0.1",
+  "user_id": "diego",
+  "display_name": "Diego",
+  "currency": "CLP",
+  "as_of": "2026-10-29",
+  "first_cycle": "2026-11",
+  "_note": "Same balances, commitments and spending as Camila; freelance income (P50 1.8M, P20 1.3M, CV about 0.3). Decision D10: raise P20 to 1,450,000 if he reads too fragile on video (E13 still holds).",
+  "balances": {
+    "checking": 920000,
+    "reserve": 1500000,
+    "goal_buckets": {"trip": 900000}
+  },
+  "income": {
+    "type": "freelance",
+    "typical": 1800000,
+    "conservative": 1300000,
+    "cv": "3/10",
+    "method": "percentile"
+  },
+  "commitments": [
+    {"commitment_id": "rent", "type": "rent", "label": "Rent", "amount": 550000, "first_due": "2025-11", "last_due": null},
+    {"commitment_id": "subscriptions", "type": "subscription", "label": "Subscriptions", "amount": 45000, "first_due": "2025-11", "last_due": null},
+    {"commitment_id": "phone", "type": "installment", "label": "Phone", "amount": 45000, "first_due": "2026-06", "last_due": "2027-05", "installments_total": 12},
+    {"commitment_id": "furniture", "type": "installment", "label": "Furniture", "amount": 150000, "first_due": "2026-07", "last_due": "2026-12", "installments_total": 6},
+    {"commitment_id": "travel", "type": "installment", "label": "Travel agency", "amount": 200000, "first_due": "2026-10", "last_due": "2026-12", "installments_total": 3}
+  ],
+  "spend": {
+    "window_months": 12,
+    "seasonal_factors": {"12": "49/30"},
+    "categories": [
+      {"category": "groceries", "p50": 264000, "p80": 330000, "essential": true},
+      {"category": "dining", "p50": 144000, "p80": 180000, "essential": false},
+      {"category": "transport", "p50": 96000, "p80": 120000, "essential": true},
+      {"category": "shopping", "p50": 96000, "p80": 120000, "essential": false},
+      {"category": "utilities", "p50": 72000, "p80": 90000, "essential": true},
+      {"category": "health", "p50": 48000, "p80": 60000, "essential": true}
+    ]
+  },
+  "goals": [
+    {"goal_id": "trip", "name": "Trip", "target_amount": 1800000, "deadline": "2027-09", "saved_amount": 900000}
+  ],
+  "largest_one_off_expense": 300000,
+  "profile": {"declared_tolerance": "moderate", "language": "en"}
+}

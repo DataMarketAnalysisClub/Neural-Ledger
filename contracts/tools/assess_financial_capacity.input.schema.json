@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "A",
+  "description": "Assess what the user's finances permit (capacity), from reserve coverage, income stability, debt service, conservative headroom and stress coverage. The weakest factor sets the level (conservative, moderate or aggressive) and is returned as the binding factor.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

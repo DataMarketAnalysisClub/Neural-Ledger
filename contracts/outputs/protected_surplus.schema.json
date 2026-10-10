@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/protected_surplus.schema.json",
+  "title": "SurplusResult",
+  "description": "data of compute_protected_surplus. Never described as 'safe' money.",
+  "type": "object",
+  "required": ["protected_surplus", "binding_month", "horizon_months", "plan_amount", "plan_start", "monthly_free_flow", "breaches"],
+  "properties": {
+    "protected_surplus": {"type": "integer"},
+    "binding_month": {"type": "string"},
+    "horizon_months": {"type": "integer"},
+    "plan_amount": {"type": "integer"},
+    "plan_start": {"type": ["string", "null"]},
+    "monthly_free_flow": {
+      "type": "array",
+      "items": {"type": "object", "required": ["month", "amount"], "properties": {"month": {"type": "string"}, "amount": {"type": "integer"}}}
+    },
+    "breaches": {"type": "array", "items": {"type": "string"}}
+  }
+}

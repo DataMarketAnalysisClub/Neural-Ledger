@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/capacity.schema.json",
+  "title": "CapacityAssessment",
+  "description": "data of assess_financial_capacity. Weakest band wins.",
+  "type": "object",
+  "required": ["level", "binding_factor", "binding_factors", "factors", "essentials_monthly", "reserve_minimum", "reserve_target"],
+  "properties": {
+    "level": {"enum": ["conservative", "moderate", "aggressive"]},
+    "binding_factor": {"type": "string"},
+    "binding_factors": {"type": "array", "items": {"type": "string"}},
+    "factors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "value", "band", "measure"],
+        "properties": {
+          "name": {"enum": ["reserve_coverage", "income_stability", "debt_service", "conservative_headroom", "stress_coverage"]},
+          "value": {"type": "number"},
+          "band": {"enum": ["low", "medium", "high"]},
+          "measure": {"type": "string"}
+        }
+      }
+    },
+    "essentials_monthly": {"type": "integer"},
+    "reserve_minimum": {"type": "integer"},
+    "reserve_target": {"type": "integer"}
+  }
+}

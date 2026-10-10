@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "A",
+  "description": "Compute the protected surplus: how much could leave checking today without any conservative trough falling below the liquidity floor over the horizon, plus the free monthly flow. Never call this amount 'safe'.",
+  "type": "object",
+  "properties": {
+    "horizon_months": {"type": "integer", "minimum": 1, "maximum": 24, "default": 6},
+    "include_plan": {"enum": ["none", "recommended", "active"], "default": "none"}
+  },
+  "additionalProperties": false
+}

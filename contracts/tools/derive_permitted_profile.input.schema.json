@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "A",
+  "description": "Combine tolerance (what the user accepts) and capacity (what the finances permit): permitted = the lower of the two, plus hard rules. Pass the tolerance returned by assess_risk_tolerance.",
+  "type": "object",
+  "required": ["tolerance"],
+  "properties": {
+    "tolerance": {"enum": ["conservative", "moderate", "aggressive"]}
+  },
+  "additionalProperties": false
+}

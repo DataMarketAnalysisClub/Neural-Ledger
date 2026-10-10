@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/savings_plan.schema.json",
+  "title": "SavingsPlan",
+  "description": "data of compute_savings_plan. The envelope's snapshot_id (plan_...) is what propose_savings_rule takes.",
+  "type": "object",
+  "required": ["profile", "amount", "start_month", "share", "lowest_available_in_window", "required_monthly", "allocation", "requirements", "goal_status", "hard_rules_triggered"],
+  "properties": {
+    "profile": {"enum": ["conservative", "moderate", "aggressive"]},
+    "amount": {"type": "integer", "minimum": 0},
+    "start_month": {"type": ["string", "null"]},
+    "share": {"type": "number"},
+    "lowest_available_in_window": {"type": ["integer", "null"]},
+    "required_monthly": {"type": "integer"},
+    "allocation": {"type": "array", "items": {"type": "object", "required": ["bucket", "monthly_amount"]}},
+    "requirements": {"type": "array", "items": {"type": "object", "required": ["bucket", "required_monthly", "funded_monthly", "funded_from"]}},
+    "goal_status": {"type": "array", "items": {"type": "object", "required": ["goal_id", "target", "saved", "deadline", "projected_completion", "on_track"]}},
+    "hard_rules_triggered": {"type": "array", "items": {"enum": ["H1_RESERVE_BELOW_MINIMUM", "H2_NO_POSITIVE_RULE"]}}
+  }
+}

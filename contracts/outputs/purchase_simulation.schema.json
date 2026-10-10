@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/purchase_simulation.schema.json",
+  "title": "PurchaseSimulation",
+  "description": "data of simulate_purchase.",
+  "type": "object",
+  "required": ["quote", "first_installment_month", "horizon_months", "verdict", "impacts", "alternatives"],
+  "properties": {
+    "quote": {
+      "type": "object",
+      "required": ["principal", "installments", "monthly_rate", "rate_assumed", "installment", "total_cost", "total_interest", "effective_annual_rate"],
+      "properties": {
+        "principal": {"type": "integer"},
+        "installments": {"type": "integer"},
+        "monthly_rate": {"type": "number"},
+        "rate_assumed": {"type": "boolean"},
+        "installment": {"type": "integer"},
+        "total_cost": {"type": "integer"},
+        "total_interest": {"type": "integer"},
+        "effective_annual_rate": {"type": "number", "description": "(1 + r)^12 - 1 as a fraction. Not labelled CAE."}
+      }
+    },
+    "first_installment_month": {"$ref": "../common/envelope.schema.json#/$defs/month"},
+    "horizon_months": {"type": "integer"},
+    "verdict": {"enum": ["BASELINE_BREACH", "FITS_ALL", "FITS_TYPICAL_ONLY", "BREACHES_ALL"]},
+    "impacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario", "lowest_headroom_before", "lowest_headroom_after", "binding_month_after", "trough_after_in_binding_month", "breaches_after"],
+        "properties": {
+          "scenario": {"enum": ["typical", "conservative"]},
+          "lowest_headroom_before": {"type": "integer"},
+          "lowest_headroom_after": {"type": "integer"},
+          "binding_month_after": {"type": "string"},
+          "trough_after_in_binding_month": {"type": "integer"},
+          "breaches_after": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "alternatives": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["kind", "amount", "installments", "first_installment_month", "installment", "total_cost", "total_interest"],
+        "properties": {
+          "kind": {"enum": ["defer_start", "change_installments", "reduce_amount"]},
+          "amount": {"type": "integer"},
+          "installments": {"type": "integer"},
+          "first_installment_month": {"type": "string"},
+          "installment": {"type": "integer"},
+          "total_cost": {"type": "integer"},
+          "total_interest": {"type": "integer"}
+        }
+      }
+    }
+  }
+}

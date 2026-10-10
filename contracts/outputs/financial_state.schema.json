@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/financial_state.schema.json",
+  "title": "FinancialState",
+  "description": "data of get_financial_state.",
+  "type": "object",
+  "required": ["user_id", "currency", "as_of", "first_cycle", "checking", "reserve", "goal_buckets", "income_type", "active_rules"],
+  "properties": {
+    "user_id": {"type": "string"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "as_of": {"type": "string", "format": "date"},
+    "first_cycle": {"type": "string"},
+    "checking": {"type": "integer"},
+    "reserve": {"type": "integer"},
+    "goal_buckets": {"type": "object", "additionalProperties": {"type": "integer"}},
+    "income_type": {"enum": ["salaried", "freelance"]},
+    "active_rules": {"type": "integer"}
+  },
+  "additionalProperties": false
+}

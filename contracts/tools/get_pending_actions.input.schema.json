@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T0",
+  "x-owner": "C",
+  "description": "List this session's proposals waiting for the user's confirmation and the authorizations the user already confirmed but that were not executed yet. Use it to find the authorization_id before calling execute_sandbox_action.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

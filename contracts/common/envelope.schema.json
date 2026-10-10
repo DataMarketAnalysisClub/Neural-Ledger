@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/common/envelope.schema.json",
+  "title": "Envelope",
+  "description": "Response envelope of every financial tool. Every number the agent may state is a fact; every assumption it must mention is a warning.",
+  "type": "object",
+  "required": ["status", "params_version", "facts", "warnings"],
+  "properties": {
+    "status": {"enum": ["OK", "INSUFFICIENT_DATA", "INVALID_INPUT"]},
+    "params_version": {"type": "string"},
+    "data": {"description": "Tool-specific payload; see contracts/outputs. Null unless status is OK."},
+    "snapshot_id": {"type": ["string", "null"], "description": "Hash of model source version, as_of, params_version and inputs. Stored by the audit log as forecast_snapshot_id."},
+    "as_of": {"type": ["string", "null"]},
+    "facts": {"type": "array", "items": {"$ref": "#/$defs/fact"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/caveat"}},
+    "missing": {"type": "array", "items": {"type": "string"}},
+    "field": {"type": ["string", "null"]},
+    "allowed": {"type": "array", "items": {"type": "string"}},
+    "message": {"type": ["string", "null"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "OK"}}}, "then": {"required": ["data", "snapshot_id", "as_of"]}},
+    {"if": {"properties": {"status": {"const": "INSUFFICIENT_DATA"}}}, "then": {"required": ["missing"]}},
+    {"if": {"properties": {"status": {"const": "INVALID_INPUT"}}}, "then": {"required": ["field"]}}
+  ],
+  "$defs": {
+    "fact": {
+      "type": "object",
+      "required": ["key", "value", "unit", "derivation"],
+      "properties": {
+        "key": {"type": "string", "examples": ["2026-12.conservative.headroom"]},
+        "value": {"type": ["integer", "number", "string"]},
+        "unit": {"type": "string", "description": "ISO currency code for money, '%', 'month', 'count', 'ratio', 'profile', ..."},
+        "derivation": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "caveat": {
+      "type": "object",
+      "required": ["code", "message", "must_mention"],
+      "properties": {
+        "code": {"type": "string", "examples": ["RATE_ASSUMED", "FIRST_INSTALLMENT_ASSUMED", "PROFILE_CAPPED"]},
+        "message": {"type": "string"},
+        "must_mention": {"type": "array", "items": {"type": "string"}, "description": "The explanation passes if it contains any of these tokens."}
+      },
+      "additionalProperties": false
+    },
+    "month": {"type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"},
+    "money": {"type": "integer", "description": "Integer minor units of the snapshot currency (CLP has none)."}
+  }
+}

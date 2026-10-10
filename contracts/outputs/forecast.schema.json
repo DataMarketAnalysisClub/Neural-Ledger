@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/forecast.schema.json",
+  "title": "Forecast",
+  "description": "data of forecast_cashflow. trough = balance just before payday; headroom = trough - floor; a month breaches when headroom < 0.",
+  "type": "object",
+  "required": ["scenario", "floor", "opening_trough", "cycles"],
+  "properties": {
+    "scenario": {"enum": ["typical", "conservative", "stress"]},
+    "floor": {"type": "integer"},
+    "opening_trough": {"type": "integer"},
+    "cycles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["month", "income", "commitments", "variable", "available", "plan", "purchase", "shock", "trough", "headroom"],
+        "properties": {
+          "month": {"$ref": "../common/envelope.schema.json#/$defs/month"},
+          "income": {"type": "integer"},
+          "commitments": {"type": "integer"},
+          "variable": {"type": "integer"},
+          "available": {"type": "integer"},
+          "plan": {"type": "integer"},
+          "purchase": {"type": "integer"},
+          "shock": {"type": "integer"},
+          "trough": {"type": "integer"},
+          "headroom": {"type": "integer"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

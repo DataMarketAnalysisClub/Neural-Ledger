@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "C",
+  "x-stateful": true,
+  "description": "Prepare a savings-rule proposal from a computed plan (by its snapshot_id). The amount and dates come from the stored plan, not from you. Nothing moves: the user must confirm the exact terms in the app's confirmation card.",
+  "type": "object",
+  "required": ["plan_snapshot_id"],
+  "properties": {
+    "plan_snapshot_id": {"type": "string", "pattern": "^plan_[0-9a-f]{16}$"}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,24 @@
+# `docker compose up` must work from a clean checkout with NO API keys (offline mode).
+# Copy .env.example to .env to switch to live mode (real LLM, Jev, SQLite).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NL_PERSISTENCE: ${NL_PERSISTENCE:-sqlite}
+      NL_SQLITE_PATH: /app/var/neural_ledger.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ledger-data:/app/var
+
+  # web:
+  #   Role D adds the frontend here (build ./web, port 3000), talking to http://api:8000.
+  #   The UI never computes money: it renders facts returned by the API.
+
+volumes:
+  ledger-data:
