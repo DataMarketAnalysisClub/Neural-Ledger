@@ -41,7 +41,10 @@ partial cycles are out of scope and return INVALID_INPUT.
     (ADR-016, Proposed). Flag only: no number changes.
 Duplicates: exact txn_id duplicates are dropped; same date, amount and counterparty is
 flagged and kept (it can be two real purchases). Merchant text is data only: it feeds the
-category lookup and the untrusted `label` field, and never appears in a warning message.
+category lookup and the untrusted `label` field. Warning messages carry static words
+and static month names only, never merchant, category, label or txn_id text, and every warning
+has must_mention tokens taken from its own message (ADR-017, Proposed: in ledger mode they are
+forwarded to tool envelopes, prompts and fallback narration).
 H4: fewer than params.min_history_months cycles -> INSUFFICIENT_DATA with `missing`.
 Input contract: validate_snapshot returns INVALID_INPUT with the offending field (currency other
 than CLP, foreign-currency accounts, amounts that are not integers or exceed 10^9, unknown
@@ -178,8 +181,10 @@ def _category(txn: Transaction) -> str:
     return category
 
 
-def _caveat(code: str, message: str) -> Caveat:
-    return Caveat(code, message)
+def _caveat(code: str, message: str, tokens: tuple[str, ...]) -> Caveat:
+    """Messages carry static words only: they reach prompts and fallback narration
+    (ADR-017, Proposed). Each token must be a substring of its own message."""
+    return Caveat(code, message, tokens)
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,16 +320,21 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
         seen.add(txn.txn_id)
         txns.append(txn)
     if dropped:
-        warnings.append(_caveat("DUPLICATE_TXN_ID", f"{dropped} transaction(s) with a repeated txn_id were ignored."))
-    near: dict[tuple, list[str]] = defaultdict(list)
+        warnings.append(_caveat(
+            "DUPLICATE_TXN_ID",
+            "Transactions with a repeated id were dropped as exact duplicates.",
+            ("exact duplicate",),
+        ))
+    near: dict[tuple, int] = defaultdict(int)
     for txn in txns:
-        near[(txn.account_id, txn.date, txn.amount, _counterparty(txn.merchant_raw))].append(txn.txn_id)
-    flagged = sorted(ids for ids in near.values() if len(ids) > 1)
+        near[(txn.account_id, txn.date, txn.amount, _counterparty(txn.merchant_raw))] += 1
+    flagged = sum(1 for count in near.values() if count > 1)
     if flagged:
         warnings.append(_caveat(
             "NEAR_DUPLICATE",
-            f"{len(flagged)} group(s) of transactions share date, amount and counterparty and were kept: "
-            + "; ".join(",".join(ids) for ids in flagged),
+            "Groups of transactions share date, amount and counterparty; "
+            "they were kept as possible duplicates.",
+            ("possible duplicate",),
         ))
 
     # history and window ------------------------------------------------------------------------
@@ -359,7 +369,8 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
     if unparsed:
         warnings.append(_caveat(
             "INSTALLMENT_UNPARSED",
-            f"{unparsed} installment line(s) had no metadata and no readable CUOTA nn/NN; they were counted as variable spend.",
+            "Installment lines had no metadata and no readable CUOTA nn/NN; they were counted as variable spend.",
+            ("variable spend",),
         ))
     commitments: list[Commitment] = []
     plans: dict[str, list[_CuotaLine]] = defaultdict(list)
@@ -530,8 +541,9 @@ def _recurring_items(
     if provisional:
         warnings.append(_caveat(
             "RECURRING_PROVISIONAL",
-            f"{len(provisional)} recurring item(s) with only 2 payments replace an item that ended; "
-            "they were taken as commitments at their last amount.",
+            "Recurring items with only two payments replace an item that ended; "
+            "they were taken as provisional commitments at their last amount.",
+            ("provisional",),
         ))
     kept = active + provisional
     replaced = {g.category for g in kept}
@@ -577,18 +589,27 @@ def _income_model(
         salary = [(t, c) for t, c in credits if _category(t) == SALARY_CATEGORY]
         recent_cycles = {last_cycle.plus(-k) for k in range(3)}
         if not recent_cycles <= {c for _, c in salary}:
-            warnings.append(_caveat("SALARY_MISSING", "A salary credit is missing in the last 3 cycles; contracted income was used."))
+            warnings.append(_caveat(
+                "SALARY_MISSING", "A salary credit is missing in the last 3 cycles; contracted income was used.", ("missing",),
+            ))
             value = contracted
         else:
             median = quantile([t.amount for t, _ in salary[-3:]], Fraction(1, 2))
             value = contracted
             if abs(median - contracted) > Fraction(5, 100) * contracted:
                 value = min(contracted, round_half_up(median))
-                warnings.append(_caveat("SALARY_DIFFERS", "Recent salary credits differ from the contracted net by more than 5%; the lower was used."))
+                warnings.append(_caveat(
+                    "SALARY_DIFFERS",
+                    # "five percent" in words: a "5%" here would be an unsupported percentage for the verifier.
+                    "Recent salary credits differ from the contracted net by more than five percent; the lower was used.",
+                    ("differ",),
+                ))
         return IncomeModel(IncomeType.SALARIED, value, value, Fraction(0), "contracted")
 
     if profile.type is IncomeType.SALARIED:
-        warnings.append(_caveat("CONTRACT_UNKNOWN", "No contracted net income; income was estimated from percentiles."))
+        warnings.append(_caveat(
+            "CONTRACT_UNKNOWN", "No contracted net income; income was estimated from percentiles.", ("contracted net",),
+        ))
     totals = defaultdict(int)
     for t, c in credits:
         totals[c] += t.amount
@@ -636,8 +657,8 @@ def _spend_model(
         essential[OTHER_CATEGORY] = merged_essential
         warnings.append(_caveat(
             "CATEGORY_SPARSE",
-            f"{len(sparse)} categor{'y' if len(sparse) == 1 else 'ies'} with fewer than {params.min_history_months} months of data "
-            f"({', '.join(sparse)}) were modelled together as '{OTHER_CATEGORY}'.",
+            "Spend categories with limited history were modelled together as 'other'.",
+            ("modelled together",),
         ))
 
     base_cycles = [c for c in window if c.month not in params.seasonal_months]

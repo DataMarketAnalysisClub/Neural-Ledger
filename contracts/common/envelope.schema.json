@@ -31,7 +31,7 @@
         "key": {"type": "string", "examples": ["2026-12.conservative.headroom"]},
         "value": {"type": ["integer", "number", "string"]},
         "unit": {"type": "string", "description": "ISO currency code for money, '%', 'month', 'count', 'ratio', 'profile', ..."},
-        "derivation": {"type": "string"}
+        "derivation": {"type": "string", "description": "How the value was derived. Facts forwarded from the ledger estimator (ADR-017, Proposed; ledger source only) end with the fixed suffix '; source=ledger-estimator; estimator_snapshot=<estimator snapshot_id>; tool_snapshot=<this envelope's snapshot_id>'. Key, value and unit are unchanged.", "examples": ["income model (contracted); source=ledger-estimator; estimator_snapshot=model_0123456789abcdef; tool_snapshot=forecast_fedcba9876543210"]}
       },
       "additionalProperties": false
     },
@@ -39,9 +39,9 @@
       "type": "object",
       "required": ["code", "message", "must_mention"],
       "properties": {
-        "code": {"type": "string", "examples": ["RATE_ASSUMED", "FIRST_INSTALLMENT_ASSUMED", "PROFILE_CAPPED"]},
-        "message": {"type": "string"},
-        "must_mention": {"type": "array", "items": {"type": "string"}, "description": "The explanation passes if it contains any of these tokens."}
+        "code": {"type": "string", "examples": ["RATE_ASSUMED", "FIRST_INSTALLMENT_ASSUMED", "PROFILE_CAPPED", "SEASONALITY_UNOBSERVED", "NEAR_DUPLICATE"]},
+        "message": {"type": "string", "description": "Plain-language assumption. Forwarded estimator warnings omit unbounded dynamic counts and raw ledger text (merchant, category, label, txn_id); ADR-016's bounded seasonal-month count is unchanged. In ledger mode they are appended after the tool's own warnings (ADR-017, Proposed)."},
+        "must_mention": {"type": "array", "items": {"type": "string"}, "description": "The explanation passes if it contains any of these tokens (case-insensitive substring). Every token is a substring of the caveat's own message."}
       },
       "additionalProperties": false
     },

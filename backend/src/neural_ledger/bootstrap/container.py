@@ -103,7 +103,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     else:
         raise ValueError(f"unknown NL_LLM {s.llm!r}")
 
-    financial = FinancialUseCases(source, snapshots, bank, profiles, FC_0_1)
+    # ADR-017 (Proposed): only the ledger source forwards estimator facts and warnings; fixtures stay as they were.
+    evidence = source if isinstance(source, LedgerModelSource) else None
+    financial = FinancialUseCases(source, snapshots, bank, profiles, FC_0_1, evidence=evidence)
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
