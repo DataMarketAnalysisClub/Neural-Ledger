@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from ..adapters.outbound.bank.simulated import SimulatedSandboxBank
 from ..adapters.outbound.decision.jev import JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
+from ..adapters.outbound.fixtures.ledger_source import LedgerModelSource
 from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
 from ..adapters.outbound.llm.scripted import ScriptedLanguageModel
@@ -52,7 +53,7 @@ class Adapters:
     bank: SimulatedSandboxBank
     actions_repo: InMemoryActionRepository | SqliteActionRepository
     audit_log: InMemoryAuditLog | SqliteAuditLog
-    source: PersonaFixtureSource
+    source: PersonaFixtureSource | LedgerModelSource
 
 
 def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapters]:
@@ -64,9 +65,13 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     ids = SequentialIds() if s.ids == "sequential" else UuidIds()
     signer = HmacSigner(s.hmac_secret)
 
-    if s.model_source != "fixture":
-        raise NotImplementedError("NL_MODEL_SOURCE=ledger needs Role A's estimators (domain/finance/estimation.py)")
-    source = PersonaFixtureSource(s.resolved_data_dir / "personas")
+    personas = PersonaFixtureSource(s.resolved_data_dir / "personas")  # golden reference + typed user records
+    if s.model_source == "fixture":
+        source: PersonaFixtureSource | LedgerModelSource = personas
+    elif s.model_source == "ledger":
+        source = LedgerModelSource(s.resolved_data_dir / "ledgers", FC_0_1)  # stage-1 estimators over the ledger
+    else:
+        raise ValueError(f"unknown NL_MODEL_SOURCE {s.model_source!r} (fixture | ledger)")
 
     if s.persistence == "sqlite":
         db = SqliteDatabase(s.sqlite_path)
@@ -79,7 +84,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     snapshots = InMemorySnapshotStore()
     conversations = InMemoryConversationStore()
     bank = SimulatedSandboxBank(rule_store)
-    profiles = InMemoryUserProfileStore([source.profile(name) for name in source.user_ids()])
+    profiles = InMemoryUserProfileStore([personas.profile(name) for name in personas.user_ids()])
 
     models = []
     for name in s.decision_chain:

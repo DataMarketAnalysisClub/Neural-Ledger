@@ -1,4 +1,4 @@
-.PHONY: install test test-golden test-security demo evidence api up
+.PHONY: install test test-golden test-security demo demo-ledger ledgers evidence api up
 
 PY ?= python3
 
@@ -16,6 +16,12 @@ test-security:
 
 demo:               ## run the six-scene demo arc offline in the terminal
 	cd backend && NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo
+
+demo-ledger:        ## the same demo arc, with the model estimated from data/ledgers (stage 1)
+	cd backend && NL_MODEL_SOURCE=ledger NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo
+
+ledgers:            ## regenerate data/ledgers/*.json (deterministic, seeded)
+	cd backend && PYTHONPATH=src:. $(PY) -m tests.fixtures.ledger_generator --out ../data/ledgers
 
 evidence:           ## demo + audit export + junit test results into evidence/
 	cd backend && NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo-and-export --out ../evidence/sandbox-logs/audit.jsonl
