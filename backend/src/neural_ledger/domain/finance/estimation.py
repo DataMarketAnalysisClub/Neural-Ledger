@@ -40,6 +40,10 @@ Duplicates: exact txn_id duplicates are dropped; same date, amount and counterpa
 flagged and kept (it can be two real purchases). Merchant text is data only: it feeds the
 category lookup and the untrusted `label` field, and never appears in a warning message.
 H4: fewer than params.min_history_months cycles -> INSUFFICIENT_DATA with `missing`.
+Input contract: validate_snapshot returns INVALID_INPUT with the offending field (currency other
+than CLP, foreign-currency accounts, amounts that are not integers or exceed 10^9, unknown
+kinds or accounts, transactions after as_of, non-positive income, a txn_id reused with
+different content). Exact duplicates are not an error: they are dropped and flagged.
 """
 
 from __future__ import annotations
@@ -76,6 +80,11 @@ from .model import (
 )
 from .params import FinanceParams
 from .paycycle import cycle_of, is_eve_of_payday
+
+# Input limits (mirrored in contracts/ledger/ledger.schema.json; a contract test keeps them aligned).
+# Constants, not FinanceParams: they reject malformed input and never change a computed number.
+SUPPORTED_CURRENCIES = frozenset({"CLP"})  # fc-0.1 amounts (floor, shock, rounding) are CLP
+MAX_ABS_AMOUNT = 1_000_000_000  # any single amount or balance above this is not a personal ledger
 
 SALARY_CATEGORY = "salary"
 BONUS_CATEGORIES = frozenset({"bonus"})
@@ -224,13 +233,67 @@ def _exact_record(txn: Transaction) -> dict:
 # ---- the estimator --------------------------------------------------------------------------
 
 
+def _is_amount(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and abs(value) <= MAX_ABS_AMOUNT
+
+
+def validate_snapshot(snapshot: LedgerSnapshot) -> tuple[str, str, tuple[str, ...]] | None:
+    """First input problem as (field, message, allowed values), or None. Fields name the
+    position in the input, e.g. `transactions[12].kind`. Nothing here estimates anything."""
+    if snapshot.currency not in SUPPORTED_CURRENCIES:
+        return "currency", "fc-0.1 parameters are calibrated in CLP", tuple(sorted(SUPPORTED_CURRENCIES))
+    if not is_eve_of_payday(snapshot.as_of):
+        return "as_of", "as_of must be the day before a payday (last weekday of the month); partial cycles are not supported", ()
+    accounts: dict[str, int] = {}
+    for i, account in enumerate(snapshot.accounts):
+        if account.account_id in accounts:
+            return f"accounts[{i}].account_id", "account_id is repeated", ()
+        accounts[account.account_id] = i
+        if not isinstance(account.type, AccountType):
+            return f"accounts[{i}].type", "unknown account type", tuple(t.value for t in AccountType)
+        if account.currency != snapshot.currency:
+            return f"accounts[{i}].currency", "every account must use the ledger currency", (snapshot.currency,)
+        if not _is_amount(account.balance):
+            return f"accounts[{i}].balance", f"must be an integer with absolute value up to {MAX_ABS_AMOUNT}", ()
+    for i, bucket in enumerate(snapshot.buckets):
+        if not _is_amount(bucket.amount) or bucket.amount < 0:
+            return f"buckets[{i}].amount", f"must be an integer from 0 to {MAX_ABS_AMOUNT}", ()
+    for i, goal in enumerate(snapshot.goals):
+        for name in ("target_amount", "saved_amount"):
+            value = getattr(goal, name)
+            if not _is_amount(value) or value < 0:
+                return f"goals[{i}].{name}", f"must be an integer from 0 to {MAX_ABS_AMOUNT}", ()
+    contracted = snapshot.income_profile.contracted_net
+    if contracted is not None and (not _is_amount(contracted) or contracted <= 0):
+        return "income_profile.contracted_net", f"must be a positive integer up to {MAX_ABS_AMOUNT}", ()
+    first_seen: dict[str, Transaction] = {}
+    for i, txn in enumerate(snapshot.transactions):
+        path = f"transactions[{i}]"
+        if not isinstance(txn.kind, TransactionKind):
+            return f"{path}.kind", "unknown transaction kind", tuple(k.value for k in TransactionKind)
+        if not _is_amount(txn.amount):
+            return f"{path}.amount", f"must be an integer with absolute value up to {MAX_ABS_AMOUNT}", ()
+        if txn.account_id not in accounts:
+            return f"{path}.account_id", "refers to an account that is not in the ledger", tuple(sorted(accounts))
+        if txn.date > snapshot.as_of:
+            return f"{path}.date", "is after as_of: the ledger must end at as_of", ()
+        if txn.kind is TransactionKind.INCOME and txn.amount <= 0:
+            return f"{path}.amount", "income must be a positive amount", ()
+        info = txn.installment
+        if info is not None and not (1 <= info.installment_number <= info.installment_total):
+            return f"{path}.installment", "installment_number must be between 1 and installment_total", ()
+        previous = first_seen.setdefault(txn.txn_id, txn)
+        if previous is not txn and previous != txn:
+            return f"{path}.txn_id", "the same txn_id appears with different content", ()
+    return None
+
+
 def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[FinancialModel]:
     version = params.version
-    if not is_eve_of_payday(snapshot.as_of):
-        return Envelope.invalid(
-            "as_of", (), params_version=version,
-            message="as_of must be the day before a payday (last weekday of the month); partial cycles are not supported",
-        )
+    problem = validate_snapshot(snapshot)
+    if problem is not None:
+        field, message, allowed = problem
+        return Envelope.invalid(field, allowed, params_version=version, message=message)
     last_cycle = cycle_of(snapshot.as_of)
     first_cycle = last_cycle.plus(1)
     warnings: list[Caveat] = []
@@ -240,8 +303,6 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
     txns: list[Transaction] = []
     dropped = 0
     for txn in sorted(snapshot.transactions, key=lambda t: (t.date, t.txn_id)):
-        if txn.date > snapshot.as_of:
-            continue
         if txn.txn_id in seen:
             dropped += 1
             continue

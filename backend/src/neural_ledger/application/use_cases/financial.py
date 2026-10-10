@@ -141,6 +141,8 @@ class FinancialUseCases:
             return Envelope.insufficient(("financial_model",), params_version=version, message=str(exc))
         except InsufficientData as exc:
             return Envelope.insufficient(exc.missing, params_version=version, message=exc.message)
+        except InvalidInput as exc:
+            return Envelope.invalid(exc.field, exc.allowed, params_version=version, message=exc.message)
         missing = model.missing_fields()
         if missing:
             return Envelope.insufficient(missing, params_version=version, message="financial state is incomplete")
@@ -166,7 +168,7 @@ class FinancialUseCases:
         """(as_of, currency) for prompts and verification. Defaults if the user is unknown."""
         try:
             model = self._source.load(user_id)
-        except (NotFound, InsufficientData):
+        except (NotFound, InsufficientData, InvalidInput):
             return ("unknown", "CLP")
         return (model.as_of.isoformat(), model.currency)
 

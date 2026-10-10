@@ -62,7 +62,11 @@ def snapshot(transactions: list[Transaction], *, as_of: date = AS_OF, income: In
         currency="CLP",
         as_of=as_of,
         ledger_version="test",
-        accounts=(Account("checking", AccountType.CHECKING, 500_000, "CLP"),),
+        accounts=(
+            Account("checking", AccountType.CHECKING, 500_000, "CLP"),
+            Account("credit_card", AccountType.CREDIT_CARD, 0, "CLP"),
+            Account("savings", AccountType.SAVINGS, 800_000, "CLP"),
+        ),
         transactions=tuple(transactions),
         goals=(),
         buckets=(SavingsBucket("reserve", 800_000),),

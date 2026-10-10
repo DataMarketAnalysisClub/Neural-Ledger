@@ -10,6 +10,7 @@ JSON Schema 2020-12. If code and a contract disagree, the contract wins and the 
 | `actions/` | `action_terms` (the confirmation contract) and `action_outcome` |
 | `audit/` | `audit_event` with the hash-chain fields |
 | `chat/` | Chat request and reply |
+| `ledger/` | `ledger.schema.json`: the sandbox ledger the stage-1 estimators read. Its limits (CLP only, \|amount\| ≤ 10^9) mirror `domain/finance/estimation.py`; `tests/contract/test_ledger_contract.py` keeps them aligned and validates the generated ledgers |
 
 **Frontend (Role D):** generate TypeScript types instead of writing them by hand, e.g. `npx json-schema-to-typescript -i 'contracts/**/*.json' -o web/src/contracts`.
 
