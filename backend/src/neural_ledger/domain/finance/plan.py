@@ -1,17 +1,20 @@
 """Savings plan sizing and allocation (Financial Core 4.5 and 4.8).
 
-    R = floor_10k( share(profile) * min over m in [s, s+5] of A_m ),   R <= Required
-s = the earliest month where R > 0 and the conservative path with R never breaches over
-the check horizon (hard rule H5). No such month -> no recurring rule (hard rule H2).
+    R = floor_10k( share * min over m in [s, s+5] of A_m ),   R <= Required
+For each share at or below the profile ceiling, s is its earliest feasible month where R > 0
+and the conservative path never breaches (H5). Choose maximum R, then earlier s, then
+higher share. No candidate -> no recurring rule (H2).
 Allocation: reserve below minimum -> all to reserve (H1); otherwise near-term goals by
 deadline, then the reserve top-up.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
+from ..ledger.entities import Goal
 from ..shared.envelope import Fact
 from ..shared.month import Month
 from ..shared.numbers import ceil_div, floor_to, round_half_up
@@ -88,6 +91,33 @@ def _reserve_topup(model: FinancialModel, params: FinanceParams, target: Fractio
     return round_half_up(gap / params.reserve_rebuild_months) if gap > 0 else 0
 
 
+def _candidate(
+    model: FinancialModel,
+    params: FinanceParams,
+    share: Fraction,
+    purchases: tuple[Recurring, ...],
+    available: dict[Month, int],
+    goals: Sequence[Goal],
+    topup: int,
+) -> tuple[int, Month, int, int] | None:
+    first = model.first_cycle
+    for index in range(params.check_horizon_months):
+        start = first.plus(index)
+        window = [start.plus(offset) for offset in range(params.plan_window_months)]
+        lowest = min(available[month] for month in window)
+        if lowest <= 0:
+            continue
+        required = topup + sum(_goal_required(goal, start) for goal in goals)
+        amount = floor_to(min(share * lowest, Fraction(required)), params.rule_rounding)
+        if amount <= 0:
+            continue
+        check = first.months_until(start.plus(params.check_horizon_months - 1)) + 1
+        if project(model, params, Scenario.CONSERVATIVE, check, plan=Recurring(amount, start), purchases=purchases).breaches:
+            continue
+        return amount, start, lowest, required
+    return None
+
+
 def size_plan(
     model: FinancialModel,
     params: FinanceParams,
@@ -104,23 +134,19 @@ def size_plan(
     span = params.check_horizon_months + params.plan_window_months
     base = project(model, params, Scenario.CONSERVATIVE, span, purchases=purchases)
     available = {c.month: c.available - c.purchase for c in base.cycles}
-
-    for i in range(params.check_horizon_months):
-        start = first.plus(i)
-        window = [start.plus(k) for k in range(params.plan_window_months)]
-        lowest = min(available[m] for m in window)
-        if lowest <= 0:
-            continue
-        topup = _reserve_topup(model, params, reserve_target)
-        required = topup + sum(_goal_required(g, start) for g in goals)
-        amount = floor_to(min(share * lowest, Fraction(required)), params.rule_rounding)
-        if amount <= 0:
-            continue
-        rule = Recurring(amount, start)
-        check = first.months_until(start.plus(params.check_horizon_months - 1)) + 1
-        if project(model, params, Scenario.CONSERVATIVE, check, plan=rule, purchases=purchases).breaches:
-            continue  # hard rule H5: a plan may never push a conservative trough below the floor
-        return _allocate(model, profile, amount, start, share, lowest, required, topup, goals, reserve_min)
+    topup = _reserve_topup(model, params, reserve_target)
+    candidates = []
+    for selected_share in params.profile_share:
+        if selected_share <= share:
+            result = _candidate(model, params, selected_share, purchases, available, goals, topup)
+            if result is not None:
+                amount, start, lowest, required = result
+                candidates.append((amount, start, selected_share, lowest, required))
+    if candidates:
+        amount, start, selected_share, lowest, required = max(
+            candidates, key=lambda item: (item[0], -first.months_until(item[1]), item[2]),
+        )
+        return _allocate(model, profile, amount, start, selected_share, lowest, required, topup, goals, reserve_min)
 
     return SavingsPlan(
         profile=profile,
