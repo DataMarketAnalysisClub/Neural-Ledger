@@ -1,4 +1,4 @@
-.PHONY: install test test-all test-property test-golden test-security demo demo-ledger ledgers evidence api up
+.PHONY: install test test-all test-property test-golden test-security demo demo-ledger ledgers backtest evidence api up
 
 PY ?= python3
 
@@ -28,6 +28,9 @@ demo-ledger:        ## the same demo arc, with the model estimated from data/led
 
 ledgers:            ## regenerate data/ledgers/*.json (deterministic, seeded)
 	cd backend && PYTHONPATH=src:. $(PY) -m tests.fixtures.ledger_generator --out ../data/ledgers
+
+backtest:           ## synthetic implementation validation (100 seeded ledgers per source)
+	cd backend && PYTHONPATH=src:. $(PY) -m tests.backtest.run --seeds 100 --out ../evidence/backtest/synthetic_backtest.json
 
 evidence:           ## demo + audit export + junit results of the FULL suite into evidence/
 	cd backend && NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo-and-export --out ../evidence/sandbox-logs/audit.jsonl
