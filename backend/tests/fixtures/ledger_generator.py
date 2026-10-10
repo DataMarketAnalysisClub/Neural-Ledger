@@ -312,9 +312,9 @@ def generate(persona: str) -> dict[str, Any]:
             "payday_rule": "last_business_day",
         },
         "accounts": [
-            {"account_id": "checking", "type": "checking", "balance": CHECKING_CLOSING, "currency": CURRENCY},
-            {"account_id": "credit_card", "type": "credit_card", "balance": card_balance, "currency": CURRENCY},
-            {"account_id": "savings", "type": "savings", "balance": sum(SAVINGS_BUCKETS.values()), "currency": CURRENCY},
+            {"account_id": "checking", "type": "checking", "opening_balance": checking_opening, "balance": CHECKING_CLOSING, "currency": CURRENCY},
+            {"account_id": "credit_card", "type": "credit_card", "opening_balance": 0, "balance": card_balance, "currency": CURRENCY},
+            {"account_id": "savings", "type": "savings", "opening_balance": savings_opening, "balance": sum(SAVINGS_BUCKETS.values()), "currency": CURRENCY},
         ],
         "buckets": [{"bucket": k, "amount": v} for k, v in SAVINGS_BUCKETS.items()],
         "goals": [{"goal_id": "trip", "name": "Trip", "target_amount": 1_800_000, "deadline": "2027-09", "saved_amount": 900_000}],

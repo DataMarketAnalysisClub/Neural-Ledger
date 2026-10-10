@@ -13,7 +13,7 @@ Notes:
 
 - Generator: `backend/tests/fixtures/ledger_generator.py` (seeded, deterministic). Regenerate with `make ledgers`; a test fails if the committed files differ from a fresh run. Do not edit them by hand.
 - Run the app on them with `NL_MODEL_SOURCE=ledger` (`make demo-ledger`). The default stays `fixture`.
-- Accounts: `checking` (920,000), `credit_card`, `savings` with buckets `reserve` 1,500,000 and `goal:trip` 900,000.
+- Accounts: `checking` (920,000), `credit_card`, `savings` with buckets `reserve` 1,500,000 and `goal:trip` 900,000. Each account carries `opening_balance`, and opening + Σ transactions = closing (`tests/golden/test_reconciliation.py`).
 - Every transaction has a `kind`. Cuotas are card lines with structured `installment` metadata and the text `CUOTA nn/NN`; a cuota labelled month M is billed on day 1 of M. The card is paid from checking on day 10 as `transfer_own`; own-account sweeps (savings, an external mutual fund) are `transfer_own` too, so no money is counted twice.
 - Variable spend is built so the quantiles are exact: over the 11 non-seasonal cycles the 6th sorted value is the P50 and the 9th is the P80. December 2025 is P50 × 49/30 in every category (total 1,176,000). The 300,000 unexpected expense is a health purchase in a non-December cycle.
 - Diego: freelance income with P50 1,800,000, P20 1,300,000, no zero month and a sample (ddof=1) CV of exactly 3/10.

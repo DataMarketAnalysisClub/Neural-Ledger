@@ -14,18 +14,21 @@
   {
    "account_id": "checking",
    "type": "checking",
+   "opening_balance": 920000,
    "balance": 920000,
    "currency": "CLP"
   },
   {
    "account_id": "credit_card",
    "type": "credit_card",
+   "opening_balance": 0,
    "balance": -116640,
    "currency": "CLP"
   },
   {
    "account_id": "savings",
    "type": "savings",
+   "opening_balance": 600000,
    "balance": 2400000,
    "currency": "CLP"
   }
