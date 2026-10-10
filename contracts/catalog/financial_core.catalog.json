@@ -8,6 +8,7 @@
     {"code":"SALARY_DIFFERS","source":"estimation","trigger":"Recent salary differs from contract","must_mention":false,"reaches_tool_envelope":false},
     {"code":"CONTRACT_UNKNOWN","source":"estimation","trigger":"No contracted salary","must_mention":false,"reaches_tool_envelope":false},
     {"code":"CATEGORY_SPARSE","source":"estimation","trigger":"Sparse spend merged into other","must_mention":false,"reaches_tool_envelope":false},
+    {"code":"SEASONALITY_UNOBSERVED","source":"estimation","trigger":"Seasonal month absent from estimation window","must_mention":true,"reaches_tool_envelope":false},
     {"code":"RATE_ASSUMED","source":"purchase","trigger":"Offer rate omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"FIRST_INSTALLMENT_ASSUMED","source":"financial","trigger":"First installment month omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"PROFILE_CAPPED","source":"financial","trigger":"Requested profile exceeds permitted","must_mention":true,"reaches_tool_envelope":true}
@@ -78,7 +79,8 @@
     {"template":"estimate.income.conservative","pattern":"^estimate\\.income\\.conservative$","domains":{},"unit":"CLP","source":"estimation"},
     {"template":"estimate.spend.p50_total","pattern":"^estimate\\.spend\\.p50_total$","domains":{},"unit":"CLP","source":"estimation"},
     {"template":"estimate.spend.p80_total","pattern":"^estimate\\.spend\\.p80_total$","domains":{},"unit":"CLP","source":"estimation"},
-    {"template":"estimate.commitments","pattern":"^estimate\\.commitments$","domains":{},"unit":"count","source":"estimation"}
+    {"template":"estimate.commitments","pattern":"^estimate\\.commitments$","domains":{},"unit":"count","source":"estimation"},
+    {"template":"estimate.seasonal.unobserved_months","pattern":"^estimate\\.seasonal\\.unobserved_months$","domains":{},"unit":"month_numbers","source":"estimation"}
   ],
   "error_fields": [
     {"status":"INVALID_INPUT","template":"ledger","pattern":"^ledger$","source":"ledger_source"},
