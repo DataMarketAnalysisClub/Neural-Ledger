@@ -53,3 +53,5 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 - **No rate limiting** and no abuse detection on the API.
 - **The secret comes from the environment** (`NL_HMAC_SECRET`); a KMS is out of scope. The development default must never be used in a recorded demo.
 - **Synthetic data only.** No real personal or banking data is processed. The repository is public: never commit keys or personal documents.
+- **Estimator warnings are not forwarded.** `LedgerModelSource.load` discards the stage-1 `Envelope` warnings and facts, and estimation caveats have empty `must_mention`. Chat verification cannot enforce caveats it never receives; B must decide forwarding semantics before the ledger-default switch. See `docs/EXPLANATION_HANDOFF.md`.
+- **The rolling-origin backtest is synthetic-only implementation validation.** Grid A December coverage is adverse without a prior December; this is not evidence of real-world predictive accuracy or a security mitigation. See `docs/BACKTEST.md`.
