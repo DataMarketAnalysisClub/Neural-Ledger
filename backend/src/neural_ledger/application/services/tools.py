@@ -106,6 +106,7 @@ class ToolRegistry:
                 event_id=self._ids.new("evt"),
                 timestamp=self._clock.now(),
                 session_id=ctx.session_id,
+                user_id=ctx.user_id,
                 actor=Actor.AGENT,
                 kind=kind,
                 user_intent=ctx.intent,

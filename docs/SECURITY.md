@@ -18,7 +18,7 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 
 | Tier | Capability | Control |
 |---|---|---|
-| T0 | Read financial state | Scoped to the user |
+| T0 | Read financial state | Scoped to the user; audit reads return only the caller's events (`user_id` on every event), whatever session id is passed |
 | T1 | Analyze and suggest | Facts and warnings on every output; stateful T1 (proposals) hidden in read-only turns |
 | T2 | Execute an approved sandbox action | Signed terms, expiry (10 min), single use, exact match |
 | T3 | New beneficiary, unknown destination, limit or credential change, policy override, self-escalation | Always blocked and logged |
@@ -40,6 +40,7 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 | S11 | Duplicate execution (8 concurrent) | Exactly one execution | `AUTHORIZATION_REPLAYED` | `test_s11_…` |
 | S12 | Malformed financial input | `INVALID_INPUT` / `INSUFFICIENT_DATA`; no engine runs | — | `test_s12_…` |
 | — | Audit log tampering | Chain verification fails at the edited event | — | `test_audit_chain_detects_tampering` |
+| — | Reading another user's audit trail (same session id) | Empty result; chain status still reported | — | `test_audit_reads_are_scoped_to_the_caller` |
 
 Each row of the final report should also record actual behaviour, pass or fail, mitigation and residual risk (Spec v0 §9). Run `make evidence` to export the audit log and JUnit results into `evidence/`.
 

@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: python -m pip install -e ".[api,dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Tests (architecture, golden, security, contracts, adapters, HTTP)
+        run: python -m pytest --junitxml=../evidence/test-results/junit.xml
+      - name: Demo arc offline
+        run: python -m neural_ledger.bootstrap.cli demo
+        env:
+          NL_CLOCK: fixed
+          NL_IDS: sequential
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit
+          path: evidence/test-results/junit.xml
+
+  compose:
+    # The submission path: `docker compose up` from a clean checkout, no keys.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up --build --detach --wait --wait-timeout 120
+      - name: Smoke test
+        run: |
+          curl --fail --silent http://localhost:8000/health | tee health.json
+          grep -q '"mode":"offline"' health.json
+          grep -q '"audit_chain_ok":true' health.json
+          curl --fail --silent -H 'X-User-Id: camila' 'http://localhost:8000/v1/forecast?scenario=conservative' > /dev/null
+      - if: failure()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down --volumes

@@ -70,7 +70,7 @@ def build_registry(
         Tool(
             "get_audit_events",
             Tier.T0,
-            lambda a, c: audit_queries.events(c.session_id, _int(a, "limit", 50)),
+            lambda a, c: audit_queries.events(c.user_id, c.session_id, _int(a, "limit", 50)),
         ),
         # T1: analyze and suggest
         Tool(

@@ -10,11 +10,13 @@ import pytest
 from neural_ledger.adapters.outbound.persistence.memory import (
     InMemoryActionRepository,
     InMemoryAuditLog,
+    InMemorySavingsRuleStore,
 )
 from neural_ledger.adapters.outbound.persistence.sqlite import (
     SqliteActionRepository,
     SqliteAuditLog,
     SqliteDatabase,
+    SqliteSavingsRuleStore,
 )
 from neural_ledger.domain.actions.terms import (
     ActionTerms,
@@ -23,6 +25,7 @@ from neural_ledger.domain.actions.terms import (
     Frequency,
     Proposal,
     ProposalStatus,
+    SavingsRule,
 )
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, verify_chain
 
@@ -67,3 +70,41 @@ def test_audit_log_is_a_valid_chain(stores):
     assert [e.sequence for e in events] == [1, 2, 3, 4, 5]
     assert verify_chain(events).ok
     assert [e.draft.event_id for e in audit.events("s1")] == ["evt_1", "evt_3"]
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def rule_store(request, tmp_path):
+    if request.param == "memory":
+        return InMemorySavingsRuleStore()
+    return SqliteSavingsRuleStore(SqliteDatabase(tmp_path / "test.db"))
+
+
+def _rule(rule_id: str, user_id: str) -> SavingsRule:
+    return SavingsRule(rule_id, user_id, 100_000, "CLP", Frequency.MONTHLY, "checking", "sandbox_savings", date(2027, 1, 1), "auth_1")
+
+
+def test_savings_rules_round_trip_per_user(rule_store):
+    rule_store.add(_rule("rule_0001", "camila"))
+    rule_store.add(_rule("rule_0002", "diego"))
+    rule_store.add(_rule("rule_0003", "camila"))
+    assert rule_store.count() == 3
+    assert [r.rule_id for r in rule_store.for_user("camila")] == ["rule_0001", "rule_0003"]
+    assert rule_store.for_user("camila")[0] == _rule("rule_0001", "camila")
+    assert rule_store.for_user("nobody") == ()
+
+
+def test_sqlite_survives_a_restart(tmp_path):
+    """Executed rules, single-use state and the audit chain all outlive the process."""
+    path = tmp_path / "durable.db"
+    db = SqliteDatabase(path)
+    SqliteSavingsRuleStore(db).add(_rule("rule_0001", "camila"))
+    repo = SqliteActionRepository(db)
+    repo.add_authorization(Authorization("auth_1", "prop_1", "s1", "camila", TERMS, "sig", NOW, NOW + timedelta(minutes=10)))
+    assert repo.consume_authorization("auth_1", NOW) is True
+    SqliteAuditLog(db).append(AuditDraft("evt_1", NOW, "s1", Actor.SYSTEM, AuditKind.DECISION, detail="x"))
+    db.connection.close()
+
+    reopened = SqliteDatabase(path)
+    assert SqliteSavingsRuleStore(reopened).for_user("camila") == (_rule("rule_0001", "camila"),)
+    assert SqliteActionRepository(reopened).consume_authorization("auth_1", NOW) is False
+    assert verify_chain(SqliteAuditLog(reopened).events()).ok

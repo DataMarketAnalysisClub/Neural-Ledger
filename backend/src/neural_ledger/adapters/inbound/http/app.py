@@ -136,8 +136,9 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
     # ---- audit --------------------------------------------------------------------------------
 
     @app.get("/v1/audit")
-    def audit(session_id: str | None = Query(None), limit: int = Query(200)):
-        return JSONResponse(to_primitive(services.audit.events(session_id, limit)))
+    def audit(session_id: str | None = Query(None), limit: int = Query(200), x_user_id: str | None = Header(default=None)):
+        """The caller's own events only. The chain status covers the whole log (no contents leak)."""
+        return JSONResponse(to_primitive(services.audit.events(user(x_user_id), session_id, limit)))
 
     @app.get("/v1/audit/verify")
     def audit_verify():

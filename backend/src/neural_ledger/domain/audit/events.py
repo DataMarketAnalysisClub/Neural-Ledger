@@ -67,6 +67,7 @@ class AuditDraft:
     blocked_reason: str | None = None
     model_version: str | None = None
     detail: str | None = None
+    user_id: str | None = None  # owner of the event; reads are scoped to it (None = system-wide)
 
 
 @dataclass(frozen=True, slots=True)

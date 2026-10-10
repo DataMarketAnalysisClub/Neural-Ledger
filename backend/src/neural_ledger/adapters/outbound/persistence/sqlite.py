@@ -9,14 +9,16 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from ....domain.actions.terms import (
     ActionTerms,
     Authorization,
+    Frequency,
     Proposal,
     ProposalStatus,
+    SavingsRule,
 )
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
 from ....domain.shared.serialization import to_primitive
@@ -40,6 +42,12 @@ CREATE TABLE IF NOT EXISTS audit_events (
     prev_hash  TEXT NOT NULL,
     event_hash TEXT NOT NULL,
     record     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS savings_rules (
+    sequence INTEGER PRIMARY KEY,
+    rule_id  TEXT NOT NULL UNIQUE,
+    user_id  TEXT NOT NULL,
+    payload  TEXT NOT NULL
 );
 """
 
@@ -79,6 +87,43 @@ def _authorization_from(payload: dict, consumed_at: str | None) -> Authorization
         expires_at=datetime.fromisoformat(payload["expires_at"]),
         consumed_at=datetime.fromisoformat(consumed_at) if consumed_at else None,
     )
+
+
+def _rule_from(payload: dict) -> SavingsRule:
+    return SavingsRule(
+        rule_id=payload["rule_id"],
+        user_id=payload["user_id"],
+        amount=int(payload["amount"]),
+        currency=payload["currency"],
+        frequency=Frequency(payload["frequency"]),
+        source_account=payload["source_account"],
+        destination=payload["destination"],
+        effective_date=date.fromisoformat(payload["effective_date"]),
+        authorization_id=payload["authorization_id"],
+    )
+
+
+class SqliteSavingsRuleStore:
+    """Rules created by the simulated sandbox bank, durable across restarts like the audit log."""
+
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, rule: SavingsRule) -> None:
+        with self._db.lock:
+            self._db.connection.execute(
+                "INSERT INTO savings_rules (rule_id, user_id, payload) VALUES (?, ?, ?)",
+                (rule.rule_id, rule.user_id, json.dumps(to_primitive(rule))),
+            )
+
+    def count(self) -> int:
+        return self._db.connection.execute("SELECT COUNT(*) FROM savings_rules").fetchone()[0]
+
+    def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
+        rows = self._db.connection.execute(
+            "SELECT payload FROM savings_rules WHERE user_id = ? ORDER BY sequence", (user_id,)
+        ).fetchall()
+        return tuple(_rule_from(json.loads(r[0])) for r in rows)
 
 
 class SqliteActionRepository:

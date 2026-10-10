@@ -18,9 +18,12 @@ class AuditUseCases:
     def __init__(self, audit: AuditLog) -> None:
         self._audit = audit
 
-    def events(self, session_id: str | None = None, limit: int = 200) -> AuditPage:
+    def events(self, user_id: str, session_id: str | None = None, limit: int = 200) -> AuditPage:
+        """The user's own events (optionally one session); the chain check still covers the whole log."""
         all_events = self._audit.events()
-        selected = [e for e in all_events if session_id is None or e.draft.session_id == session_id]
+        selected = [
+            e for e in all_events if e.draft.user_id == user_id and (session_id is None or e.draft.session_id == session_id)
+        ]
         check = verify_chain(all_events)
         return AuditPage(tuple(e.to_record() for e in selected[-max(1, min(limit, 1000)) :]), check.ok)
 
