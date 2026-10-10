@@ -22,6 +22,8 @@ make api                           # dev server on :8000
 make evidence                      # audit log + test results into evidence/
 ```
 
+On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
+
 To use a real LLM or Jev, copy `.env.example` to `.env` and set `NL_LLM`, `NL_DECISION_CHAIN` and the keys. Without them the app runs in **offline mode** (scripted model + rules decision model), which is also the fallback when a provider is down.
 
 ## How it is built
@@ -58,7 +60,7 @@ evidence/    exported audit logs and test results for the submission
 |---|---|
 | A · Finance core | Bruno Caro |
 | B · Agent / AI | Luis-Felipe |
-| C · Platform | TBD |
+| C · Platform | Baptiste |
 | D · Frontend | Vicente Ramírez |
 | E · Quality and submission | Joaquín Parraud |
 

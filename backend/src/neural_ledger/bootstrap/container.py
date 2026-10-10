@@ -15,6 +15,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemoryActionRepository,
     InMemoryAuditLog,
     InMemoryConversationStore,
+    InMemorySavingsRuleStore,
     InMemorySnapshotStore,
     InMemoryUserProfileStore,
 )
@@ -22,6 +23,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteActionRepository,
     SqliteAuditLog,
     SqliteDatabase,
+    SqliteSavingsRuleStore,
 )
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
@@ -70,12 +72,13 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         db = SqliteDatabase(s.sqlite_path)
         actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
+        rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
     else:
-        actions_repo, audit_log = InMemoryActionRepository(), InMemoryAuditLog()
+        actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
 
     snapshots = InMemorySnapshotStore()
     conversations = InMemoryConversationStore()
-    bank = SimulatedSandboxBank()
+    bank = SimulatedSandboxBank(rule_store)
     profiles = InMemoryUserProfileStore([source.profile(name) for name in source.user_ids()])
 
     models = []

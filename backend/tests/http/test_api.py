@@ -43,6 +43,15 @@ def test_confirmation_flow_over_http(client):
     assert ok.status_code == 200 and ok.json()["status"] == "EXECUTED"
     audit = client.get("/v1/audit", params={"session_id": "h"}).json()
     assert audit["chain_ok"] and any(e["blocked_reason"] == "AUTHORIZATION_MISMATCH" for e in audit["events"])
+    assert {e["user_id"] for e in audit["events"]} == {"camila"}
+
+
+def test_audit_reads_are_scoped_to_the_caller(client):
+    client.post("/v1/chat", json={"session_id": "shared", "message": "Will I be OK in December?"}, headers={"X-User-Id": "camila"})
+    diego = client.get("/v1/audit", params={"session_id": "shared"}, headers={"X-User-Id": "diego"}).json()
+    camila = client.get("/v1/audit", params={"session_id": "shared"}, headers={"X-User-Id": "camila"}).json()
+    assert diego["events"] == [] and diego["chain_ok"]
+    assert camila["events"] and {e["user_id"] for e in camila["events"]} == {"camila"}
 
 
 def test_chat(client):

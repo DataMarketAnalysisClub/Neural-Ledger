@@ -380,7 +380,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | D-02 | LLM provider | Pick one by access/credits, tool-calling quality and latency; the Anthropic adapter is a reference |
 | D-03 | Database | Memory → SQLite; no Mongo or DynamoDB |
 | D-04 | Frontend framework | Vicente's fastest stack, web first |
-| D-05 | Role C owner and integration owner | Baptiste is the only member without a role; C is the natural integration owner |
+| D-05 | Role C owner and integration owner | **Taken by Baptiste (Oct 10):** Role C and integration owner |
 | D-06 | Bruno's D1–D10 | Accept, with corrections F1–F8 |
 | D-07 | Decision chain | `jev,rules` at runtime; build rules first; Jev go/no-go Oct 14 |
 | D-08 | User record | Typed profile (reply to David's proposal) |
@@ -409,7 +409,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 |---|---|---|
 | A: Finance core | Bruno | `domain/finance/*`, `data/personas` calibration, `tests/golden`, estimators |
 | B: Agent / AI | Luis | `domain/agent/*`, `use_cases/chat.py`, `use_cases/profile.py`, `services/{decisions,narration,prompts}.py`, `adapters/outbound/{llm,decision}` |
-| C: Platform | **TBD** | `domain/{actions,permissions,audit}`, `use_cases/{actions,audit}.py`, `services/tools.py`, `catalog.py`, `adapters/inbound/http`, `adapters/outbound/{persistence,bank,system}`, `bootstrap/`, Docker, CI, `contracts/` stewardship |
+| C: Platform | Baptiste | `domain/{actions,permissions,audit}`, `use_cases/{actions,audit}.py`, `services/tools.py`, `catalog.py`, `adapters/inbound/http`, `adapters/outbound/{persistence,bank,system}`, `bootstrap/`, Docker, CI, `contracts/` stewardship |
 | D: Frontend | Vicente | `web/`, TypeScript types generated from `contracts/`, demo flow |
 | E: Quality and submission | Joaquín | `data/generator`, `tests/security`, `evidence/`, `docs/SECURITY.md` self-assessment, deck, video |
 

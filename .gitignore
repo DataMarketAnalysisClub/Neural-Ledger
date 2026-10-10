@@ -37,5 +37,6 @@ Thumbs.db
 evidence/sandbox-logs/*.jsonl
 evidence/test-results/*.xml
 
-# Commit message
-comit_message.txt
+# Local drafts (commit messages, session summaries)
+commit_message.txt
+resumen-*.md

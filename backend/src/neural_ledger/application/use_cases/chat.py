@@ -87,12 +87,13 @@ class ChatUseCase:
         self._ids = ids
         self._policy = policy
 
-    def _record(self, session_id: str, kind: AuditKind, cls: Classification, **fields) -> None:
+    def _record(self, session_id: str, user_id: str, kind: AuditKind, cls: Classification, **fields) -> None:
         self._audit.append(
             AuditDraft(
                 event_id=self._ids.new("evt"),
                 timestamp=self._clock.now(),
                 session_id=session_id,
+                user_id=user_id,
                 actor=Actor.SYSTEM,
                 kind=kind,
                 user_intent=cls.intent.value,
@@ -113,16 +114,16 @@ class ChatUseCase:
     def handle(self, session_id: str, user_id: str, message: str) -> ChatReply:
         text = message.strip()[:MAX_MESSAGE_CHARS]
         cls = self._decisions.classify(text)
-        self._record(session_id, AuditKind.DECISION, cls, detail=f"answered_by={cls.answered_by}")
+        self._record(session_id, user_id, AuditKind.DECISION, cls, detail=f"answered_by={cls.answered_by}")
 
         if cls.injection_flagged:
-            self._record(session_id, AuditKind.INJECTION_FLAGGED, cls, blocked_reason=BlockReason.INJECTION_SUSPECTED.value)
+            self._record(session_id, user_id, AuditKind.INJECTION_FLAGGED, cls, blocked_reason=BlockReason.INJECTION_SUSPECTED.value)
             return self._short_reply(session_id, text, narration.REFUSAL_INJECTION, cls, blocked=BlockReason.INJECTION_SUSPECTED.value)
         if cls.intent is Intent.OUT_OF_SCOPE and cls.gate is Gate.PROCEED:
-            self._record(session_id, AuditKind.OUT_OF_SCOPE, cls)
+            self._record(session_id, user_id, AuditKind.OUT_OF_SCOPE, cls)
             return self._short_reply(session_id, text, narration.REFUSAL_SCOPE, cls)
         if cls.gate is Gate.CLARIFY:
-            self._record(session_id, AuditKind.CLARIFICATION_REQUESTED, cls)
+            self._record(session_id, user_id, AuditKind.CLARIFICATION_REQUESTED, cls)
             return self._short_reply(session_id, text, narration.CLARIFY, cls)
 
         max_tier = max_tier_for(cls.gate)
@@ -165,7 +166,7 @@ class ChatUseCase:
         verification = verify_explanation(final_text, facts, caveats, money_units=frozenset({currency}), executions_succeeded=executed)
         if not verification.ok:
             self._record(
-                session_id, AuditKind.VERIFICATION_FAILED, cls,
+                session_id, user_id, AuditKind.VERIFICATION_FAILED, cls,
                 detail="; ".join(f"{i.kind}:{i.detail}" for i in verification.issues)[:500], model_version=model_name,
             )
             final_text = deterministic or narration.NO_RESULT

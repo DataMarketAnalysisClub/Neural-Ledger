@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 COPY backend/pyproject.toml backend/pyproject.toml
-COPY README.md README.md
+COPY backend/README.md backend/README.md
 COPY backend/src backend/src
 RUN pip install --no-cache-dir "./backend[api]"
 

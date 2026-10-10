@@ -9,9 +9,27 @@ from dataclasses import replace
 from datetime import datetime
 
 from ....application.conversation import Entry
-from ....domain.actions.terms import Authorization, Proposal
+from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
 from ....domain.user.profile import UserProfile
+
+
+class InMemorySavingsRuleStore:
+    """Rules created by the simulated sandbox bank. Lost on restart; use the SQLite store for durable runs."""
+
+    def __init__(self) -> None:
+        self._rules: list[SavingsRule] = []
+        self._lock = threading.Lock()
+
+    def add(self, rule: SavingsRule) -> None:
+        with self._lock:
+            self._rules.append(rule)
+
+    def count(self) -> int:
+        return len(self._rules)
+
+    def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
+        return tuple(r for r in self._rules if r.user_id == user_id)
 
 
 class InMemoryActionRepository:

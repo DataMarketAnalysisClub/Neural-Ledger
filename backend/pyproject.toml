@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "neural-ledger"
 version = "0.1.0"
 description = "AI cash-flow copilot with deterministic authority (FinTechathon 2026, Topic A)"
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.12"
 # The core (domain + application) has zero runtime dependencies on purpose.
 # Frameworks and providers are optional extras used only by adapters.
