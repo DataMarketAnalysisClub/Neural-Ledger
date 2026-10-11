@@ -26,7 +26,10 @@ from ..ports import (
 )
 
 MAX_STATEMENT_BYTES = 15 * 1024 * 1024
-MIN_CONFIDENCE = 0.6  # OCR cells read below this mark the statement unverified even if it adds up
+# Below this, an OCR'd line gets a warning. It never marks the statement unverified: amounts and dates are
+# verified by reconciliation, and EasyOCR reports low confidence on correct digits with noisy separators.
+# What reconciliation cannot check is the description text, which is what the warning is about.
+LOW_CONFIDENCE = 0.5
 ALLOWED_FILES = ("pdf", "image")
 
 
@@ -108,7 +111,7 @@ class StatementUseCases:
         except StatementReaderUnavailable as exc:
             return Envelope.insufficient(("statement_reader",), params_version=STATEMENTS_VERSION, message=str(exc))
 
-        issues = reconcile(statement, min_confidence=MIN_CONFIDENCE).issues
+        issues = reconcile(statement).issues
         statement_id = content_id(
             "stmt", user_id, statement.bank, statement.account_ref, statement.period_start, statement.period_end, statement.lines
         )
@@ -133,7 +136,7 @@ class StatementUseCases:
         )
 
         summary = _summary(stored)
-        warnings = list(_unverified(stored))
+        warnings = [*_unverified(stored), *_low_confidence(stored)]
         if duplicate:
             warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
         return Envelope.success(
@@ -174,7 +177,7 @@ class StatementUseCases:
             snapshot_id=stored.statement_id,
             as_of=summary.period_end,
             facts=_facts(summary),
-            warnings=_unverified(stored),
+            warnings=(*_unverified(stored), *_low_confidence(stored)),
         )
 
 
@@ -187,6 +190,20 @@ def _unverified(stored: StoredStatement) -> tuple[Caveat, ...]:
             "STATEMENT_UNVERIFIED",
             f"The statement was stored but does not reconcile ({codes}); its amounts are unverified.",
             ("unverified", "does not reconcile"),
+        ),
+    )
+
+
+def _low_confidence(stored: StoredStatement) -> tuple[Caveat, ...]:
+    shaky = [line for line in stored.statement.lines if line.confidence is not None and line.confidence < LOW_CONFIDENCE]
+    if not shaky:
+        return ()
+    return (
+        Caveat(
+            "OCR_LOW_CONFIDENCE",
+            f"{len(shaky)} of {len(stored.statement.lines)} lines were read by OCR with low confidence; amounts are checked "
+            "by reconciliation, but their descriptions may contain misread characters.",
+            ("OCR", "misread"),
         ),
     )
 

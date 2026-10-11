@@ -21,7 +21,8 @@ from typing import ClassVar
 from .....domain.statements.model import BankStatement
 from ..ocr_tabular import Table, TableError, TableSpec, norm_text
 
-_THOUSANDS = re.compile(r"^-?\d{1,3}(\.\d{3})*$")
+# Thousands groups; the separator may be lost or turned into a space or '_' by OCR ('3 280', '1 _ 097 .805').
+_THOUSANDS = re.compile(r"^-?\d{1,3}(\.?\d{3})*$")
 
 
 class Bank(ABC):
@@ -40,8 +41,11 @@ class Bank(ABC):
 
 
 def parse_clp(text: str) -> int | None:
-    """'1.116.492' → 1116492; '' → None. CLP has no minor unit, so pesos are minor units."""
-    cleaned = text.replace("$", "").replace(" ", "")
+    """'1.116.492' → 1116492; '' → None. CLP has no minor unit, so pesos are minor units.
+
+    Tolerant of lost or noisy separators, strict about digit groups. A misread digit still
+    parses, which is why every amount is reconciled against the printed totals afterwards."""
+    cleaned = re.sub(r"[\s_$]", "", text)
     if not cleaned:
         return None
     if not _THOUSANDS.match(cleaned):
@@ -51,7 +55,8 @@ def parse_clp(text: str) -> int | None:
 
 def day_month(text: str, period_end: date) -> date:
     """'02/09' → the latest such date not after the period end, so Dec→Jan statements get the right year."""
-    match = re.fullmatch(r"(\d{1,2})/(\d{1,2})", text.strip())
+    # Searched, not matched: OCR reads the table's left rule as '1' or '|' ('102/09', '|16/09').
+    match = re.search(r"(\d{1,2})/(\d{1,2})$", text.strip())
     if not match:
         raise TableError(f"not a day/month: {text!r}")
     day, month = int(match.group(1)), int(match.group(2))

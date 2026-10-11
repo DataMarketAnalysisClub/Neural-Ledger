@@ -44,8 +44,9 @@ class SantanderCuentaMatica(Bank):
     def parse(self, tables: Sequence[Table]) -> BankStatement:
         if not tables:
             raise TableError("no pages with a movements table")
-        account, number, start, end = self._period(tables[0].preamble)
-        summary = self._summary(tables[0].preamble)
+        first = tables[0]
+        account, number, start, end = self._period(first.preamble)
+        summary = self._summary(first.rows[: first.header_index])
 
         lines: list[StatementLine] = []
         balances: list[DailyBalance] = []
@@ -124,10 +125,11 @@ class SantanderCuentaMatica(Bank):
         raise TableError("account and period (CARTOLA DESDE HASTA) not found")
 
     @staticmethod
-    def _summary(preamble: Sequence[str]) -> StatementSummary | None:
-        for i, line in enumerate(preamble[:-1]):
-            if norm_text(line).startswith("saldo inicial"):
-                values = [parse_clp(v) for v in preamble[i + 1].split()]
+    def _summary(preamble: Sequence[Sequence[str]]) -> StatementSummary | None:
+        """From the preamble's cells (one per box), so an amount OCR split with spaces stays whole."""
+        for i, row in enumerate(preamble[:-1]):
+            if norm_text(" ".join(row)).startswith("saldo inicial"):
+                values = [parse_clp(v) for v in preamble[i + 1] if v.strip()]
                 if len(values) != 4 or any(v is None for v in values):
                     raise TableError("the summary line does not hold four amounts")
                 opening, debits, credits, closing = values

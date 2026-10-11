@@ -109,6 +109,8 @@ def test_amount_and_date_helpers():
     assert parse_clp("") is None
     with pytest.raises(TableError):
         parse_clp("1.11.492")
+    with pytest.raises(TableError):
+        parse_clp("3.2B0")
     assert day_month("15/12", date(2026, 1, 15)) == date(2025, 12, 15)
     assert day_month("02/09", date(2026, 9, 30)) == date(2026, 9, 2)
 
@@ -121,3 +123,30 @@ def test_local_real_cartolas_reconcile():
         statement = _read(path.read_bytes())
         assert statement.lines, path.name
         assert reconcile(statement).ok, path.name
+
+
+@pytest.mark.parametrize(
+    "noisy, value",
+    [("3 280", 3_280), ("4 . 180", 4_180), ("1 _ 097 .805", 1_097_805), ("1 .065 119", 1_065_119), ("32490", 32_490)],
+)
+def test_ocr_separator_noise_is_tolerated(noisy, value):
+    """Seen on a scanned Santander cartola: separators lost, spaced, or read as '_'."""
+    assert parse_clp(noisy) == value
+
+
+@pytest.mark.parametrize("noisy, day", [("102/09", 2), ("|16/09", 16), ("10/09", 10)])
+def test_ocr_table_rule_before_the_date_is_ignored(noisy, day):
+    assert day_month(noisy, date(2026, 9, 30)) == date(2026, 9, day)
+
+
+def test_ocr_table_with_noisy_cells_parses_and_keeps_confidence():
+    table = _table([["102/12", "2441010", "ko1", "Compra Nacional MD SH0P", "3 .580", "", ""], ["", "", "", "--- Saldo Dia ---", "", "", "996 _ 420"]])
+    table.source = "ocr"
+    table.confidences = [[1.0] * 10 for _ in table.rows[: table.header_index + 1]] + [
+        [0.9, 0.99, 0.2, 0.7, 0.4, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.9, 0.0, 0.0, 0.95],
+    ]
+    statement = SantanderCuentaMatica().parse([table])
+    (line,) = statement.lines
+    assert (line.posted_on, line.amount, line.branch, line.confidence) == (date(2025, 12, 2), -3_580, "ko1", 0.2)
+    assert statement.daily_balances[0].balance == 996_420 and statement.source == "ocr"

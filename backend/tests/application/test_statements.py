@@ -93,6 +93,37 @@ def _use_case(reader) -> StatementUseCases:
     return StatementUseCases(reader, InMemoryStatementStore(), InMemoryAuditLog(), FixedClock(datetime(2026, 10, 29, tzinfo=UTC)), SequentialIds())
 
 
+class _FixedReader:
+    def __init__(self, statement) -> None:
+        self.statement = statement
+
+    def read(self, content: bytes):
+        return self.statement
+
+
+def test_low_ocr_confidence_warns_about_descriptions_but_does_not_unverify():
+    from dataclasses import replace
+    from datetime import date
+
+    from neural_ledger.domain.statements.model import BankStatement, DailyBalance, StatementLine, StatementSummary
+
+    statement = BankStatement(
+        "test", "0-000-00-00000-0", "CLP", date(2026, 9, 1), date(2026, 9, 30),
+        (StatementLine(0, date(2026, 9, 2), "Compra SH0P", -3_280, confidence=0.21), StatementLine(1, date(2026, 9, 3), "PAGO", 10_000, confidence=0.93)),
+        StatementSummary(100_000, 3_280, 10_000, 106_720),
+        (DailyBalance(date(2026, 9, 3), 106_720),),
+        source="ocr",
+    )  # fmt: skip
+    result = _use_case(_FixedReader(statement)).import_statement("camila", b"%PDF-1.7 scan")
+    assert result.data.statement.verified is True
+    (warning,) = result.warnings
+    assert warning.code == "OCR_LOW_CONFIDENCE" and warning.message.startswith("1 of 2 lines")
+
+    broken = replace(statement, summary=replace(statement.summary, total_credits=10_001))
+    codes = [w.code for w in _use_case(_FixedReader(broken)).import_statement("camila", b"%PDF-1.7 scan").warnings]
+    assert codes == ["STATEMENT_UNVERIFIED", "OCR_LOW_CONFIDENCE"]
+
+
 def test_missing_ocr_is_insufficient_data_not_a_bad_file():
     result = _use_case(_FailingReader(StatementReaderUnavailable("this file needs OCR"))).import_statement("camila", b"%PDF-1.7 scan")
     assert result.status is Status.INSUFFICIENT_DATA and result.missing == ("statement_reader",)
