@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 DEV_SECRET = "dev-only-insecure-secret-change-me"
+DEFAULT_LLM_MODELS = {"anthropic": "claude-sonnet-5-5", "openrouter": "anthropic/claude-haiku-5.5"}
 
 
 def _find_dir(name: str) -> Path:
@@ -26,9 +27,10 @@ def _find_dir(name: str) -> Path:
 class Settings:
     persona: str = "camila"
     model_source: str = "fixture"  # fixture | ledger (Role A estimators, not implemented yet)
-    llm: str = "scripted"  # scripted | anthropic
-    llm_model: str = "claude-sonnet-5-5"
+    llm: str = "scripted"  # scripted | anthropic | openrouter
+    llm_model: str = ""  # empty = the provider's default (DEFAULT_LLM_MODELS)
     anthropic_api_key: str | None = None
+    openrouter_api_key: str | None = None
     decision_chain: tuple[str, ...] = ("rules",)  # e.g. ("jev", "rules")
     typesafe_api_key: str | None = None
     jev_model: str = "jev-latest"
@@ -49,6 +51,10 @@ class Settings:
     @property
     def resolved_contracts_dir(self) -> Path:
         return self.contracts_dir or _find_dir("contracts")
+
+    @property
+    def resolved_llm_model(self) -> str:
+        return self.llm_model or DEFAULT_LLM_MODELS.get(self.llm, "")
 
     @property
     def fixed_instant(self) -> datetime:
@@ -74,6 +80,7 @@ class Settings:
             llm=get("NL_LLM", cls.llm),
             llm_model=get("NL_LLM_MODEL", cls.llm_model),
             anthropic_api_key=e.get("ANTHROPIC_API_KEY") or None,
+            openrouter_api_key=e.get("OPENROUTER_API_KEY") or None,
             decision_chain=chain or ("rules",),
             typesafe_api_key=e.get("TYPESAFE_API_KEY") or None,
             jev_model=get("NL_JEV_MODEL", cls.jev_model),
