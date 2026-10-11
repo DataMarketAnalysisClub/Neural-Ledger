@@ -17,6 +17,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemoryConversationStore,
     InMemorySavingsRuleStore,
     InMemorySnapshotStore,
+    InMemoryStatementStore,
     InMemoryUserProfileStore,
 )
 from ..adapters.outbound.persistence.sqlite import (
@@ -24,7 +25,9 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteAuditLog,
     SqliteDatabase,
     SqliteSavingsRuleStore,
+    SqliteStatementStore,
 )
+from ..adapters.outbound.statements.reader import OcrStatementReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
 from ..adapters.outbound.system.signer import HmacSigner
@@ -37,6 +40,7 @@ from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.profile import ProfileUseCases
+from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
 from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
@@ -73,8 +77,10 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
+        statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
+        statement_store = InMemoryStatementStore()
 
     snapshots = InMemorySnapshotStore()
     conversations = InMemoryConversationStore()
@@ -102,6 +108,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
+    statements = StatementUseCases(OcrStatementReader(model_dir=s.ocr_model_dir), statement_store, audit_log, clock, ids)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
@@ -112,6 +119,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         actions=actions,
         profiles=profile_uc,
         audit=audit_uc,
+        statements=statements,
         chat=chat,
         registry=registry,
         default_user=s.persona,

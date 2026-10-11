@@ -86,3 +86,26 @@ def test_action_terms_example_is_what_the_plan_produces(services):
     example = json.loads((CONTRACTS / "actions/action_terms.schema.json").read_text())["examples"][0]
     assert terms == example
     validate(terms, "actions/action_terms.schema.json")
+
+
+def test_statement_outputs_and_audit_match_contracts(services):
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    from tests.statement_samples import Sample, santander_pdf
+
+    imported = to_primitive(services.statements.import_statement("camila", santander_pdf(Sample(daily_override={"04/12": 1}))))
+    validate(imported, "common/envelope.schema.json")
+    validate(imported["data"], "outputs/statement_import.schema.json")
+    assert imported["data"]["statement"]["issues"], "the unverified path must be covered too"
+
+    listed = to_primitive(services.statements.list_statements("camila"))
+    validate(listed, "common/envelope.schema.json")
+    validate(listed["data"], "outputs/statements.schema.json")
+
+    detail = to_primitive(services.statements.get_statement("camila", imported["data"]["statement"]["statement_id"]))
+    validate(detail, "common/envelope.schema.json")
+    validate(detail["data"], "outputs/statement.schema.json")
+
+    validate(to_primitive(services.statements.import_statement("camila", b"not a statement")), "common/envelope.schema.json")
+    for event in services.audit.raw():
+        validate(event.to_record(), "audit/audit_event.schema.json")

@@ -108,3 +108,58 @@ def test_sqlite_survives_a_restart(tmp_path):
     assert SqliteSavingsRuleStore(reopened).for_user("camila") == (_rule("rule_0001", "camila"),)
     assert SqliteActionRepository(reopened).consume_authorization("auth_1", NOW) is False
     assert verify_chain(SqliteAuditLog(reopened).events()).ok
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def statement_store(request, tmp_path):
+    from neural_ledger.adapters.outbound.persistence.memory import InMemoryStatementStore
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteStatementStore
+
+    if request.param == "memory":
+        return InMemoryStatementStore()
+    return SqliteStatementStore(SqliteDatabase(tmp_path / "test.db"))
+
+
+def _stored(statement_id: str = "stmt_1", user_id: str = "camila"):
+    from neural_ledger.domain.statements.model import (
+        BankStatement,
+        DailyBalance,
+        Issue,
+        IssueCode,
+        StatementLine,
+        StatementSummary,
+        StoredStatement,
+    )
+
+    statement = BankStatement(
+        bank="test",
+        account_ref="0-000-00-00000-0",
+        currency="CLP",
+        period_start=date(2026, 8, 31),
+        period_end=date(2026, 9, 30),
+        lines=(
+            StatementLine(0, date(2026, 9, 2), "Compra Nacional MD SHOP", -3_280, "2441010", "401"),
+            StatementLine(1, date(2026, 9, 4), "PAGO PROVEEDOR", 163_521, None, "90", 0.734512),
+        ),
+        summary=StatementSummary(1_000_000, 3_280, 163_521, 1_160_241),
+        daily_balances=(DailyBalance(date(2026, 9, 2), 996_720),),
+        statement_number="64",
+        source="ocr",
+    )
+    issues = (Issue(IssueCode.DAILY_BALANCE, "differs", 996_720, 996_721, date(2026, 9, 2)),)
+    return StoredStatement(statement_id, user_id, NOW, statement, issues)
+
+
+def test_statement_round_trip_and_duplicates(statement_store):
+    stored = _stored()
+    assert statement_store.add(stored) is True
+    assert statement_store.add(stored) is False  # same user, same statement: stored once
+    assert statement_store.get("camila", "stmt_1") == stored
+    assert statement_store.for_user("camila") == (stored,)
+
+
+def test_statements_are_scoped_to_their_user(statement_store):
+    statement_store.add(_stored())
+    assert statement_store.get("diego", "stmt_1") is None
+    assert statement_store.for_user("diego") == ()
+    assert statement_store.add(_stored(user_id="diego")) is True  # another user's copy is theirs

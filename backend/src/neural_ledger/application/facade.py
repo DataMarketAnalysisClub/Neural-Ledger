@@ -10,6 +10,7 @@ from .use_cases.audit import AuditUseCases
 from .use_cases.chat import ChatUseCase
 from .use_cases.financial import FinancialUseCases
 from .use_cases.profile import ProfileUseCases
+from .use_cases.statements import StatementUseCases
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class ApplicationServices:
     actions: ActionUseCases
     profiles: ProfileUseCases
     audit: AuditUseCases
+    statements: StatementUseCases
     chat: ChatUseCase
     registry: ToolRegistry
     default_user: str

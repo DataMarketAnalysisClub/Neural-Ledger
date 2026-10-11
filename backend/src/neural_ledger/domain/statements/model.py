@@ -8,8 +8,10 @@ Descriptions are third-party text: DATA, never instructions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
+
+STATEMENTS_VERSION = "st-0.1"  # reader + reconciliation rules; outputs carry it as params_version
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,3 +127,18 @@ def reconcile(statement: BankStatement, *, min_confidence: float = 0.0) -> Recon
             issues.append(Issue(IssueCode.DAILY_BALANCE, "the running balance differs from the printed daily balance", printed.balance, running, printed.on))
             running = printed.balance  # resync so one bad day is reported once, not on every later day
     return Reconciliation(tuple(issues))
+
+
+@dataclass(frozen=True, slots=True)
+class StoredStatement:
+    """A statement as kept for one user, with what reconciliation found when it was imported."""
+
+    statement_id: str
+    user_id: str
+    imported_at: datetime
+    statement: BankStatement
+    issues: tuple[Issue, ...]
+
+    @property
+    def verified(self) -> bool:
+        return not self.issues

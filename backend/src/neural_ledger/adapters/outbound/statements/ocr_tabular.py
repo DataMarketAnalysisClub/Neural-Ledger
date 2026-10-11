@@ -42,6 +42,14 @@ class TableError(Exception):
     """The content could not be read as the expected table."""
 
 
+class MissingDependency(TableError):
+    """A library or model weights this file needs are not installed. Not the file's fault."""
+
+
+class HeaderNotFound(TableError):
+    """The page has no table of the expected layout (e.g. a trailing page with only notices)."""
+
+
 @dataclass(frozen=True, slots=True)
 class Box:
     x0: float
@@ -156,14 +164,14 @@ def ocr_reader(languages: Sequence[str] = ("es",), gpu: bool = False, model_dir:
         try:
             import easyocr
         except ImportError as exc:
-            raise TableError("this file needs OCR; install the backend's `ocr` extra") from exc
+            raise MissingDependency("this file needs OCR; install the backend's `ocr` extra") from exc
         kwargs = {"gpu": gpu, "verbose": False, "download_enabled": download}
         if model_dir:
             kwargs["model_storage_directory"] = model_dir
         try:
             _readers[key] = easyocr.Reader(list(languages), **kwargs)
         except FileNotFoundError as exc:
-            raise TableError("EasyOCR weights are missing; run prepare_models() once with network access") from exc
+            raise MissingDependency("EasyOCR weights are missing; run prepare_models() once with network access") from exc
     return _readers[key]
 
 
@@ -173,7 +181,10 @@ def prepare_models(languages: Sequence[str] = ("es",), model_dir: str | None = N
 
 
 def recognize(image, **reader_options) -> list[Box]:
-    import numpy as np
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise MissingDependency("this file needs OCR; install the backend's `ocr` extra") from exc
 
     boxes = []
     for points, text, confidence in ocr_reader(**reader_options).readtext(np.asarray(image), detail=1):
@@ -214,7 +225,7 @@ def read_pages(content: bytes, **reader_options) -> list[Page]:
         try:
             from PIL import Image, UnidentifiedImageError
         except ImportError as exc:
-            raise TableError("this file needs OCR; install the backend's `ocr` extra") from exc
+            raise MissingDependency("this file needs OCR; install the backend's `ocr` extra") from exc
         try:
             image = Image.open(io.BytesIO(content)).convert("RGB")
         except (UnidentifiedImageError, OSError) as exc:
@@ -227,7 +238,7 @@ def _pdf_pages(content: bytes, **reader_options) -> list[Page]:
     try:
         import pdfplumber
     except ImportError as exc:
-        raise TableError("reading PDFs needs the backend's `pdf` extra") from exc
+        raise MissingDependency("reading PDFs needs the backend's `pdf` extra") from exc
     try:
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             words = [page.extract_words(x_tolerance=1.5) for page in pdf.pages]
@@ -243,8 +254,11 @@ def _pdf_pages(content: bytes, **reader_options) -> list[Page]:
 
 def rasterize(content: bytes, dpi: int = RASTER_DPI):
     """Every page of a PDF as a PIL image."""
-    import pymupdf
-    from PIL import Image
+    try:
+        import pymupdf
+        from PIL import Image
+    except ImportError as exc:
+        raise MissingDependency("this scanned PDF needs OCR; install the backend's `ocr` extra") from exc
 
     with pymupdf.open(stream=content, filetype="pdf") as doc:
         for page in doc:
@@ -267,7 +281,7 @@ def rebuild(page: Page, spec: TableSpec) -> Table:
     allowed = {norm_text(t) for t in spec.header_tokens} | required
     start = next((i for i, row in enumerate(coarse) if required <= {norm_text(b.text) for b in row}), None)
     if start is None:
-        raise TableError(f"page {page.number}: header not found")
+        raise HeaderNotFound(f"page {page.number}: header not found")
     end = start + 1
     while end < len(coarse) and all(norm_text(b.text) in allowed for b in coarse[end]):
         end += 1

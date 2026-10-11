@@ -65,9 +65,21 @@ def day_month(text: str, period_end: date) -> date:
     raise TableError(f"date outside any plausible year: {text!r}")
 
 
-def column_index(header: Sequence[str], prefix: str) -> int:
-    """Index of the header cell starting with `prefix` (normalized)."""
+def column_index(header: Sequence[str], name: str) -> int:
+    """Index of the header cell naming `name`. OCR reads table rules as letters ('INUMERO',
+    '[DEPOSITOS') and swaps glyphs ('BUC' for 'SUC'), so a cell matches if its first word
+    contains `name` or is one edit away from it."""
     for i, cell in enumerate(header):
-        if norm_text(cell).startswith(prefix):
+        words = norm_text(cell).split()
+        if words and (name in words[0] or _one_edit(words[0], name)):
             return i
-    raise TableError(f"column {prefix!r} not found in header {list(header)!r}")
+    raise TableError(f"column {name!r} not found in header {list(header)!r}")
+
+
+def _one_edit(a: str, b: str) -> bool:
+    if abs(len(a) - len(b)) > 1 or min(len(a), len(b)) < 3:
+        return False
+    i = 0
+    while i < min(len(a), len(b)) and a[i] == b[i]:
+        i += 1
+    return a[i + 1 :] == b[i + 1 :] or a[i:] == b[i + 1 :] or a[i + 1 :] == b[i:]

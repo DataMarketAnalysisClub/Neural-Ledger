@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/statement_import.schema.json",
+  "title": "StatementImport",
+  "description": "data of POST /v1/statements. An unverified statement is still stored; a duplicate stores nothing new.",
+  "type": "object",
+  "required": ["duplicate", "statement"],
+  "properties": {
+    "duplicate": {"type": "boolean"},
+    "statement": {"$ref": "statement.schema.json#/$defs/summary"}
+  },
+  "additionalProperties": false
+}
