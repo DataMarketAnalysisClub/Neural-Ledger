@@ -38,6 +38,7 @@ from neural_ledger.domain.finance.paycycle import cycle_end
 from neural_ledger.domain.shared.envelope import Envelope
 from neural_ledger.domain.shared.month import Month, month_range
 from tests.backtest.metrics import Z95, coverage, summary
+from tests.backtest.reference import DEFAULT_TRIALS, finite_sample_reference
 from tests.fixtures.ledger_generator import GENERATOR_VERSION, GeneratorConfig, generate_ledger_with_truth
 from tests.fixtures.stochastic import CATEGORIES, SEASONAL_MONTH, Lognormal, StochasticSpec, true_parameters
 
@@ -122,7 +123,7 @@ class _Grid:
         }
 
 
-def run(seeds: int) -> dict[str, Any]:
+def run(seeds: int, reference_trials: int = DEFAULT_TRIALS) -> dict[str, Any]:
     if seeds < 1:
         raise ValueError("at least one seed")
     grids = {name: _Grid() for name in GRIDS}
@@ -131,6 +132,10 @@ def run(seeds: int) -> dict[str, Any]:
     missing_categories: Counter[str] = Counter()
     warning_codes: Counter[str] = Counter()
     estimates = Counter()
+    spend_weights: Counter[tuple[str, int, str]] = Counter()
+    income_weights: Counter[tuple[str, int]] = Counter()
+    spend_hits: Counter[tuple[str, int, str]] = Counter()
+    income_hits: Counter[tuple[str, int]] = Counter()
     recovery: dict[str, list[float]] = {}
     clamped = 0
 
@@ -156,6 +161,8 @@ def run(seeds: int) -> dict[str, Any]:
                     evaluated = CYCLES[k : k + HORIZON]
                     if kind == "freelance":
                         grid.income_hits += [truth["income"][c] >= model.income.conservative for c in evaluated]
+                        income_weights[(name, k)] += len(evaluated)
+                        income_hits[(name, k)] += sum(truth["income"][c] >= model.income.conservative for c in evaluated)
                         if k == RECOVERY_ORIGIN:
                             p = true_parameters(FREELANCE_SPEC)["income"]
                             collect("income.p50", _rel(model.income.typical, p["p50"]))
@@ -176,6 +183,8 @@ def run(seeds: int) -> dict[str, Any]:
                             realized = truth["spend"][category][cycle]
                             hit = realized <= estimated[category].p80
                             grid.p80_hits.append(hit)
+                            spend_weights[(name, k, category)] += 1
+                            spend_hits[(name, k, category)] += hit
                             grid.p80_by_origin.setdefault(k, []).append(hit)
                             seed_hits[name].append(hit)
                             grid.p50_rel.append(_rel(estimated[category].p50, realized))
@@ -225,6 +234,7 @@ def run(seeds: int) -> dict[str, Any]:
             "warning_codes": dict(sorted(warning_codes.items())),
             "seasonal_factor_clamped_at_recovery": clamped,
         },
+        "reference": finite_sample_reference(FREELANCE_SPEC, CYCLES, spend_weights, income_weights, spend_hits, income_hits, reference_trials),
     }
 
 
