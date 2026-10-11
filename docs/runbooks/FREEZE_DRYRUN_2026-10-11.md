@@ -1,6 +1,6 @@
-# Financial-core freeze dry-run (requested Oct 10)
+# Financial-core freeze dry-run (2026-10-11)
 
-**Execution:** Oct 11, 2026, America/Santiago. The filename follows the requested Oct 10 dry-run label; it is not the execution date. This is **not a freeze**. No tag, push, merge or final-evidence commit was made. A+E parameter sign-off and the Oct 17 calendar gate remain pending.
+**Execution:** Oct 11, 2026, America/Santiago. The filename and execution date are both 2026-10-11. This is **not a freeze**. No tag, push, merge or final-evidence commit was made. A+E parameter sign-off and the Oct 17 calendar gate remain pending.
 
 The checks ran in a clean detached worktree at `70e2240ba32360f7d055e9e2b9f10e412080610e` (`a/fc-6-submission-docs` WP4), with its own `/tmp/opencode/neural-ledger-freeze-20261010/.venv/bin/python` as absolute `PY`. The worktree had no tracked changes after regeneration and evidence export. Its virtual environment installed Hypothesis 6.169.0 from the current unpinned dev extra; the main checkout had 6.168.5. Both full suites passed.
 
@@ -23,6 +23,14 @@ The checks ran in a clean detached worktree at `70e2240ba32360f7d055e9e2b9f10e41
 | Clean-checkout container | `docker compose up --build` | **BLOCKED:** `permission denied while trying to connect to the docker API at unix:///var/run/docker.sock`. No image was built and no container started. No sudo, daemon install, socket/group changes or alternate host was used. |
 | Container health | `curl --fail --silent --show-error --max-time 3 http://127.0.0.1:8000/health` | **BLOCKED:** `curl: (7) Failed to connect to 127.0.0.1:8000 ... Could not connect to server`. This cannot establish app health without a running container. |
 
+### Step 2: Later user-supplied Docker run
+
+The following is a distinct, later result supplied by the user, not independently verified in this shell. In a separate run, `docker compose up --build` reportedly built the image, passed the `pip install` step without `backend/README.md`, started Uvicorn, and produced repeated `GET /health` 200 logs. This falsifies the prior hypothesis that the missing `backend/README.md` necessarily causes the image build to fail. The historical clean-checkout Docker BLOCKED result above remains unchanged: this shell's `docker info` is denied access, so current container status and a compose rerun could not be independently verified.
+
+### Dependency freeze item (A+E)
+
+- Review the unpinned Hypothesis dev extra (`hypothesis>=6.100`) as a dependency-freeze item. The dry-run venv had Hypothesis 6.169.0 while the main checkout had 6.168.5. A+E owns this review; do not pin it as part of this runbook update.
+
 Evidence SHA-256 from this clean worktree (dry-run copies only):
 
 ```text
@@ -31,4 +39,4 @@ Evidence SHA-256 from this clean worktree (dry-run copies only):
 ee5a6dc0d3304984faf62d863ddcd4a03537c06229ea0e3bd74f964c7632e1b1  evidence/backtest/synthetic_backtest.json
 ```
 
-**Required before the real freeze:** have a human with Docker daemon access run `docker compose up --build` in a clean checkout and observe `/health`; then rerun the full checklist and capture final evidence. The Dockerfile currently copies `backend/pyproject.toml` but not `backend/README.md`, while `pyproject.toml` names `README.md` relative to `backend/`; the prior editable-install fix has not been exercised inside Docker and may make the image build fail once daemon access is granted. Review the Dockerfile as a separate scoped fix with a real build check, not as a claimed dry-run pass. A+E must approve the parameters and the reviewed commit before any Oct 17 freeze/tag decision.
+**Required before the real freeze:** have a human with Docker daemon access independently verify a clean-checkout `docker compose up --build` and `/health`; then rerun the full checklist and capture final evidence. The user-supplied Step 2 log reports a successful build and health responses, but it does not establish this shell's present container status or replace independent verification. Do not make a Dockerfile fix based on the falsified missing-README failure hypothesis. A+E must review the dependency-freeze item, approve the parameters and the reviewed commit before any Oct 17 freeze/tag decision.
