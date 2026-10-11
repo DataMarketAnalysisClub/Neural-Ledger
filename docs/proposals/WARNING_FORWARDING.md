@@ -63,6 +63,18 @@ No warning-code, computed-count, amount, snapshot-id or parameter changes.
 - **Spanish explanations.** Tokens are English. A live model answering in Spanish fails `MISSING_WARNING` and falls back to English narration. This already holds for the existing tool warnings' English tokens, except the few with Spanish stems.
 - **Large counts.** The proposed count-free warning wording prevents the reproduced large-duplicate case from failing deterministic fallback verification. This wording remains subject to approval question 2.
 
+## Demo prose impact
+
+Current ledger-demo observation: all five AGENT replies contain both exact sentences from the `DUPLICATE_TXN_ID` and `NEAR_DUPLICATE` rows above. The two-tool protected-surplus and savings replies repeat that pair twice each, yielding seven appearances of each sentence across five replies. For example, the forecast reply ends: “Transactions with a repeated id were dropped as exact duplicates. Groups of transactions share date, amount and counterparty; they were kept as possible duplicates.” The Camila ledger has exact-duplicate `txn_id` `cam-20260131-0063` and near-duplicate `txn_id`s `cam-20260310-0112` / `cam-20260310-0113`.
+
+Role B: answer each independently (Yes / No):
+
+1. **Per-turn narration deduplication:** Should repeated warning sentences be deduplicated within one reply?
+2. **Outside-reply warning:** Should a data-quality warning appear once per session or only in the UI, outside per-reply `must_mention`?
+3. **Intentional fixtures:** Are the exact and near duplicates intentional S12 fixtures?
+
+These are current ledger-demo observations and proposed decisions only; none is implemented here. Separately, `SALARY_DIFFERS` spells out “five percent,” which bypasses numeric fact checks because the verifier parses digits rather than number words. A future change could forward a numeric 5% fact and keep the explanation bound to that fact; this is not implemented.
+
 ## Evidence
 
 Measured against the WP1 `ff4c7cf` baselines under `.agentic/runtime/qa/` with the repository's absolute `.venv/bin/python`:
