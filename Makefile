@@ -3,7 +3,7 @@
 PY ?= python3
 
 install:            ## install backend with API and dev extras (use a virtualenv)
-	cd backend && $(PY) -m pip install -e ".[api,dev]"
+	cd backend && $(PY) -m pip install -e ".[api,dev,pdf]"
 
 test:               ## full suite: architecture, golden, unit, security, contracts, adapters, HTTP
 	cd backend && $(PY) -m pytest

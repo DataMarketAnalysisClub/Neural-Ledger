@@ -14,8 +14,9 @@ dependencies = []
 
 [project.optional-dependencies]
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
-# Bank statement import: pdfplumber/pymupdf read text-layer PDFs; easyocr (+ torch) only for scans and photos.
-ocr = ["pdfplumber>=0.11", "pymupdf>=1.24", "Pillow>=10", "numpy>=1.26", "easyocr>=1.7"]
+# Bank statement import: `pdf` reads text-layer PDFs; `ocr` adds easyocr (+ torch, install the CPU wheel first) for scans and photos.
+pdf = ["pdfplumber>=0.11", "pymupdf>=1.24"]
+ocr = ["neural-ledger[pdf]", "Pillow>=10", "numpy>=1.26", "easyocr>=1.7"]
 dev = ["pytest>=8", "jsonschema>=4.21", "httpx>=0.27", "ruff>=0.6"]
 
 [project.scripts]

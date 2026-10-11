@@ -10,7 +10,7 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/pyproject.toml
 COPY backend/README.md backend/README.md
 COPY backend/src backend/src
-RUN pip install --no-cache-dir "./backend[api]"
+RUN pip install --no-cache-dir "./backend[api,pdf]"
 
 COPY contracts contracts
 COPY data data
