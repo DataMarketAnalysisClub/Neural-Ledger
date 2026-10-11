@@ -15,12 +15,14 @@ The agent answers three questions: *Can I afford this?* · *How much is really a
 docker compose up --build          # API on http://localhost:8000  (GET /health)
 
 # Or locally
-make install                       # pip install -e "backend[api,dev]" (use a virtualenv)
+make install                       # pip install -e "backend[api,dev,pdf]" (use a virtualenv)
 make test                          # architecture, golden answers, security suite, contracts, HTTP
 make demo                          # the six-scene demo arc in the terminal
 make api                           # dev server on :8000
 make evidence                      # audit log + test results into evidence/
 ```
+
+Bank statements (cartolas): `neural-ledger import-statement <file.pdf>` or `POST /v1/statements` with the file as the body. Text-layer PDFs work out of the box; scanned PDFs and photos need `pip install -e "backend[ocr]"` (EasyOCR; install the CPU torch wheel first) and the weights once: `python -c "from neural_ledger.adapters.outbound.statements.ocr_tabular import prepare_models; prepare_models()"`. Real statements go in `cartolas/`, which is git-ignored: never commit one.
 
 On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
 

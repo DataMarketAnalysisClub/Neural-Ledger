@@ -30,6 +30,7 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A new database | `adapters/outbound/persistence/<db>.py` | add it to the `stores` fixture in `tests/adapters` |
 | An HTTP endpoint | `adapters/inbound/http/app.py` (thin: parse → use case → `to_primitive`) | `tests/http` |
 | A config switch | `bootstrap/config.py` + `.env.example` + `container.py` | — |
+| A new bank statement layout (cartola) | a `Bank` subclass in `adapters/outbound/statements/banks/` (recipe below) | `tests/adapters/test_banks.py` with a synthetic sample |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes
@@ -46,6 +47,24 @@ Implement `respond(request: ModelRequest) -> ModelTurn` and map `UserEntry` / `A
 
 ### Implement Jev (Role B)
 Map `ChoiceQuestion → Choice`, `ScoreQuestion → Score`, `YesNoQuestion → Noul`, and return `Judgment(label, probabilities, confidence, source)`. Confirm field names in the TypeSafe docs first. Raise `DecisionModelUnavailable` on errors. Then set `NL_DECISION_CHAIN=jev,rules`.
+
+### Read a new bank's statements
+Statements are read in three steps, and only the middle one is per bank:
+
+```
+bytes ─► ocr_tabular.read_pages ─► Page (word boxes: PDF text layer, or EasyOCR on scans/photos)
+      ─► ocr_tabular.rebuild(page, bank.table) ─► Table per page          ← Bank.table (where the table is)
+      ─► bank.parse(tables) ─► BankStatement                               ← Bank.parse (what the rows mean)
+      ─► domain reconcile() ─► stored, verified or unverified (+ warning), audited STATEMENT_IMPORTED
+```
+
+1. Get a sample and **never commit it**: real statements go in `cartolas/` (git-ignored). Look at the word boxes (`read_pages(...)[0].boxes`) to learn the header words, where amounts sit and what ends the table.
+2. Add `banks/<bank>.py` with a `Bank` subclass: a stable `code`, `recognizes(text)` (words only that bank prints), `table = TableSpec(header_required, header_tokens, stop_markers)`, and `parse(tables)`. Use `parse_clp`, `day_month` and `column_index` from `banks/base.py`; they already tolerate the OCR noise seen so far. Raise `TableError` on any cell that does not fit, never guess.
+3. Return the printed totals and daily balances in the `BankStatement`: reconciliation can only verify what the bank printed.
+4. Register it in `banks/__init__.py` (`BANKS`).
+5. Add a synthetic sample next to `tests/statement_samples.py` that draws the layout with fictional data, and tests for the happy path and for a misprinted total. `test_local_real_cartolas_reconcile` also runs on whatever is in your local `cartolas/`.
+
+Amounts are evidence, not authority: a statement that does not reconcile is stored as **unverified** with a `STATEMENT_UNVERIFIED` warning, and low OCR confidence only warns (`OCR_LOW_CONFIDENCE`), because reconciliation already checks every amount and date.
 
 ### Switch from fixtures to the ledger (Roles A, C, E)
 1. E: the generator writes `data/ledgers/<user>.json` (a `LedgerSnapshot`) from the calibration targets.
