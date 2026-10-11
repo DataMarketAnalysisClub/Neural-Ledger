@@ -102,3 +102,16 @@ def test_reader_errors_never_reach_the_store():
     use_case = _use_case(_FailingReader(StatementUnreadable("row without an amount")))
     assert use_case.import_statement("camila", b"%PDF-1.7").status is Status.INVALID_INPUT
     assert use_case.list_statements("camila").data == ()
+
+
+def test_cli_import_and_list(services, tmp_path, capsys):
+    from neural_ledger.adapters.inbound.cli.commands import main
+
+    path = tmp_path / "cartola.pdf"
+    path.write_bytes(santander_pdf())
+    assert main(services, ["import-statement", str(path), "--user", "camila"]) == 0
+    out = capsys.readouterr().out
+    assert "santander_cl_cuentamatica" in out and "VERIFIED" in out and "7 movements" in out
+    assert main(services, ["statements", "--user", "camila"]) == 0
+    assert "VERIFIED" in capsys.readouterr().out
+    assert main(services, ["import-statement", str(tmp_path / "missing.pdf")]) == 2
