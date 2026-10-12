@@ -12,9 +12,45 @@
     "share": {"type": "number"},
     "lowest_available_in_window": {"type": ["integer", "null"]},
     "required_monthly": {"type": "integer"},
-    "allocation": {"type": "array", "items": {"type": "object", "required": ["bucket", "monthly_amount"]}},
-    "requirements": {"type": "array", "items": {"type": "object", "required": ["bucket", "required_monthly", "funded_monthly", "funded_from"]}},
-    "goal_status": {"type": "array", "items": {"type": "object", "required": ["goal_id", "target", "saved", "deadline", "projected_completion", "on_track"]}},
+    "allocation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bucket", "monthly_amount"],
+        "properties": {"bucket": {"type": "string", "description": "'reserve' or 'goal:<goal_id>'"}, "monthly_amount": {"type": "integer"}}
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["bucket", "required_monthly", "funded_monthly", "funded_from"],
+        "properties": {
+          "bucket": {"type": "string"},
+          "required_monthly": {"type": "integer"},
+          "funded_monthly": {"type": "integer"},
+          "funded_from": {"type": ["string", "null"], "description": "Month (YYYY-MM) the rule starts funding this bucket"}
+        }
+      }
+    },
+    "goal_status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["goal_id", "target", "saved", "deadline", "projected_completion", "on_track"],
+        "properties": {
+          "goal_id": {"type": "string"},
+          "name": {"type": "string"},
+          "target": {"type": "integer"},
+          "saved": {"type": "integer"},
+          "deadline": {"type": "string"},
+          "required_monthly": {"type": "integer"},
+          "funded_monthly": {"type": "integer"},
+          "projected_completion": {"type": ["string", "null"]},
+          "on_track": {"type": "boolean"}
+        }
+      }
+    },
     "hard_rules_triggered": {"type": "array", "items": {"enum": ["H1_RESERVE_BELOW_MINIMUM", "H2_NO_POSITIVE_RULE"]}}
   }
 }

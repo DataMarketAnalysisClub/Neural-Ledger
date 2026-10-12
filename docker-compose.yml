@@ -16,9 +16,14 @@ services:
     volumes:
       - ledger-data:/app/var
 
-  # web:
-  #   Role D adds the frontend here (build ./web, port 3000), talking to http://api:8000.
-  #   The UI never computes money: it renders facts returned by the API.
+  # The UI never computes money: it renders facts returned by the API (proxied at /api by nginx).
+  web:
+    build:
+      context: ./web
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
 
 volumes:
   ledger-data:

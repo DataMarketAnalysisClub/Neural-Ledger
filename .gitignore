@@ -40,3 +40,4 @@ evidence/test-results/*.xml
 # Local drafts (commit messages, session summaries)
 commit_message.txt
 resumen-*.md
+.impeccable/
