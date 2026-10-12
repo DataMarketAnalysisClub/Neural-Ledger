@@ -156,6 +156,11 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
     def statement(statement_id: str, x_user_id: str | None = Header(default=None)):
         return _envelope_response(services.statements.get_statement(user(x_user_id), statement_id))
 
+    @app.get("/v1/transactions")
+    def transactions(x_user_id: str | None = Header(default=None)):
+        """The transaction ledger built from verified imported statements, with spend per category."""
+        return _envelope_response(services.ledger.list_transactions(user(x_user_id)))
+
     # ---- audit --------------------------------------------------------------------------------
 
     @app.get("/v1/audit")

@@ -78,6 +78,22 @@ def test_statement_upload_list_and_detail(client):
     assert other.status_code == 409 and client.get("/v1/statements", headers={"X-User-Id": "diego"}).json()["data"] == []
 
 
+def test_imported_statement_reaches_the_transaction_ledger(client):
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    pytest.importorskip("sklearn")
+    from tests.statement_samples import santander_pdf
+
+    ledger = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"}).json()["data"]["ledger"]
+    assert ledger["posted"] == ledger["new"] == 7 and ledger["classifier"].startswith("naive_bayes@")
+
+    body = client.get("/v1/transactions", headers={"X-User-Id": "camila"}).json()
+    txns = body["data"]["transactions"]
+    assert len(txns) == 7 and txns[0]["merchant"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
+    assert sum(t["spent"] for t in body["data"]["spending"]) == 61_080 and body["data"]["income"][0]["spent"] == 463_521
+    assert client.get("/v1/transactions", headers={"X-User-Id": "diego"}).json()["data"]["transactions"] == []
+
+
 def test_statement_upload_rejects_bad_files(client):
     assert client.post("/v1/statements", content=b"hello", headers={"Content-Type": "application/pdf"}).status_code == 422
     too_big = client.post("/v1/statements", content=b"%PDF", headers={"Content-Type": "application/pdf", "Content-Length": str(16 * 1024 * 1024)})

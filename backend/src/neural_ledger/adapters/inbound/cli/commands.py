@@ -1,4 +1,4 @@
-"""Command-line adapter: run the demo arc offline, export evidence, import bank statements. Standard library only."""
+"""Command-line adapter: run the demo arc offline, export evidence, import bank statements, read the ledger. Standard library only."""
 
 from __future__ import annotations
 
@@ -73,6 +73,30 @@ def import_statement(services: ApplicationServices, path: Path, user_id: str, as
     print(f"statement_id {s.statement_id}  {'VERIFIED' if s.verified else 'UNVERIFIED'}{'  (already imported)' if result.data.duplicate else ''}")
     for issue in s.issues:
         print(f"  - {issue.code} {issue.on or ''} {issue.message} (expected {issue.expected}, found {issue.found})")
+    ledger = result.data.ledger
+    if ledger.classifier:
+        print(f"ledger: {ledger.posted} transactions ({ledger.new} new) · {ledger.uncategorized} charges uncategorized · {ledger.classifier}")
+    for warning in result.warnings:
+        if warning.code == "NOT_POSTED":
+            print(f"ledger: {warning.message}")
+    return 0
+
+
+def list_transactions(services: ApplicationServices, user_id: str, as_json: bool) -> int:
+    result = services.ledger.list_transactions(user_id)
+    if as_json:
+        print(json.dumps(to_primitive(result), ensure_ascii=False, indent=2))
+        return 0
+    data = result.data
+    for t in data.transactions:
+        confidence = f"{t.confidence:.2f}" if t.confidence is not None else "  - "
+        print(f"{t.date}  {t.amount:>12,}  {t.category:<14} {confidence}  {t.merchant['untrusted_text']}")
+    for t in data.spending:
+        print(f"spent {t.spent:>12,} {t.currency}  {t.category:<14} ({t.count})")
+    for t in data.income:
+        print(f"income {t.spent:>11,} {t.currency}  ({t.count})")
+    if not data.transactions:
+        print("no transactions yet: import a statement (use NL_PERSISTENCE=sqlite to keep them between runs)")
     return 0
 
 
@@ -94,6 +118,9 @@ def main(services: ApplicationServices, argv: list[str] | None = None) -> int:
     imp.add_argument("--json", action="store_true", help="print the full envelope")
     lst = sub.add_parser("statements", help="list stored statements (use NL_PERSISTENCE=sqlite to keep them between runs)")
     lst.add_argument("--user", default=None)
+    txn = sub.add_parser("transactions", help="list the categorized transaction ledger built from imported statements")
+    txn.add_argument("--user", default=None)
+    txn.add_argument("--json", action="store_true", help="print the full envelope")
     args = parser.parse_args(argv)
     if args.command == "demo":
         return run_demo(services)
@@ -101,5 +128,7 @@ def main(services: ApplicationServices, argv: list[str] | None = None) -> int:
         return import_statement(services, args.file, args.user or services.default_user, args.json)
     if args.command == "statements":
         return list_statements(services, args.user or services.default_user)
+    if args.command == "transactions":
+        return list_transactions(services, args.user or services.default_user, args.json)
     code = run_demo(services)
     return code or export_audit(services, args.out)

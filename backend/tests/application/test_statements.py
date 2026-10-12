@@ -177,4 +177,10 @@ def test_cli_import_and_list(services, tmp_path, capsys):
     assert "santander_cl_cuentamatica" in out and "VERIFIED" in out and "7 movements" in out
     assert main(services, ["statements", "--user", "camila"]) == 0
     assert "VERIFIED" in capsys.readouterr().out
+    assert main(services, ["transactions", "--user", "camila"]) == 0
+    out = capsys.readouterr().out
+    if find_spec("sklearn"):
+        assert "Compra Nacional MD SHOP ONE" in out and "income" in out
+    else:
+        assert "no transactions yet" in out
     assert main(services, ["import-statement", str(tmp_path / "missing.pdf")]) == 2
