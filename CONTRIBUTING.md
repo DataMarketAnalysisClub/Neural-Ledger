@@ -13,6 +13,9 @@
 - Required CI checks green: `backend` and `compose` (`web` joins once the frontend is on `staging`).
 - No direct pushes, force pushes or branch deletion.
 
+The ruleset is versioned in `.github/rulesets/staging.json`. A repository admin applies or updates it with:
+`gh api -X POST repos/DataMarketAnalysisClub/Neural-Ledger/rulesets --input .github/rulesets/staging.json`
+
 Every PR fills in `.github/pull_request_template.md`, which mirrors the definition of done below and the rules in `CLAUDE.md`.
 
 ## Definition of done (every PR)
