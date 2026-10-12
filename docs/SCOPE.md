@@ -318,10 +318,10 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 
 ## 8. Financial core (summary of Bruno's design, as implemented)
 
-- **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Not implemented yet. Acceptance: reproduce `data/personas/camila.json` from the generated ledger.
+- **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Implemented: commitments (4.1), income (4.2), spend (4.3) over pay cycles. It reproduces `data/personas/camila.json` and `diego.json` field by field from `data/ledgers/*.json`, and E01–E14 pass on the estimated models. Switch the app with `NL_MODEL_SOURCE=ledger` (default stays `fixture`). Implementation choices: F9–F15.
 - **Stage 2, projection** (model → answers): implemented in `domain/finance/` as a reference for Role A to own, review or replace. Trough recurrence `B_m = B_(m-1) + I − K − V − R − P − S`; protected surplus = minimum conservative headroom; rule sizing `R = floor_10k(share × min A over [s, s+5])` with H5; cuota `c = P·r/(1−(1+r)^−n)`; capacity = weakest band.
 - **Parameters** `fc-0.1` live in `domain/finance/params.py`. Changing one means a new version, which the audit log records.
-- **All 14 golden answers (E01–E14) reproduce** and are tests. Invariants are property-tested on 25 perturbed fixtures.
+- **All 14 golden answers (E01–E14) reproduce** on fixture and ledger sources. Unit invariant, malformed-ledger/robustness and hypothesis property suites guard the implementation; ADR-014 retains two strict counterexample xfails and two non-strict xpasses. The opt-in synthetic backtest (F16-F17) is implementation validation only; see `docs/FINANCIAL_CORE.md` and `docs/BACKTEST.md`.
 
 ## 9. What the review found
 
@@ -365,6 +365,15 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | F6 | The P50 split per category is not specified (only P80). | The fixture uses 0.8 × P80 as a placeholder. A and E confirm. |
 | F7 | Which pay cycle a cuota hits depends on the card statement's due date. | State the rule: a cuota labelled month M leaves checking in cycle M. The generator follows it. |
 | F8 | Essentials must exclude December seasonality to match E05 (1.14 months). | Make that explicit in the definition. |
+| F9 | **Deviation from design §3:** the SpendModel stores one seasonal factor per month, not per category, because the forecast multiplies the summed quantiles by a single factor. | Factor = last December's total ÷ Σ category P50, clamped to [1, 2]. The generator makes every category exactly P50 × 49/30, so the per-category and total factors coincide (49/30). |
+| F10 | §4.2 does not say which standard deviation the CV uses. | Sample standard deviation (ddof = 1, `params.income_cv_ddof`), the more conservative choice with 12 points. CV is exact (`Fraction`) when CV² is a rational square, otherwise a 28-digit approximation. Diego's generated series gives exactly 3/10. |
+| F11 | Payday = last business day, but Chilean holidays are not modelled. | Simplification: last weekday of the month. 2025-10-31 (public holiday) and 12-31 (bank holiday) are treated as paydays; irrelevant on synthetic data. |
+| F12 | §4.3 "fall back to the total-level model" for a category with < 6 months is not defined in the current types. | Sparse categories are merged into one `other` category (quantiles of their combined per-cycle totals, zeros included), essential if any merged category was, flagged `CATEGORY_SPARSE`. |
+| F13 | The "largest one-off expense" (stress shock) is not defined precisely. | Largest single purchase or fee in the window, excluding cuota lines, recurring commitments, `transfer_own` and income. |
+| F14 | §8 "as_of in the middle of a cycle" (pro-rating). | Out of scope for v1: if as_of is not the day before a payday the estimator returns `INVALID_INPUT` (field `as_of`) instead of computing a partial cycle. Ended recurring items (45 days) are not commitments, and their history stays in variable spend (conservative). |
+| F15 | §4.1 misses recurring items that change: a new landlord with fewer than 3 payments, a rent increase, an item that ended before the 6-cycle lookback. | The pattern is checked on each counterparty's own last 6 cycles; consecutive amounts within ±5% with one level change allowed (amount = last observed). An ended item's history leaves variable spend only if an active item in the same category replaces it. A replacement with exactly 2 regular payments is a **provisional** commitment at its last amount (`RECURRING_PROVISIONAL`), so a recent move never understates the rent. |
+| F16 | A calibrated deterministic persona alone cannot test statistical recovery. | Opt-in synthetic-only seeded independent lognormal variable-spend categories and freelance income, 100 CLP rounding; December draws receive a 49/30 multiplier. No calibrated persona or ledger bytes change; see `docs/BACKTEST.md`. |
+| F17 | The design does not describe a December prediction without December in the fitted window. | The existing `SpendModel.factor` defaults to 1 without prior December evidence; Grid A measures the resulting adverse out-of-sample December coverage. No estimator change. |
 
 ### Security
 | # | Finding | Fix (in the skeleton) |
@@ -385,13 +394,14 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 | D-03 | Database | Memory → SQLite; no Mongo or DynamoDB |
 | D-04 | Frontend framework | Vicente's fastest stack, web first |
 | D-05 | Role C owner and integration owner | **Taken by Baptiste (Oct 10):** Role C and integration owner |
-| D-06 | Bruno's D1–D10 | Accept, with corrections F1–F8 |
+| D-06 | Bruno's D1–D10 | Accept, with corrections F1–F15 |
 | D-07 | Decision chain | `jev,rules` at runtime; build rules first; Jev go/no-go Oct 14 |
 | D-08 | User record | Typed profile (reply to David's proposal) |
 | D-09 | Demo path | Camila declines the laptop → 100k rule |
 | D-10 | Official deadline and deliverables | Confirm in the rules (X3) |
 | D-11 | License for the public repository | MIT or Apache-2.0 (team decision) |
 | D-12 | Agent language | English for the judges; Spanish is stretch |
+| D-13 | Plan sizing when the start month shifts (hypothesis counterexamples, ADR-014) | **PROPOSED, not accepted:** evaluate every eligible share ≤ permitted share; select the maximal feasible **rule amount** at its earliest feasible start, earlier-start tie-break. Highest feasible share alone is not equivalent. Separately propose that a purchase never raises cumulative planned savings **at each month**, not just the final sum. Existing engine and xfails unchanged pending team approval. |
 
 ## 11. Plan to submission (adjusted)
 

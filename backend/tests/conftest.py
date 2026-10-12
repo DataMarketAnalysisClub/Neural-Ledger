@@ -55,3 +55,25 @@ def camila():
 @pytest.fixture(scope="session")
 def diego():
     return PersonaFixtureSource(DATA / "personas").load("diego")
+
+
+# ---- stage 1: generated ledgers and the models the estimators produce from them ---------------
+
+LEDGERS = DATA / "ledgers"
+
+
+@pytest.fixture(scope="session")
+def ledger_source():
+    from neural_ledger.adapters.outbound.fixtures.ledger_source import LedgerModelSource
+
+    return LedgerModelSource(LEDGERS, FC_0_1)
+
+
+@pytest.fixture(scope="session")
+def camila_estimated(ledger_source):
+    return ledger_source.load("camila")
+
+
+@pytest.fixture(scope="session")
+def diego_estimated(ledger_source):
+    return ledger_source.load("diego")

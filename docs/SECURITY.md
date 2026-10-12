@@ -47,8 +47,11 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 ## Known risks (residual)
 
 - **Identity is a header** (`X-User-Id`). Acceptable for a sandbox; real deployments need authentication and per-user authorization on every endpoint.
+- **`transfer_own` is trusted by the estimators** (ADR-012). A real outflow mislabelled as an own transfer would vanish from variable spend and overstate the protected surplus. The synthetic ledgers reconcile per account; real data would need two-leg matching of own transfers.
 - **The rules decision model is keyword-based.** It is the offline floor, not the main defence. The hard guarantees come from the gate and the confirmation contract, which do not depend on any model.
 - **The verifier checks numbers, warnings and a few phrases.** Semantic contradictions in free prose need the model-based check (Should).
 - **No rate limiting** and no abuse detection on the API.
 - **The secret comes from the environment** (`NL_HMAC_SECRET`); a KMS is out of scope. The development default must never be used in a recorded demo.
 - **Synthetic data only.** No real personal or banking data is processed. The repository is public: never commit keys or personal documents.
+- **Estimator warnings are not forwarded.** `LedgerModelSource.load` discards the stage-1 `Envelope` warnings and facts, and estimation caveats have empty `must_mention`. Chat verification cannot enforce caveats it never receives; B must decide forwarding semantics before the ledger-default switch. See `docs/EXPLANATION_HANDOFF.md`.
+- **The rolling-origin backtest is synthetic-only implementation validation.** Grid A December coverage is adverse without a prior December; this is not evidence of real-world predictive accuracy or a security mitigation. See `docs/BACKTEST.md`.

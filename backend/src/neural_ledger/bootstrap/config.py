@@ -25,7 +25,7 @@ def _find_dir(name: str) -> Path:
 @dataclass(frozen=True)
 class Settings:
     persona: str = "camila"
-    model_source: str = "fixture"  # fixture | ledger (Role A estimators, not implemented yet)
+    model_source: str = "fixture"  # fixture (calibrated personas) | ledger (data/ledgers + stage-1 estimators)
     llm: str = "scripted"  # scripted | anthropic
     llm_model: str = "claude-sonnet-5-5"
     anthropic_api_key: str | None = None
