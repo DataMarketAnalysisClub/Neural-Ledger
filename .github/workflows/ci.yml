@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
-      - run: python -m pip install -e ".[api,dev,pdf]"
+      - run: python -m pip install -e ".[api,dev,pdf,ml]"
       - name: Lint
         run: ruff check .
       - name: Tests (architecture, golden, security, contracts, adapters, HTTP)

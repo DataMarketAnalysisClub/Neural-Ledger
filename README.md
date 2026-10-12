@@ -15,7 +15,7 @@ The agent answers three questions: *Can I afford this?* · *How much is really a
 docker compose up --build          # API on http://localhost:8000  (GET /health)
 
 # Or locally
-make install                       # pip install -e "backend[api,dev,pdf]" (use a virtualenv)
+make install                       # pip install -e "backend[api,dev,pdf,ml]" (use a virtualenv)
 make test                          # architecture, golden answers, security suite, contracts, HTTP
 make demo                          # the six-scene demo arc in the terminal
 make api                           # dev server on :8000

@@ -17,6 +17,8 @@ api = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
 # Bank statement import: `pdf` reads text-layer PDFs; `ocr` adds easyocr (+ torch, install the CPU wheel first) for scans and photos.
 pdf = ["pdfplumber>=0.11", "pymupdf>=1.24"]
 ocr = ["neural-ledger[pdf]", "Pillow>=10", "numpy>=1.26", "easyocr>=1.7"]
+# Spending categories for imported statement lines (naive Bayes, trained at first use from package data).
+ml = ["scikit-learn>=1.4"]
 dev = ["pytest>=8", "jsonschema>=4.21", "httpx>=0.27", "ruff>=0.6"]
 
 [project.scripts]
@@ -24,6 +26,9 @@ neural-ledger = "neural_ledger.bootstrap.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"neural_ledger.adapters.outbound.classifier" = ["training/*.csv"]
 
 [tool.ruff]
 line-length = 140
