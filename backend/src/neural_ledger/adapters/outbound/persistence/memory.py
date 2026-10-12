@@ -11,6 +11,8 @@ from datetime import datetime
 from ....application.conversation import Entry
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
+from ....domain.ledger.categorization import PostedTransaction
+from ....domain.statements.model import StoredStatement
 from ....domain.user.profile import UserProfile
 
 
@@ -30,6 +32,46 @@ class InMemorySavingsRuleStore:
 
     def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
         return tuple(r for r in self._rules if r.user_id == user_id)
+
+
+class InMemoryStatementStore:
+    def __init__(self) -> None:
+        self._statements: dict[tuple[str, str], StoredStatement] = {}
+        self._lock = threading.Lock()
+
+    def add(self, stored: StoredStatement) -> bool:
+        key = (stored.user_id, stored.statement_id)
+        with self._lock:
+            if key in self._statements:
+                return False
+            self._statements[key] = stored
+            return True
+
+    def get(self, user_id: str, statement_id: str) -> StoredStatement | None:
+        return self._statements.get((user_id, statement_id))
+
+    def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
+        return tuple(s for (owner, _), s in self._statements.items() if owner == user_id)
+
+
+class InMemoryTransactionStore:
+    def __init__(self) -> None:
+        self._transactions: dict[tuple[str, str], PostedTransaction] = {}
+        self._lock = threading.Lock()
+
+    def add(self, posted: Sequence[PostedTransaction]) -> int:
+        new = 0
+        with self._lock:
+            for p in posted:
+                key = (p.user_id, p.transaction.txn_id)
+                if key not in self._transactions:
+                    self._transactions[key] = p
+                    new += 1
+        return new
+
+    def for_user(self, user_id: str) -> tuple[PostedTransaction, ...]:
+        mine = [p for (owner, _), p in self._transactions.items() if owner == user_id]
+        return tuple(sorted(mine, key=lambda p: (p.transaction.date, p.statement_id, p.line_index)))
 
 
 class InMemoryActionRepository:
