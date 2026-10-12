@@ -8,6 +8,7 @@ docs/DECISIONS.md. The golden answers E01-E14 belong to fc-0.1.
 from __future__ import annotations
 
 from dataclasses import fields, replace
+from decimal import Decimal
 from fractions import Fraction
 
 import pytest
@@ -46,8 +47,23 @@ def test_any_value_change_moves_the_fingerprint(change):
     assert replace(FC_0_1, **change).fingerprint() != FC_0_1.fingerprint()
 
 
-def test_every_parameter_is_fingerprinted():
-    for f in fields(FC_0_1):
-        if f.name == "version":
-            continue
-        assert FC_0_1.fingerprint() == replace(FC_0_1, **{f.name: getattr(FC_0_1, f.name)}).fingerprint()
+def _changed(value):
+    """A different value of the same type, so a field left out of the fingerprint would go unnoticed."""
+    if isinstance(value, Fraction):
+        return value + Fraction(1, 10**9)
+    if isinstance(value, Decimal):
+        return value + Decimal("0.001")
+    if isinstance(value, int):
+        return value + 1
+    if isinstance(value, str):
+        return value + "x"
+    if isinstance(value, frozenset):
+        return value | {"__changed__"}
+    if isinstance(value, tuple):
+        return (*value, value[-1]) if value else (0,)
+    raise TypeError(f"no change rule for {type(value).__name__}")
+
+
+@pytest.mark.parametrize("name", [f.name for f in fields(FC_0_1) if f.name != "version"])
+def test_every_parameter_is_fingerprinted(name):
+    assert replace(FC_0_1, **{name: _changed(getattr(FC_0_1, name))}).fingerprint() != FC_0_1.fingerprint()

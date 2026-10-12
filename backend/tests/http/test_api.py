@@ -98,3 +98,16 @@ def test_statement_upload_rejects_bad_files(client):
     assert client.post("/v1/statements", content=b"hello", headers={"Content-Type": "application/pdf"}).status_code == 422
     too_big = client.post("/v1/statements", content=b"%PDF", headers={"Content-Type": "application/pdf", "Content-Length": str(16 * 1024 * 1024)})
     assert too_big.status_code == 413
+
+
+def test_statement_upload_limit_holds_without_content_length(client):
+    """A chunked body announces no size; the endpoint must count while reading and stop at the limit.
+
+    Before the fix the whole body was buffered and the use case answered 422 afterwards."""
+
+    def chunks():
+        for _ in range(16):
+            yield b"0" * (1024 * 1024)
+
+    response = client.post("/v1/statements", content=chunks(), headers={"Content-Type": "application/pdf"})
+    assert response.status_code == 413
