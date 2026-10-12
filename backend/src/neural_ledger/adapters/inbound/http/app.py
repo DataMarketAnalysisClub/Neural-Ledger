@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Body, FastAPI, Header, Query
+from fastapi import Body, FastAPI, Header, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ....application.facade import ApplicationServices
 from ....application.use_cases.actions import ActorContext
+from ....application.use_cases.statements import MAX_STATEMENT_BYTES
 from ....domain.audit.events import Actor
 from ....domain.shared.serialization import to_primitive
 
@@ -132,6 +134,32 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
     @app.get("/v1/actions/pending")
     def pending(session_id: str = Query("default"), x_user_id: str | None = Header(default=None)):
         return JSONResponse(to_primitive(services.actions.pending(actor(session_id, x_user_id))))
+
+    # ---- bank statements ----------------------------------------------------------------------
+
+    @app.post("/v1/statements")
+    async def import_statement(request: Request, x_user_id: str | None = Header(default=None)):
+        """The raw file is the body (Content-Type application/pdf or image/*). Reading a scan runs OCR,
+        which takes seconds to minutes, so it runs off the event loop."""
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_STATEMENT_BYTES:
+            return JSONResponse({"detail": "the file is larger than 15 MB"}, status_code=413)
+        content = await request.body()
+        result = await run_in_threadpool(services.statements.import_statement, user(x_user_id), content)
+        return _envelope_response(result)
+
+    @app.get("/v1/statements")
+    def statements(x_user_id: str | None = Header(default=None)):
+        return _envelope_response(services.statements.list_statements(user(x_user_id)))
+
+    @app.get("/v1/statements/{statement_id}")
+    def statement(statement_id: str, x_user_id: str | None = Header(default=None)):
+        return _envelope_response(services.statements.get_statement(user(x_user_id), statement_id))
+
+    @app.get("/v1/transactions")
+    def transactions(x_user_id: str | None = Header(default=None)):
+        """The transaction ledger built from verified imported statements, with spend per category."""
+        return _envelope_response(services.ledger.list_transactions(user(x_user_id)))
 
     # ---- audit --------------------------------------------------------------------------------
 

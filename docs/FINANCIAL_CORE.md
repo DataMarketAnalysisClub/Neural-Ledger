@@ -1,0 +1,50 @@
+# Financial core: implemented behavior and handoff (Role A)
+
+**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-015 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
+
+## 4.1 Commitments
+
+`domain/finance/estimation.py:estimate_model` and `_recurring_items` reconstruct cuotas from metadata first, then readable `CUOTA nn/NN` text. An unparsed line stays in spend with `INSTALLMENT_UNPARSED`. Ended plans do not project. Recurring rent/subscriptions use each counterparty's recent cycles, 28-35-day cadence, ±5% adjacent amount tolerance allowing one level change, confidence cutoff and 45-day inactivity. Ended items without a replacement remain in spend; exactly two regular replacement payments yield a provisional commitment and warning (F15). `FinancialModel.commitments_due` schedules a cuota in its labelled pay cycle. See `tests/unit/test_estimation_recurring.py` and `tests/golden/test_estimation.py`.
+
+## 4.2 Income
+
+`estimation.py:_income_model` uses contracted salaried income when any of the last three cycles lacks a salary credit (`SALARY_MISSING`). Otherwise it compares the recent three salary credits' median with the contracted net: if they differ by more than 5%, both typical and conservative use the **lower** of contracted net and rounded recent median (`SALARY_DIFFERS`); within 5%, both use contracted net. Without contracted net it uses percentiles (`CONTRACT_UNKNOWN`); freelance cycle totals include zero-income months, P50 typical and P20 conservative. `coefficient_of_variation` uses sample standard deviation (ddof=1), exact rational result when possible (F10). Bonus categories do not become recurring income. `paycycle.py` uses last weekday, not a Chilean holiday calendar (F11).
+
+## 4.3 Variable spend
+
+`estimation.py:_spend_model` nets refunds per category and cycle at zero, excludes classified installments/active recurring payments and own transfers, uses linear-interpolated per-category nonseasonal P50/P80, and merges categories observed in fewer than six months into `other` with `CATEGORY_SPARSE` (F12). There is one December factor for the whole total (last December / sum category P50, clamped to [1,2]), not one per category (F9). Without December in the window, `SpendModel.factor` returns 1 (F17). The largest one-off stress expense excludes cuotas, recurring items, transfers and income (F13). `validate_snapshot` rejects mid-cycle as_of rather than pro-rating (F14) and bounds currency, amount and date inputs; **`estimate_model`** checks the minimum six-cycle history after validating and deduplicating transactions. See `tests/unit/test_estimation_edges.py`.
+
+## 4.4 Forecast
+
+`domain/finance/forecast.py:project` accumulates the checking trough by cycle: previous trough + income - commitments - variable - plan - purchases - shock. Headroom is trough minus the liquidity floor. Typical uses P50 spend/typical income, conservative P80/conservative income; stress adds `max(stress_shock_min, largest_one_off_expense)` in the first projected cycle. The earliest month breaks equal-lowest-headroom ties. Forecast is not an available bank balance: the floor and future commitments matter.
+
+## 4.5 Protected surplus and planning
+
+`domain/finance/surplus.py:protected_surplus` takes the minimum conservative headroom across the requested horizon, including any plan/purchase overlay; negative means a breach, not safe money. `domain/finance/plan.py:size_plan` searches earliest starts, computes a six-cycle lowest available window, rounds `min(profile_share × lowest_available, required)` down to 10k and rejects a rule if the conservative path breaches (H5). No feasible positive rule triggers H2. `plan.py:_allocate` sends the whole rule to reserve if reserve is below minimum (H1); otherwise it allocates to near-term goals by deadline and then reserve top-up. This **currently is not monotone** in profile or purchase. ADR-014 is an unaccepted proposal, not implemented.
+
+## 4.6 Purchase simulation
+
+`domain/finance/purchase.py:simulate_purchase` validates amount, installment count, start and rate; `quote` prices equal installments and total `n × installment` (F2). It runs typical and conservative baselines and purchase overlays to produce verdicts, then deterministic deferral, alternate count or reduced-amount alternatives. `installment_cap` accounts for accumulated installments by taking minimum headroom divided by installments paid by each cycle (F3). Missing rate/first month yield tool warnings, not invented offer terms. See golden E02-E04.
+
+## 4.7 Financial capacity
+
+`domain/finance/capacity.py:assess_capacity` bands five factors in order: reserve / monthly essentials; income coefficient of variation; peak **debt-only** service / conservative income (F1); lowest conservative headroom / floor; and reserve remaining after a stress shortfall / essentials. The weakest band sets capacity, and `binding_factors` records every factor tied at that band. `essentials_exact` combines average rent and debt over the dashboard horizon with essential-category P80, excluding December seasonality (F8). Zero essentials raises `InsufficientData` (H4), not an infinite ratio.
+
+## 4.8 Permitted profile and hard rules
+
+`domain/finance/permitted.py:derive_permitted_profile` computes the lower of the declared tolerance and financial capacity (`lower_profile`), and reports H1 if reserve is below the capacity engine's minimum. `application/use_cases/financial.py:savings_plan` recomputes this permitted profile server-side; a higher requested profile is capped with `PROFILE_CAPPED`. `plan.py:size_plan` enforces H2 (no feasible positive rule) and H5 (a rule must not breach a conservative trough), and `_allocate` applies the H1 reserve-first cascade described in 4.5. The near-term-goal window and deadline requirements are implemented by `plan.py:_near_term_goals` and `_goal_required`; they are **not** an independently emitted or enforced H3 hard-rule code. H4 unknown-state failures come from `model.py:FinancialModel.missing_fields`, `estimation.py:estimate_model` and `capacity.py:assess_capacity`. The application stores a plan snapshot and action proposals read the stored amount; user confirmation and signed, single-use execution terms remain the authority boundary (`docs/SECURITY.md`). Changing plan policy requires team approval and new behavioral tests.
+
+## Deviations and validation
+
+F9 one aggregate seasonal factor; F10 sample CV; F11 weekday-only payday; F12 sparse-to-other; F13 precise one-off shock; F14 no partial pay-cycle estimates; F15 provisional recurring replacement are implemented in `estimation.py`. F16 is an **opt-in, synthetic-only** seeded lognormal generator in `backend/tests/fixtures/stochastic.py`; calibrated persona outputs do not change. F17 documents the existing no-December factor=1 path. F1-F8 definition fixes are recorded in `docs/SCOPE.md`. ADR-011 (estimation), ADR-012 (transfer classification trust), ADR-013 (snapshot/version lock), ADR-014 (plan counterexamples) and ADR-015 (synthetic backtest) all remain Proposed. `tests/golden` has E01-E14 over both sources; unit/robustness tests cover malformed ledgers, reconciliation and traceability; hypothesis property tests retain two strict xfails and two non-strict xpasses under ADR-014. Run `make test-all`, `make test-golden`, `make test-security` and `make backtest` using absolute `PY`. The measured adverse synthetic coverage and parameter recovery are in `docs/BACKTEST.md` and its JSON; they are not real-world predictive accuracy.
+
+## Security inputs and pending gates
+
+Merchant strings are untrusted; source labels are wrapped as data (`domain/agent/untrusted.py`). `contracts/ledger/ledger.schema.json` and `estimation.py:validate_snapshot` bound amounts, CLP, dates and data shape. ADR-012 deliberately trusts `transfer_own`: a misclassification can hide an outflow even if the synthetic ledger reconciles. `LedgerModelSource.load` currently drops stage-1 facts/warnings, so the verifier cannot enforce those warnings; see `docs/EXPLANATION_HANDOFF.md`. The verifier sees only facts/warnings received from tools per turn, not an estimator envelope that was discarded. These are residual risks, not delivered mitigations.
+
+| Milestone | Status | Gate |
+|---|---|---|
+| FC-1 plan policy/invariant | PENDING | Team approval of exact ADR-014 proposals; no engine or xfail changes today |
+| FC-4 ledger as default | PENDING | B approval and coordinated Oct 12 integration; `docs/runbooks/MODEL_SOURCE_SWITCH.md` |
+| FC-7 version/evidence freeze and tag | PENDING | Oct 17 and A+E parameter approval; `docs/runbooks/FREEZE.md` |
+| Main merge/push | PENDING | Human review |
