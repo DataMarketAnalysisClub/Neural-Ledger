@@ -163,3 +163,48 @@ def test_statements_are_scoped_to_their_user(statement_store):
     assert statement_store.get("diego", "stmt_1") is None
     assert statement_store.for_user("diego") == ()
     assert statement_store.add(_stored(user_id="diego")) is True  # another user's copy is theirs
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def transaction_store(request, tmp_path):
+    from neural_ledger.adapters.outbound.persistence.memory import InMemoryTransactionStore
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteTransactionStore
+
+    if request.param == "memory":
+        return InMemoryTransactionStore()
+    return SqliteTransactionStore(SqliteDatabase(tmp_path / "test.db"))
+
+
+def _posted(user_id: str = "camila"):
+    from dataclasses import replace
+
+    from neural_ledger.domain.ledger.categorization import CategoryGuess, post_statement
+
+    stored = replace(_stored(user_id=user_id), issues=())
+    return post_statement(stored, {0: CategoryGuess("shopping", 0.734512)}, "naive_bayes@abc")
+
+
+def test_transaction_round_trip_and_duplicates(transaction_store):
+    posted = _posted()
+    assert transaction_store.add(posted) == 2
+    assert transaction_store.add(posted) == 0  # same transactions: stored once
+    assert transaction_store.add(()) == 0
+    assert transaction_store.for_user("camila") == posted
+
+
+def test_transactions_are_scoped_to_their_user_and_ordered_by_date(transaction_store):
+    posted = _posted()
+    transaction_store.add(tuple(reversed(posted)))
+    assert transaction_store.for_user("camila") == posted  # 2026-09-02 before 2026-09-04
+    assert transaction_store.for_user("diego") == ()
+    assert transaction_store.add(_posted(user_id="diego")) == 2
+
+
+def test_transactions_survive_a_restart(tmp_path):
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteTransactionStore
+
+    path = tmp_path / "ledger.db"
+    db = SqliteDatabase(path)
+    SqliteTransactionStore(db).add(_posted())
+    db.connection.close()
+    assert SqliteTransactionStore(SqliteDatabase(path)).for_user("camila") == _posted()

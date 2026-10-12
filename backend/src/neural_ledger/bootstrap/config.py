@@ -42,6 +42,7 @@ class Settings:
     contracts_dir: Path | None = None
     cors_origins: tuple[str, ...] = ("*",)
     ocr_model_dir: str | None = None  # EasyOCR weights; None = ~/.EasyOCR/model (scans and photos only)
+    classifier: str = "naive_bayes"  # spending categories for imported statements; see CLASSIFIERS in container.py
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -88,4 +89,5 @@ class Settings:
             contracts_dir=Path(e["NL_CONTRACTS_DIR"]) if e.get("NL_CONTRACTS_DIR") else None,
             cors_origins=tuple(o.strip() for o in get("NL_CORS_ORIGINS", "*").split(",")),
             ocr_model_dir=e.get("NL_OCR_MODEL_DIR") or None,
+            classifier=get("NL_CLASSIFIER", cls.classifier),
         )

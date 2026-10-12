@@ -1,9 +1,10 @@
 """Import bank statements (cartolas) and read them back.
 
-Import = read (adapter, may misread) → reconcile (domain, deterministic) → store → audit.
+Import = read (adapter, may misread) → reconcile (domain, deterministic) → store → post to the
+transaction ledger (classified charges) → audit.
 A statement that does not add up is still stored, marked unverified, with a warning that names
-every issue: its amounts are evidence, never authority. Re-importing the same statement stores
-nothing new. Descriptions leave this layer wrapped as untrusted text.
+every issue: its amounts are evidence, never authority, so it is not posted. Re-importing the
+same statement stores nothing new. Descriptions leave this layer wrapped as untrusted text.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from ..ports import (
     StatementStore,
     StatementUnreadable,
 )
+from ..services.posting import LedgerPosting, PostingResult
 
 MAX_STATEMENT_BYTES = 15 * 1024 * 1024
 # Below this, an OCR'd line gets a warning. It never marks the statement unverified: amounts and dates are
@@ -62,9 +64,18 @@ class StatementSummaryView:
 
 
 @dataclass(frozen=True, slots=True)
+class LedgerPostingView:
+    posted: int  # transactions this statement contributes to the ledger (0 when not posted)
+    new: int  # of those, added by this import
+    uncategorized: int
+    classifier: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class StatementImport:
     duplicate: bool
     statement: StatementSummaryView
+    ledger: LedgerPostingView
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,9 +103,12 @@ class StatementDetail:
 
 
 class StatementUseCases:
-    def __init__(self, reader: StatementReader, store: StatementStore, audit: AuditLog, clock: Clock, ids: IdGenerator) -> None:
+    def __init__(
+        self, reader: StatementReader, store: StatementStore, posting: LedgerPosting, audit: AuditLog, clock: Clock, ids: IdGenerator
+    ) -> None:
         self._reader = reader
         self._store = store
+        self._posting = posting
         self._audit = audit
         self._clock = clock
         self._ids = ids
@@ -119,6 +133,7 @@ class StatementUseCases:
         duplicate = not self._store.add(stored)
         if duplicate:
             stored = self._store.get(user_id, statement_id) or stored
+        posting = self._posting.post(stored)
 
         self._audit.append(
             AuditDraft(
@@ -131,20 +146,23 @@ class StatementUseCases:
                 forecast_snapshot_id=statement_id,
                 policy_version=STATEMENTS_VERSION,
                 execution_result="DUPLICATE" if duplicate else ("VERIFIED" if stored.verified else "UNVERIFIED"),
-                detail=f"bank={statement.bank} lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'}",
+                detail=(
+                    f"bank={statement.bank} lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'} "
+                    f"posted={posting.posted} new={posting.new} uncategorized={posting.uncategorized} classifier={posting.classifier or 'none'}"
+                ),
             )
         )
 
         summary = _summary(stored)
-        warnings = [*_unverified(stored), *_low_confidence(stored)]
+        warnings = [*_unverified(stored), *_low_confidence(stored), *posting.warnings]
         if duplicate:
             warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
         return Envelope.success(
-            StatementImport(duplicate, summary),
+            StatementImport(duplicate, summary, _ledger_view(posting)),
             params_version=STATEMENTS_VERSION,
             snapshot_id=statement_id,
             as_of=summary.period_end,
-            facts=_facts(summary),
+            facts=(*_facts(summary), *_posting_facts(summary.statement_id, posting)),
             warnings=tuple(warnings),
         )
 
@@ -205,6 +223,18 @@ def _low_confidence(stored: StoredStatement) -> tuple[Caveat, ...]:
             "by reconciliation, but their descriptions may contain misread characters.",
             ("OCR", "misread"),
         ),
+    )
+
+
+def _ledger_view(p: PostingResult) -> LedgerPostingView:
+    return LedgerPostingView(p.posted, p.new, p.uncategorized, p.classifier)
+
+
+def _posting_facts(statement_id: str, p: PostingResult) -> tuple[Fact, ...]:
+    key = f"statement.{statement_id}.ledger"
+    return (
+        Fact(f"{key}.posted", p.posted, "count", "transactions this statement contributes to the ledger"),
+        Fact(f"{key}.uncategorized", p.uncategorized, "count", "charges whose category was not accepted"),
     )
 
 

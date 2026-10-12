@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from importlib.util import find_spec
 
 import pytest
 
-from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryStatementStore
+from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryStatementStore, InMemoryTransactionStore
 from neural_ledger.adapters.outbound.system.clock import FixedClock
 from neural_ledger.adapters.outbound.system.ids import SequentialIds
 from neural_ledger.application.ports import StatementReaderUnavailable, StatementUnreadable
+from neural_ledger.application.services.posting import LedgerPosting
 from neural_ledger.application.use_cases.statements import StatementUseCases
 from neural_ledger.domain.audit.events import AuditKind
 from neural_ledger.domain.shared.envelope import Status
@@ -17,8 +19,14 @@ from tests.statement_samples import Sample, santander_pdf
 
 pytest.importorskip("pymupdf")
 pytest.importorskip("pdfplumber")
+needs_ml = pytest.mark.skipif(find_spec("sklearn") is None, reason="the ml extra (scikit-learn) is not installed")
+
+# The synthetic merchants are fictional, so the real classifier leaves charges uncategorized; which
+# ones is the classifier's business (tests/adapters/test_classifier.py), not this file's.
+CATEGORY_WARNINGS = {"UNCATEGORIZED_SPENDING"}
 
 
+@needs_ml
 def test_import_stores_a_verified_statement_and_audits_it(services):
     result = services.statements.import_statement("camila", santander_pdf())
     assert result.status is Status.OK
@@ -26,22 +34,29 @@ def test_import_stores_a_verified_statement_and_audits_it(services):
     summary = result.data.statement
     assert summary.verified and summary.issues == ()
     assert (summary.line_count, summary.total_debits, summary.total_credits) == (7, 61_080, 463_521)
-    assert result.warnings == ()
+    assert {w.code for w in result.warnings} <= CATEGORY_WARNINGS
+    ledger = result.data.ledger
+    assert (ledger.posted, ledger.new) == (7, 7) and ledger.classifier.startswith("naive_bayes@")
     assert {f.key.rsplit(".", 1)[1]: f.value for f in result.facts}["closing_balance"] == 1_402_441
 
     listed = services.statements.list_statements("camila").data
     assert [s.statement_id for s in listed] == [summary.statement_id]
     events = [e for e in services.audit.raw() if e.draft.kind is AuditKind.STATEMENT_IMPORTED]
     assert len(events) == 1 and events[0].draft.execution_result == "VERIFIED" and events[0].draft.user_id == "camila"
+    assert "posted=7 new=7" in events[0].draft.detail
+    assert len(services.ledger.list_transactions("camila").data.transactions) == 7
 
 
+@needs_ml
 def test_reimport_is_a_duplicate_and_stores_nothing_new(services):
     first = services.statements.import_statement("camila", santander_pdf())
     again = services.statements.import_statement("camila", santander_pdf())
     assert again.data.duplicate is True
     assert again.data.statement.statement_id == first.data.statement.statement_id
-    assert [w.code for w in again.warnings] == ["DUPLICATE_STATEMENT"]
+    assert {w.code for w in again.warnings} - CATEGORY_WARNINGS == {"DUPLICATE_STATEMENT"}
+    assert (again.data.ledger.posted, again.data.ledger.new) == (7, 0)
     assert len(services.statements.list_statements("camila").data) == 1
+    assert len(services.ledger.list_transactions("camila").data.transactions) == 7
 
 
 def test_statement_that_does_not_add_up_is_stored_unverified_with_a_warning(services):
@@ -49,8 +64,11 @@ def test_statement_that_does_not_add_up_is_stored_unverified_with_a_warning(serv
     assert result.status is Status.OK
     assert result.data.statement.verified is False
     assert {i.code for i in result.data.statement.issues} == {"DAILY_BALANCE"}
-    (warning,) = result.warnings
-    assert warning.code == "STATEMENT_UNVERIFIED" and "DAILY_BALANCE" in warning.message
+    unverified, not_posted = result.warnings
+    assert unverified.code == "STATEMENT_UNVERIFIED" and "DAILY_BALANCE" in unverified.message
+    assert not_posted.code == "NOT_POSTED" and "does not reconcile" in not_posted.message
+    assert result.data.ledger.posted == 0 and result.data.ledger.classifier is None
+    assert services.ledger.list_transactions("camila").data.transactions == ()
 
     detail = services.statements.get_statement("camila", result.data.statement.statement_id)
     assert [w.code for w in detail.warnings] == ["STATEMENT_UNVERIFIED"]
@@ -89,8 +107,22 @@ class _FailingReader:
         raise self.error
 
 
-def _use_case(reader) -> StatementUseCases:
-    return StatementUseCases(reader, InMemoryStatementStore(), InMemoryAuditLog(), FixedClock(datetime(2026, 10, 29, tzinfo=UTC)), SequentialIds())
+class _KeywordClassifier:
+    """Deterministic stand-in: 'SH0P' is shopping, anything else is a coin toss."""
+
+    name = "keywords@test"
+
+    def classify(self, descriptions):
+        from neural_ledger.domain.ledger.categorization import CategoryGuess
+
+        return tuple(CategoryGuess("shopping", 0.9) if "SH0P" in d else CategoryGuess("dining", 0.5 - 1e-9) for d in descriptions)
+
+
+def _use_case(reader, classifier=None, transactions=None) -> StatementUseCases:
+    posting = LedgerPosting(classifier or _KeywordClassifier(), transactions if transactions is not None else InMemoryTransactionStore())
+    return StatementUseCases(
+        reader, InMemoryStatementStore(), posting, InMemoryAuditLog(), FixedClock(datetime(2026, 10, 29, tzinfo=UTC)), SequentialIds()
+    )
 
 
 class _FixedReader:
@@ -121,7 +153,7 @@ def test_low_ocr_confidence_warns_about_descriptions_but_does_not_unverify():
 
     broken = replace(statement, summary=replace(statement.summary, total_credits=10_001))
     codes = [w.code for w in _use_case(_FixedReader(broken)).import_statement("camila", b"%PDF-1.7 scan").warnings]
-    assert codes == ["STATEMENT_UNVERIFIED", "OCR_LOW_CONFIDENCE"]
+    assert codes == ["STATEMENT_UNVERIFIED", "OCR_LOW_CONFIDENCE", "NOT_POSTED"]
 
 
 def test_missing_ocr_is_insufficient_data_not_a_bad_file():

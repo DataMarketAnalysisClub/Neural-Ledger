@@ -2,12 +2,24 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/statement_import.schema.json",
   "title": "StatementImport",
-  "description": "data of POST /v1/statements. An unverified statement is still stored; a duplicate stores nothing new.",
+  "description": "data of POST /v1/statements. An unverified statement is still stored but not posted to the transaction ledger; a duplicate stores nothing new.",
   "type": "object",
-  "required": ["duplicate", "statement"],
+  "required": ["duplicate", "statement", "ledger"],
   "properties": {
     "duplicate": {"type": "boolean"},
-    "statement": {"$ref": "statement.schema.json#/$defs/summary"}
+    "statement": {"$ref": "statement.schema.json#/$defs/summary"},
+    "ledger": {
+      "type": "object",
+      "description": "Posting to the transaction ledger. posted = 0 and classifier = null when the statement was not posted (see the NOT_POSTED warning).",
+      "required": ["posted", "new", "uncategorized", "classifier"],
+      "properties": {
+        "posted": {"type": "integer", "minimum": 0, "description": "Transactions this statement contributes to the ledger."},
+        "new": {"type": "integer", "minimum": 0, "description": "Of those, added by this import (0 on a re-import)."},
+        "uncategorized": {"type": "integer", "minimum": 0, "description": "Charges whose category was not accepted."},
+        "classifier": {"type": ["string", "null"], "description": "Method and training-data hash that chose the categories, e.g. naive_bayes@3f2a9c1d04be."}
+      },
+      "additionalProperties": false
+    }
   },
   "additionalProperties": false
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from importlib.util import find_spec
 
 import pytest
 
@@ -107,5 +108,21 @@ def test_statement_outputs_and_audit_match_contracts(services):
     validate(detail["data"], "outputs/statement.schema.json")
 
     validate(to_primitive(services.statements.import_statement("camila", b"not a statement")), "common/envelope.schema.json")
+
+    # Same lines as the unverified one above, so the same statement_id: import it as another user.
+    verified = to_primitive(services.statements.import_statement("diego", santander_pdf()))
+    validate(verified["data"], "outputs/statement_import.schema.json")
+    transactions = to_primitive(services.ledger.list_transactions("diego"))
+    validate(transactions, "common/envelope.schema.json")
+    validate(transactions["data"], "outputs/transactions.schema.json")
+    if find_spec("sklearn"):
+        assert transactions["data"]["transactions"], "the posted path must be covered too"
     for event in services.audit.raw():
         validate(event.to_record(), "audit/audit_event.schema.json")
+
+
+def test_transaction_categories_match_the_domain_vocabulary():
+    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, UNCATEGORIZED
+
+    schema = json.loads((CONTRACTS / "outputs/transactions.schema.json").read_text())
+    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | {INCOME, UNCATEGORIZED}

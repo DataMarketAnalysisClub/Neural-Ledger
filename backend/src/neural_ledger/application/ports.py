@@ -21,7 +21,7 @@ from ..domain.actions.terms import (
 from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
-from ..domain.ledger.categorization import CategoryGuess
+from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.statements.model import BankStatement, StoredStatement
 from ..domain.user.profile import UserProfile
 from .conversation import Entry, ModelRequest, ModelTurn
@@ -110,6 +110,22 @@ class TransactionClassifier(Protocol):
 
     def classify(self, descriptions: Sequence[str]) -> Sequence[CategoryGuess]:
         """One guess per description, in the same order."""
+        ...
+
+
+@runtime_checkable
+class TransactionStore(Protocol):
+    """The transaction ledger built from imported statements, per user."""
+
+    def add(self, posted: Sequence[PostedTransaction]) -> int:
+        """Store the transactions this user does not have yet (by txn_id); existing ones keep their category.
+
+        Returns how many were new.
+        """
+        ...
+
+    def for_user(self, user_id: str) -> tuple[PostedTransaction, ...]:
+        """Oldest first: by date, then statement line."""
         ...
 
 

@@ -9,6 +9,7 @@ from .use_cases.actions import ActionUseCases
 from .use_cases.audit import AuditUseCases
 from .use_cases.chat import ChatUseCase
 from .use_cases.financial import FinancialUseCases
+from .use_cases.ledger import LedgerUseCases
 from .use_cases.profile import ProfileUseCases
 from .use_cases.statements import StatementUseCases
 
@@ -20,6 +21,7 @@ class ApplicationServices:
     profiles: ProfileUseCases
     audit: AuditUseCases
     statements: StatementUseCases
+    ledger: LedgerUseCases
     chat: ChatUseCase
     registry: ToolRegistry
     default_user: str
