@@ -1,5 +1,5 @@
 /**
- * Charts, built to the dataviz method: emphasis form (the series that matters in the accent hue,
+ * Charts, built to the dataviz method: emphasis form (the series that matters in ink,
  * context in gray), a named threshold for the safety floor, direct labels, a legend with line
  * samples, a crosshair tooltip, keyboard access, and a table view. Text never wears a series color.
  */
@@ -31,12 +31,26 @@ const COLORS = {
   axis: "var(--text-3)",
 };
 
-function compact(value: number, currency: string): string {
-  const abs = Math.abs(value);
+/** Round axis steps (1, 2, 2.5 or 5 times a power of ten) covering [min, max], with one unit for all ticks. */
+export function niceAxis(min: number, max: number, target = 5): { domain: [number, number]; ticks: number[]; unit: "M" | "k" | "" } {
+  const raw = (max - min || 1) / (target - 1);
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const step = ([1, 2, 2.5, 5, 10].find((m) => m * magnitude >= raw) ?? 10) * magnitude;
+  const lo = Math.floor(min / step) * step;
+  const hi = Math.ceil(max / step) * step;
+  const ticks: number[] = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v));
+  const peak = Math.max(Math.abs(lo), Math.abs(hi));
+  return { domain: [lo, hi], ticks, unit: peak >= 1_000_000 ? "M" : peak >= 1_000 ? "k" : "" };
+}
+
+function axisLabel(value: number, unit: "M" | "k" | ""): string {
   const sign = value < 0 ? "−" : "";
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(abs % 1_000_000 === 0 ? 0 : 1)}M`;
-  if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}k`;
-  return `${sign}${abs}${currency ? "" : ""}`;
+  const abs = Math.abs(value);
+  if (abs === 0) return "0";
+  if (unit === "M") return `${sign}${(abs / 1_000_000).toLocaleString("en-US", { maximumFractionDigits: 2 })}M`;
+  if (unit === "k") return `${sign}${(abs / 1_000).toLocaleString("en-US", { maximumFractionDigits: 1 })}k`;
+  return `${sign}${abs}`;
 }
 
 /** A legend entry whose sample matches the mark: solid or dashed line, or a swatch. */
@@ -98,9 +112,17 @@ export function ForecastChart({
   const values = points.flatMap((p) => [p.typical, p.conservative]).concat(floor, 0);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const pad = (max - min) * 0.08;
-  const domain: [number, number] = [Math.floor((min - pad) / 100_000) * 100_000, Math.ceil((max + pad) / 100_000) * 100_000];
+  // Axis geometry only: round steps and one unit for every tick (never mixing k and M).
+  const { domain, ticks, unit } = niceAxis(min, max);
   const breach = (binding?.conservativeHeadroom ?? 0) < 0;
+  // Direct labels need room on the right; on narrow screens the legend carries series identity instead.
+  const [width, setWidth] = useState(0);
+  const narrow = width > 0 && width < 560;
+  const note = binding
+    ? breach
+      ? t("overview.chart.below", { amount: formatMoney(binding.conservativeHeadroom, currency) })
+      : t("overview.chart.above", { amount: formatMoney(binding.conservativeHeadroom, currency) })
+    : "";
   const summary = binding
     ? t("overview.chart.summary", { amount: formatMoney(binding.conservative, currency), month: formatMonth(bindingMonth, "long"), floor: formatMoney(floor, currency) })
     : "";
@@ -112,7 +134,7 @@ export function ForecastChart({
           <h2 id="forecast-title" className="text-lg font-semibold text-ink">
             {t("overview.chart.title")}
           </h2>
-          <p className="mt-0.5 text-sm text-ink-3">{t("overview.chart.subtitle")}</p>
+          <p className="mt-0.5 text-sm text-ink-3">{t("overview.chart.subtitle", { currency })}</p>
         </div>
         <ul className="flex flex-wrap gap-x-5 gap-y-1" aria-label="Legend">
           <LegendItem label={t("overview.chart.conservative")} sample="solid" />
@@ -124,8 +146,8 @@ export function ForecastChart({
         {summary}
       </p>
       <div className="mt-4 h-72" role="img" aria-label={summary}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 28, right: 156, bottom: 4, left: 4 }} accessibilityLayer>
+        <ResponsiveContainer width="100%" height="100%" onResize={(w) => setWidth(w)}>
+          <LineChart data={points} margin={{ top: 36, right: narrow ? 12 : 156, bottom: 4, left: 4 }} accessibilityLayer>
             <CartesianGrid stroke={COLORS.grid} vertical={false} />
             <XAxis
               dataKey="month"
@@ -137,7 +159,8 @@ export function ForecastChart({
             />
             <YAxis
               domain={domain}
-              tickFormatter={(v: number) => compact(v, currency)}
+              ticks={ticks}
+              tickFormatter={(v: number) => axisLabel(v, unit)}
               tick={{ fill: COLORS.axis, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
@@ -151,14 +174,12 @@ export function ForecastChart({
               strokeWidth={1.5}
               strokeDasharray="8 3"
               label={(props: { viewBox?: { x: number; y: number; width: number } }) => {
+                // Inside the plot, right-aligned just above the floor line: never shares the tick row.
                 const vb = props.viewBox;
                 if (!vb) return <g />;
                 return (
-                  <text x={vb.x + vb.width + 10} y={vb.y} dy={4} fontSize={12} fill="var(--danger)">
-                    <tspan x={vb.x + vb.width + 10}>{t("overview.chart.floor")}</tspan>
-                    <tspan x={vb.x + vb.width + 10} dy={15}>
-                      {formatMoney(floor, currency)}
-                    </tspan>
+                  <text x={vb.x + vb.width - 4} y={vb.y - 6} textAnchor="end" fontSize={12} fontWeight={500} fill="var(--danger)">
+                    {t("overview.chart.floor")} {formatMoney(floor, currency)}
                   </text>
                 );
               }}
@@ -174,7 +195,7 @@ export function ForecastChart({
               dot={false}
               activeDot={{ r: 4, fill: COLORS.context, stroke: "var(--bg-surface)", strokeWidth: 2 }}
               isAnimationActive={false}
-              label={<EndLabel last={points.length - 1} text={t("overview.chart.typical")} color="var(--text-2)" />}
+              label={narrow ? undefined : <EndLabel last={points.length - 1} text={t("overview.chart.typical")} color="var(--text-2)" />}
             />
             <Line
               type="linear"
@@ -185,7 +206,7 @@ export function ForecastChart({
               dot={{ r: 4, fill: COLORS.focus, stroke: "var(--bg-surface)", strokeWidth: 2 }}
               activeDot={{ r: 5, fill: COLORS.focus, stroke: "var(--bg-surface)", strokeWidth: 2 }}
               isAnimationActive={false}
-              label={<EndLabel last={points.length - 1} text={t("overview.chart.conservative")} color="var(--text)" />}
+              label={narrow ? undefined : <EndLabel last={points.length - 1} text={t("overview.chart.conservative")} color="var(--text)" />}
             />
             {binding && (
               <ReferenceDot
@@ -195,16 +216,22 @@ export function ForecastChart({
                 fill={breach ? "var(--danger)" : COLORS.focus}
                 stroke="var(--bg-surface)"
                 strokeWidth={2}
-                label={{
-                  value: breach
-                    ? t("overview.chart.below", { amount: formatMoney(binding.conservativeHeadroom, currency) })
-                    : t("overview.chart.above", { amount: formatMoney(binding.conservativeHeadroom, currency) }),
-                  // A breach sits at the bottom of the plot, so its note goes above; a near miss has room below.
-                  position: breach ? "top" : "bottom",
-                  offset: breach ? 14 : 22,
-                  fill: "var(--text)",
-                  fontSize: 12,
-                  fontWeight: 600,
+                label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
+                  // The note sits in the top margin with a leader line down to the point, so it never
+                  // collides with the axes, the floor or either series, whatever the data looks like.
+                  const vb = props.viewBox;
+                  if (!vb) return <g />;
+                  const cx = vb.x + vb.width / 2;
+                  const cy = vb.y + vb.height / 2;
+                  const anchor = width && cx > width * 0.65 ? "end" : width && cx < width * 0.3 ? "start" : "middle";
+                  return (
+                    <g>
+                      <line x1={cx} y1={18} x2={cx} y2={cy - 9} stroke="var(--text-3)" strokeWidth={1} strokeDasharray="2 2" />
+                      <text x={cx} y={12} textAnchor={anchor} fontSize={12} fontWeight={600} fill={breach ? "var(--danger)" : "var(--text)"}>
+                        {note}
+                      </text>
+                    </g>
+                  );
                 }}
               />
             )}
@@ -262,7 +289,7 @@ function ForecastTooltip({ active, payload, label, currency, floor }: TooltipPro
   const point = payload[0]?.payload as ForecastPoint | undefined;
   if (!point) return null;
   return (
-    <div className="rounded-control border border-line bg-surface px-3 py-2 text-xs shadow-object">
+    <div className="rounded-object border border-line bg-surface px-3 py-2 text-xs shadow-object">
       <p className="mb-1.5 font-medium text-ink">{formatMonth(String(label), "long")}</p>
       <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1">
         <dt className="text-ink-2">{t("overview.chart.conservative")}</dt>
@@ -385,7 +412,7 @@ export function CommitmentBars({ months, currency }: { months: CommitmentMonth[]
           <h2 id="commit-chart-title" className="text-lg font-semibold text-ink">
             {t("commitments.chart.title")}
           </h2>
-          <p className="mt-0.5 text-sm text-ink-3">{t("commitments.chart.subtitle")}</p>
+          <p className="mt-0.5 text-sm text-ink-3">{t("commitments.chart.subtitle", { currency })}</p>
         </div>
         <ul className="flex gap-5" aria-label="Legend">
           <LegendItem label={t("commitments.chart.debt")} sample="swatch-focus" />
@@ -398,8 +425,8 @@ export function CommitmentBars({ months, currency }: { months: CommitmentMonth[]
             <span className="sr-only">
               {t("commitments.chart.summary", { month: formatMonth(m.month, "long"), total: moneyForSpeech(m.total, currency), debt: moneyForSpeech(m.debt, currency) })}
             </span>
-            <span aria-hidden className="num mb-2 text-xs font-medium text-ink">
-              {compact(m.total, currency)}
+            <span aria-hidden className="num mb-2 text-center text-[11px] leading-tight font-medium text-ink sm:text-xs">
+              {formatMoney(m.total, currency)}
             </span>
             <div aria-hidden className="flex h-40 w-6 flex-col justify-end">
               <div

@@ -59,7 +59,7 @@ function PersonaSwitcher() {
               key={id}
               className={cn(
                 "flex cursor-pointer flex-col rounded-[4px] px-2.5 py-1.5 transition-colors duration-150",
-                selected ? "bg-surface text-ink shadow-[0_1px_2px_rgb(20_24_31/0.08)]" : "text-ink-2 hover:text-ink",
+                selected ? "bg-surface text-ink ring-1 ring-line" : "text-ink-2 hover:text-ink",
               )}
             >
               <input type="radio" name="persona" value={id} checked={selected} onChange={() => setPersona(id)} className="sr-only" />
@@ -119,8 +119,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="px-4 pb-4">
           <PersonaSwitcher />
         </div>
-        <nav aria-label={t("nav.label")} className="overflow-x-auto px-3 pb-3 lg:flex-1 lg:overflow-y-auto">
-          <ul className="flex gap-1 lg:flex-col">
+        <nav aria-label={t("nav.label")} className="px-3 pb-3 lg:flex-1 lg:overflow-y-auto">
+          {/* Below lg every item stays visible in a grid; nothing hides off-screen. */}
+          <ul className="grid grid-cols-3 gap-1 sm:grid-cols-6 lg:flex lg:flex-col">
             {NAV.filter((n) => !n.hidden).map(({ to, label, icon: IconCmp }) => (
               <li key={to}>
                 <NavLink
@@ -128,8 +129,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   end={to === "/"}
                   className={({ isActive }) =>
                     cn(
-                      "flex h-10 items-center gap-3 rounded-control px-3 text-sm whitespace-nowrap transition-colors duration-150",
-                      isActive ? "bg-surface font-medium text-ink shadow-[0_1px_2px_rgb(20_24_31/0.06)]" : "text-ink-2 hover:bg-surface/60 hover:text-ink",
+                      "flex min-h-11 flex-col items-center justify-center gap-1 rounded-control px-1.5 py-1.5 text-center text-xs leading-tight transition-colors duration-150 lg:h-10 lg:min-h-0 lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:py-0 lg:text-left lg:text-sm lg:whitespace-nowrap",
+                      isActive ? "bg-surface font-medium text-ink ring-1 ring-line" : "text-ink-2 hover:bg-surface/60 hover:text-ink",
                     )
                   }
                 >

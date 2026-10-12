@@ -90,6 +90,20 @@ describe("VerdictBanner", () => {
     expect(screen.getByText("Nothing changed. The attempt was recorded.")).toBeInTheDocument();
   });
 
+  it("keeps each banner's label unique when several are on screen", () => {
+    render(
+      <>
+        <VerdictBanner reason="AUTHORIZATION_MISMATCH" currency="CLP" compact />
+        <VerdictBanner reason="AUTHORIZATION_EXPIRED" currency="CLP" />
+      </>,
+    );
+    const alerts = screen.getAllByRole("alert");
+    const ids = alerts.map((a) => a.getAttribute("aria-labelledby"));
+    expect(new Set(ids).size).toBe(2);
+    expect(alerts[0]).toHaveAccessibleName(/does not match/);
+    expect(alerts[1]).toHaveAccessibleName(/expired/);
+  });
+
   it("falls back to a generic reason for unknown codes", () => {
     render(<VerdictBanner reason="SOMETHING_NEW" currency="CLP" />);
     expect(screen.getByRole("alert")).toHaveTextContent("The action was refused.");

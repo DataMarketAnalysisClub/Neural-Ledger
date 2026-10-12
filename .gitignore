@@ -41,3 +41,6 @@ evidence/test-results/*.xml
 commit_message.txt
 resumen-*.md
 .impeccable/
+# Playwright artifacts
+web/test-results/
+web/playwright-report/

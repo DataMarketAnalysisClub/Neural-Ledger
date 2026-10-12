@@ -1,4 +1,4 @@
-import { cloneElement, useId, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
+import { cloneElement, useId, useRef, useState, type FormEvent, type ReactElement } from "react";
 import { ArrowRight, CheckCircle, Prohibit, Warning, WarningOctagon } from "@phosphor-icons/react";
 import { useFinancialState, useSimulatePurchase, type IncludePlan, type PurchaseInput, type PurchaseSimulation } from "@/api/hooks";
 import { ApiError } from "@/api/client";
@@ -34,6 +34,7 @@ export function SimulatorPage() {
   const resultRef = useRef<HTMLDivElement>(null);
   const ids = { amount: useId(), installments: useId(), first: useId(), rate: useId(), plan: useId(), note: useId() };
   const currency = state.data?.data?.currency ?? "CLP";
+  const monthOptions = monthsFrom(state.data?.data?.first_cycle, 12);
 
   // The server is the authority on validity; this only catches empty or non-numeric input early.
   const serverField = simulate.error instanceof ApiError ? simulate.error.detail.field : null;
@@ -91,7 +92,14 @@ export function SimulatorPage() {
                 </select>
               </Field>
               <Field id={ids.first} label={t("simulator.form.firstMonth")} hint={t("simulator.form.firstMonthHint")} error={fieldError("firstMonth", "first_installment_month")}>
-                <input id={ids.first} type="month" value={form.firstMonth} onChange={(e) => update("firstMonth", e.target.value)} />
+                <select id={ids.first} value={form.firstMonth} onChange={(e) => update("firstMonth", e.target.value)}>
+                  <option value="">{t("simulator.form.firstMonthDefault")}</option>
+                  {monthOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {formatMonth(m)}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
             <Field id={ids.rate} label={t("simulator.form.rate")} hint={t("simulator.form.rateHint")} error={fieldError("rate", "monthly_rate")}>
@@ -120,6 +128,16 @@ export function SimulatorPage() {
           {!result && !simulate.isError && <EmptyState title={t("simulator.empty")} />}
           {result && envelope && (
             <div className="space-y-10">
+              {(() => {
+                const limiting = result.impacts.find((i) => i.scenario === "conservative") ?? result.impacts[0];
+                return (
+                  <h2 className="text-xl font-semibold text-ink">
+                    {result.verdict === "FITS_ALL" || !limiting
+                      ? t("simulator.headline.fits")
+                      : t("simulator.headline.limits", { month: formatMonth(limiting.binding_month_after, "long") })}
+                  </h2>
+                );
+              })()}
               <Notice
                 tone={verdictTone(result.verdict)}
                 icon={result.verdict === "FITS_ALL" ? CheckCircle : result.verdict === "FITS_TYPICAL_ONLY" ? Warning : result.verdict === "BASELINE_BREACH" ? Prohibit : WarningOctagon}
@@ -128,17 +146,15 @@ export function SimulatorPage() {
                 {tDynamic("simulator.verdictBody", result.verdict)}
               </Notice>
 
-              <dl className="grid gap-6 sm:grid-cols-3">
-                <Figure label={t("simulator.quote.installment")} value={formatMoney(result.quote.installment, currency)}>
-                  {t("simulator.quote.installmentDetail", { count: result.quote.installments, month: formatMonth(result.first_installment_month) })}
-                </Figure>
-                <Figure label={t("simulator.quote.total")} value={formatMoney(result.quote.total_cost, currency)}>
-                  {t("simulator.quote.interest", { amount: formatMoney(result.quote.total_interest, currency) })}
-                </Figure>
-                <Figure label={t("simulator.quote.earLabel")} value={formatPercent(result.quote.effective_annual_rate)}>
-                  {t("simulator.quote.monthly", { rate: formatPercent(result.quote.monthly_rate) })}
-                </Figure>
-              </dl>
+              {/* The quote as one line of engine facts, not a row of equal tiles. */}
+              <p className="num max-w-prose text-base leading-relaxed text-ink-2">
+                <strong className="font-semibold text-ink">{formatMoney(result.quote.installment, currency)}</strong>{" "}
+                {t("simulator.quote.line1", { count: result.quote.installments, month: formatMonth(result.first_installment_month) })}{" "}
+                <strong className="font-semibold text-ink">{formatMoney(result.quote.total_cost, currency)}</strong>{" "}
+                {t("simulator.quote.line2", { interest: formatMoney(result.quote.total_interest, currency) })}{" "}
+                <strong className="font-semibold text-ink">{formatPercent(result.quote.effective_annual_rate)}</strong>{" "}
+                {t("simulator.quote.line3", { rate: formatPercent(result.quote.monthly_rate) })}
+              </p>
 
               {envelope.warnings.length > 0 && (
                 <Section id="assumptions" title={t("warnings.title")}>
@@ -209,16 +225,6 @@ export function SimulatorPage() {
   );
 }
 
-function Figure({ label, value, children }: { label: string; value: string; children?: ReactNode }) {
-  return (
-    <div className="border-t border-ink pt-3">
-      <dt className="text-sm text-ink-2">{label}</dt>
-      <dd className="num mt-1 text-xl font-semibold text-ink">{value}</dd>
-      {children && <dd className="num mt-1 text-xs text-ink-3">{children}</dd>}
-    </div>
-  );
-}
-
 /** Label above, control, hint, and error below; the control gets aria-describedby and aria-invalid. */
 export function Field({
   id,
@@ -265,4 +271,15 @@ export function Field({
       )}
     </div>
   );
+}
+
+/** Month options ("YYYY-MM") starting at the first projected cycle. Calendar arithmetic only. */
+function monthsFrom(start: string | undefined, count: number): string[] {
+  if (!start) return [];
+  const [y, m] = start.split("-").map(Number);
+  if (!y || !m) return [];
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(Date.UTC(y, m - 1 + i, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
 }

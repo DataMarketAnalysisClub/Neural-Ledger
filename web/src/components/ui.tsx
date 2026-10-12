@@ -13,11 +13,10 @@ import { ApiError, NetworkError, type Fact } from "@/api/client";
 import { formatAmount, formatMoney, moneyForSpeech } from "@/lib/format";
 import { t } from "@/i18n";
 
-// Teach the merger our custom tokens so `text-hero` (a size) is not dropped next to `text-ink` (a color).
+// Teach the merger our custom tokens so they are not dropped next to built-in utilities of the same family.
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      "font-size": [{ text: ["hero"] }],
       rounded: [{ rounded: ["control", "object"] }],
       shadow: [{ shadow: ["object"] }],
     },
@@ -42,7 +41,7 @@ const button = cva(
         money: "bg-accent text-on-accent hover:bg-accent-hover disabled:bg-control aria-disabled:opacity-60",
         secondary: "bg-surface text-ink border border-control hover:bg-canvas active:scale-[0.97] aria-disabled:opacity-60",
         quiet: "text-ink-2 hover:text-ink hover:bg-rail",
-        danger: "bg-danger text-white hover:opacity-90",
+        danger: "bg-danger text-on-accent hover:bg-danger-hover",
       },
       size: { sm: "h-8 px-3", md: "h-10 px-4", lg: "h-11 px-5 text-base" },
     },
@@ -170,7 +169,7 @@ export function Section({
 }
 
 export function Surface({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("rounded-object border border-line bg-surface", className)}>{children}</div>;
+  return <div className={cn("rounded-control border border-line bg-surface", className)}>{children}</div>;
 }
 
 // ---- Money with provenance -------------------------------------------------------------------------
@@ -269,7 +268,7 @@ export function Loading({ label = t("common.loading"), className }: { label?: st
 
 export function EmptyState({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-start gap-3 rounded-object border border-dashed border-control/60 px-6 py-8">
+    <div className="flex flex-col items-start gap-3 rounded-control border border-dashed border-control/60 px-6 py-8">
       <p className="text-base font-medium text-ink">{title}</p>
       {children && <div className="max-w-prose text-sm text-ink-2">{children}</div>}
       {action}

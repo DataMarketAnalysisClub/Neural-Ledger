@@ -73,10 +73,12 @@ export const en = {
       shortfall: "Shortfall",
       caption:
         "Each payday cycle adds income and subtracts commitments and conservative spending. The lowest point before payday, minus the safety floor, is what is protected.",
+      captionShort:
+        "Each payday cycle adds income and subtracts commitments and conservative spending. When the lowest point before payday, minus the safety floor, is below zero, that gap is the shortfall.",
     },
     chart: {
       title: "Balance just before each payday",
-      subtitle: "Next six months, typical and conservative spending",
+      subtitle: "Next six months, typical and conservative spending. Amounts in {currency}.",
       typical: "Typical month",
       conservative: "Conservative month",
       floor: "Safety floor",
@@ -113,7 +115,7 @@ export const en = {
     types: { rent: "Rent", subscription: "Subscription", installment: "Installment plan", loan: "Loan" },
     chart: {
       title: "Commitments by month",
-      subtitle: "Debt payments and fixed costs",
+      subtitle: "Debt payments and fixed costs. Amounts in {currency}.",
       debt: "Debt payments",
       fixed: "Fixed costs",
       summary: "{month}: {total} committed, of which {debt} is debt.",
@@ -135,7 +137,8 @@ export const en = {
       amountHint: "Between 1 and 100,000,000 {currency}.",
       installments: "Installments",
       firstMonth: "First installment",
-      firstMonthHint: "Leave empty to assume next month.",
+      firstMonthHint: "Leave on next month unless the card says otherwise.",
+      firstMonthDefault: "Next month",
       rate: "Monthly interest rate (%)",
       rateHint: "Leave empty to assume the default rate.",
       plan: "Savings plan in the projection",
@@ -155,7 +158,14 @@ export const en = {
       BREACHES_ALL: "Even a typical month would drop below the safety floor.",
       BASELINE_BREACH: "The conservative path already breaches the floor. The cuota is not the problem to solve first.",
     },
+    headline: {
+      limits: "{month} limits this purchase",
+      fits: "Every coming month can carry this purchase",
+    },
     quote: {
+      line1: "a month for {count} cuotas from {month}, so",
+      line2: "in total ({interest} of interest), an effective annual rate of",
+      line3: "({rate} a month).",
       installment: "Monthly cuota",
       installmentDetail: "{count} cuotas from {month}",
       total: "Total cost",

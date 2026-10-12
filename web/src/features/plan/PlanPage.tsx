@@ -71,7 +71,7 @@ export function PlanPage() {
                   key={level}
                   className={cn(
                     "cursor-pointer rounded-[4px] px-3 py-1.5 text-sm transition-colors duration-150",
-                    level === tolerance ? "bg-surface font-medium text-ink shadow-[0_1px_2px_rgb(20_24_31/0.08)]" : "text-ink-2 hover:text-ink",
+                    level === tolerance ? "bg-surface font-medium text-ink ring-1 ring-line" : "text-ink-2 hover:text-ink",
                   )}
                 >
                   <input type="radio" name="tolerance" value={level} checked={level === tolerance} onChange={() => setTolerance(level)} className="sr-only" />

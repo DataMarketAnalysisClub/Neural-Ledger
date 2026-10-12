@@ -3,7 +3,7 @@
  * Created; terms are read-only and are sent back exactly as received. Execution is a separate step.
  * Nothing changes on screen until the API answers.
  */
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Check, LockSimple, Prohibit, SealCheck } from "@phosphor-icons/react";
 import type { ActionOutcome, ActionTerms } from "@/api/client";
 import { useCountdown } from "@/lib/expiry";
@@ -35,18 +35,22 @@ export function VerdictBanner({
   compact?: boolean;
 }) {
   const hasAmounts = typeof authorized === "number" && typeof requested === "number";
+  // Several banners can be on screen at once (chat and receipt), so the label id must be unique.
+  const titleId = useId();
+  // Inline (compact) banners sit inside another section, so they take the next heading level.
+  const Heading = compact ? "h3" : "h2";
   return (
     <section
       role="alert"
-      aria-labelledby="verdict-title"
-      className={cn("rounded-object border border-danger/40 bg-danger-bg", compact ? "p-4" : "p-6")}
+      aria-labelledby={titleId}
+      className={cn("rounded-control border border-danger/40 bg-danger-bg", compact ? "p-4" : "p-6")}
     >
       <div className="flex items-start gap-3">
         <Prohibit aria-hidden weight="bold" className={cn("shrink-0 text-danger", compact ? "mt-0.5 size-5" : "size-7")} />
         <div className="min-w-0 flex-1">
-          <h2 id="verdict-title" className={cn("font-semibold text-danger", compact ? "text-sm" : "text-lg")}>
+          <Heading id={titleId} className={cn("font-semibold text-danger", compact ? "text-sm" : "text-lg")}>
             {t("blocked.title")}: {tDynamic("blocked.reasons", reason, "blocked.reasons.UNKNOWN")}
-          </h2>
+          </Heading>
           {hasAmounts && (
             <dl className={cn("mt-4 grid max-w-md grid-cols-2 gap-4", compact && "mt-3")}>
               <div>
@@ -110,7 +114,7 @@ function Stepper({ stage }: { stage: Stage }) {
 
 function TermRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 border-b border-line py-2.5 last:border-0">
+    <div className="flex items-baseline justify-between gap-6 border-b border-line py-1.5 last:border-0">
       <dt className="text-sm text-ink-2">{label}</dt>
       <dd className="text-right text-sm font-medium text-ink">{children}</dd>
     </div>
@@ -153,7 +157,7 @@ function Validity({ expiresAt, kind }: { expiresAt: string; kind: "proposal" | "
       <p className="sr-only" aria-live="polite">
         {announce}
       </p>
-      <p className="mt-1 text-ink-3">{t("receipt.validity.explain")}</p>
+      {kind === "proposal" && <p className="mt-1 text-ink-3">{t("receipt.validity.explain")}</p>}
     </div>
   );
 }
@@ -188,7 +192,7 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
 
   if (!stage || !terms) {
     return (
-      <div className="rounded-object border border-dashed border-control/60 p-6">
+      <div className="rounded-control border border-dashed border-control/60 p-6">
         <p className="text-base font-medium text-ink">{t("receipt.title")}</p>
         <p className="mt-2 text-sm text-ink-2">{t("receipt.empty")}</p>
       </div>
@@ -199,7 +203,7 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
   const frequency = tDynamic("receipt.terms.frequencies", terms.frequency).toLowerCase();
 
   return (
-    <article aria-labelledby="receipt-title" className="rounded-object border border-line bg-surface p-6 shadow-object">
+    <article aria-labelledby="receipt-title" className={cn("rounded-object border bg-surface p-6 transition-shadow duration-200", stage === "pending" ? "border-line" : "border-ink/20 shadow-object")}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="receipt-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-ink outline-none">
@@ -227,7 +231,7 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
         <Stepper stage={stage} />
       </div>
 
-      <p className="num mt-6 text-2xl font-semibold tracking-[-0.02em] text-ink">
+      <p className="num mt-5 text-2xl font-semibold tracking-[-0.02em] text-ink">
         {amount} <span className="text-base font-normal text-ink-2">{frequency}</span>
       </p>
 

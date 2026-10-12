@@ -53,3 +53,13 @@ Short records of architecture decisions. Status starts as **Proposed**; the team
 - `c_max = min over months of H_m / k_m` for the largest affordable amount.
 - Seasonal factors stored exactly (`Fraction`), e.g. 49/30, not 1.633.
 **Owner:** Role A confirms or replaces these in `domain/finance/`.
+
+### ADR-025 · Frontend stack and design system (closes D-04) · Proposed
+**Context:** D-04 left the framework to Role D ("fastest stack, web first"). The Figma mockup was audited with WCAG, UX and several design skills; the findings asked for a minimalist, accessible UI that does not read as a generic AI dashboard, legible in a compressed demo video and for international judges.
+**Decision:**
+- Stack: React 18 + Vite + TypeScript + Tailwind v4, Radix primitives, Recharts, TanStack Query, Phosphor icons, Geist (self-hosted). Types are generated from `contracts/` (`npm run contracts`); served by nginx in `docker compose`, which proxies `/api` to the API.
+- Style: minimalist with flat surfaces; cool neutrals with a cobalt accent reserved for action, focus, selection and the current step; green, amber and red only as states, always with icon and words. Tokens in three layers in `web/src/index.css`; the design record is `docs/DESIGN.md`.
+- Language and money: English first with every string in `web/src/i18n/en.ts` (more languages are new files); every amount shows its ISO code (`CLP 1,500,000`). The UI formats engine facts and never computes money.
+- `/health` exposes `server_time` so countdowns use the API clock (fixed in recorded demos).
+- The statements screen stays behind `VITE_FEATURE_STATEMENTS` until `/v1/statements` reaches `main`.
+**Consequences:** the UI is one adapter over the contracts; a framework swap touches only `web/`. Open items for other roles: a typed `pending_proposal`, a flag for "the verifier replaced the reply", an HTTP profile endpoint, structured amounts in audit events, a purchase-segment breakdown for the simulator, and ISO-formatted amounts and month names in the copilot's narration.

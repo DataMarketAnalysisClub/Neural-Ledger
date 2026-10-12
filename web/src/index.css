@@ -34,6 +34,7 @@
   --p-amber-700: #9a5800;
   --p-red-50: #fef0ee;
   --p-red-700: #b42318;
+  --p-red-800: #8f1c13;
 }
 
 /* ---- Layer 2: semantic roles. Contrast verified (WCAG AA) for every text/ground pair used. ---- */
@@ -56,8 +57,10 @@
   --warning-bg: var(--p-amber-50);
   --danger: var(--p-red-700);
   --danger-bg: var(--p-red-50);
-  /* Data: emphasis form (one series in the accent hue, context in gray), validated with dataviz/validate_palette. */
-  --series-focus: var(--p-cobalt-600);
+  --danger-hover: var(--p-red-800);
+  --danger-hatch: rgb(180 35 24 / 0.22);
+  /* Data: emphasis form (the series that matters in ink, context in gray, also told apart by line style). */
+  --series-focus: var(--p-gray-950); /* ink: cobalt is reserved for action, focus and selection */
   --series-context: var(--p-gray-500);
   --floor: var(--p-red-700);
   --grid: var(--p-gray-200);
@@ -93,6 +96,7 @@
   --color-warning-bg: var(--warning-bg);
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
+  --color-danger-hover: var(--danger-hover);
 
   --radius-control: var(--radius-control);
   --radius-object: var(--radius-object);
@@ -112,8 +116,6 @@
   --text-xl--line-height: 2rem;
   --text-2xl: 2rem;
   --text-2xl--line-height: 2.5rem;
-  --text-hero: 3.5rem;
-  --text-hero--line-height: 1;
 }
 
 /* ---- Base and browser surfaces (in the base layer so utilities like outline-none win) ---- */

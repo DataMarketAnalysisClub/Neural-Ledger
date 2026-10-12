@@ -106,8 +106,8 @@ export function CopilotPage() {
       <PageHeader title={t("copilot.title")} subtitle={t("copilot.subtitle")} />
 
       <div className="grid gap-10 xl:grid-cols-[1fr_400px]">
-        <section aria-label={t("copilot.title")} className="flex min-h-[560px] min-w-0 flex-col rounded-object border border-line bg-surface">
-          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="max-h-[70dvh] flex-1 space-y-6 overflow-y-auto p-6">
+        <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-15rem)] min-h-[440px] min-w-0 flex-col rounded-control border border-line bg-surface">
+          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
             {messages.length === 0 && (
               <li className="text-sm text-ink-2">
                 <p>{t("copilot.empty")}</p>
@@ -137,14 +137,14 @@ export function CopilotPage() {
           )}
 
           <div className="border-t border-line p-4">
-            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={t("copilot.suggestions")}>
+            <div className="-mx-1 mb-3 flex flex-wrap gap-2 px-1" role="group" aria-label={t("copilot.suggestions")}>
               {prompts.map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => send(p)}
                   disabled={chat.isPending}
-                  className="h-8 rounded-full border border-line bg-canvas px-3 text-xs text-ink-2 transition-colors duration-150 hover:border-control hover:text-ink disabled:opacity-50"
+                  className="h-8 shrink-0 rounded-full border border-line bg-canvas px-3 text-xs whitespace-nowrap text-ink-2 transition-colors duration-150 hover:border-control hover:text-ink disabled:opacity-50"
                 >
                   {p}
                 </button>
@@ -198,7 +198,7 @@ export function CopilotPage() {
 function UserBubble({ text }: { text: string }) {
   return (
     <li className="flex justify-end">
-      <div className="max-w-[65ch] rounded-object rounded-br-[4px] bg-ink px-4 py-3 text-sm text-white">
+      <div className="max-w-[65ch] rounded-control rounded-br-[2px] bg-ink px-4 py-3 text-sm text-white">
         <span className="sr-only">{t("copilot.you")}: </span>
         {text}
       </div>
@@ -215,7 +215,7 @@ function CopilotTurn({ message, currency }: { message: Message; currency: string
         <ChatText aria-hidden className="size-4" />
         {t("copilot.voice")}
       </p>
-      <div className="rounded-object rounded-tl-[4px] border border-line bg-canvas px-4 py-3 text-[15px] leading-relaxed text-ink">
+      <div className="rounded-control rounded-tl-[2px] border border-line bg-canvas px-4 py-3 text-[15px] leading-relaxed text-ink">
         {/* Plain text only: model output is never rendered as markup. */}
         <p className="whitespace-pre-line">{message.text}</p>
       </div>
@@ -235,7 +235,7 @@ function CopilotTurn({ message, currency }: { message: Message; currency: string
           {reply.fallback_used ? (
             <StatusBadge tone="neutral">{t("copilot.replaced")}</StatusBadge>
           ) : reply.verification?.ok ? (
-            <StatusBadge tone="accent" icon={SealCheck}>
+            <StatusBadge tone="positive" icon={SealCheck}>
               {t("copilot.verified")}
             </StatusBadge>
           ) : null}
