@@ -31,6 +31,7 @@ bootstrap ────────────┘  (wires concrete adapters into
 | An HTTP endpoint | `adapters/inbound/http/app.py` (thin: parse → use case → `to_primitive`) | `tests/http` |
 | A config switch | `bootstrap/config.py` + `.env.example` + `container.py` | — |
 | A new bank statement layout (cartola) | a `Bank` subclass in `adapters/outbound/statements/banks/` (recipe below) | `tests/adapters/test_banks.py` with a synthetic sample |
+| A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes
@@ -65,6 +66,23 @@ bytes ─► ocr_tabular.read_pages ─► Page (word boxes: PDF text layer, or 
 5. Add a synthetic sample next to `tests/statement_samples.py` that draws the layout with fictional data, and tests for the happy path and for a misprinted total. `test_local_real_cartolas_reconcile` also runs on whatever is in your local `cartolas/`.
 
 Amounts are evidence, not authority: a statement that does not reconcile is stored as **unverified** with a `STATEMENT_UNVERIFIED` warning, and low OCR confidence only warns (`OCR_LOW_CONFIDENCE`), because reconciliation already checks every amount and date.
+
+### Categorize statement lines (change the classifier)
+A verified statement is posted to the transaction ledger on import:
+
+```
+StoredStatement (verified) ─► charges' descriptions ─► TransactionClassifier.classify ─► CategoryGuess per charge   ← adapter (swappable)
+      ─► domain post_statement: amount and kind from the statement; guess accepted only if in CATEGORIES and ≥ 0.5   ← domain (fixed)
+      ─► TransactionStore (once per user and txn_id) ─► GET /v1/transactions, `neural-ledger transactions`
+```
+
+Deposits are `income` by rule; charges are `purchase` with the accepted category or `uncategorized`. Every transaction records which classifier (name + training-data hash) chose its category, and its confidence. An unverified statement, or an unavailable classifier, posts nothing and warns `NOT_POSTED`; importing the file again backfills.
+
+- **Another scikit-learn estimator:** pass another pipeline factory, e.g. `SklearnTextClassifier(my_factory, method="logreg")`, and register it under a new name in `CLASSIFIERS`. Select it with `NL_CLASSIFIER`.
+- **Another method entirely** (rules, an LLM, a remote model): implement `classify(descriptions) -> [CategoryGuess]` and a `name` in `adapters/outbound/classifier/<method>.py`, raise `ClassifierUnavailable` when it cannot answer, and register it. Nothing else changes.
+- **Better categories:** add labelled rows to `adapters/outbound/classifier/training/categories.csv` (`description,category`, labels from `CATEGORIES`). The classifier's name changes with the data, so old and new categorizations stay distinguishable. Never add rows from a real statement: the repository is public.
+
+Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet.
 
 ### Switch from fixtures to the ledger (Roles A, C, E)
 1. E: the generator writes `data/ledgers/<user>.json` (a `LedgerSnapshot`) from the calibration targets.
