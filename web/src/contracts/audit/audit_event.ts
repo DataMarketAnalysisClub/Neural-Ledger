@@ -25,7 +25,8 @@ export interface AuditEvent {
     | "EXECUTION_STARTED"
     | "ACTION_EXECUTED"
     | "ACTION_FAILED"
-    | "ACTION_BLOCKED";
+    | "ACTION_BLOCKED"
+    | "STATEMENT_IMPORTED";
   user_intent?: string | null;
   intent_confidence?: number | null;
   tool_requested?: string | null;
