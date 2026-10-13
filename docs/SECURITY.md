@@ -39,6 +39,8 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 | S10 | Decision model or LLM unavailable | Read-only turn / scripted fallback | `DECISION` (answered_by none) | `test_s10_…` (×2) |
 | S11 | Duplicate execution (8 concurrent) | Exactly one execution | `AUTHORIZATION_REPLAYED` | `test_s11_…` |
 | S12 | Malformed financial input | `INVALID_INPUT` / `INSUFFICIENT_DATA`; no engine runs | — | `test_s12_…` |
+| S13 | Jev is fooled: no injection flagged, confident harmless intent, gate opens | Add-beneficiary and forged-authorization attempts still blocked; no rule is created | `ACTION_BLOCKED` (`NEW_BENEFICIARY`, `AUTHORIZATION_NOT_FOUND`) | `test_s13_…` (×3) |
+| S14 | Jev down while the chain is `jev,rules` | Rules answer and still flag the attack | `INJECTION_FLAGGED` | `test_s14_…` |
 | — | Audit log tampering | Chain verification fails at the edited event | — | `test_audit_chain_detects_tampering` |
 | — | Reading another user's audit trail (same session id) | Empty result; chain status still reported | — | `test_audit_reads_are_scoped_to_the_caller` |
 

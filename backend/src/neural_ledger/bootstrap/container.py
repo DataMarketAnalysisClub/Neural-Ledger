@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from ..adapters.outbound.bank.simulated import SimulatedSandboxBank
 from ..adapters.outbound.classifier.sklearn_text import SklearnTextClassifier, naive_bayes
-from ..adapters.outbound.decision.jev import JevDecisionModel
+from ..adapters.outbound.decision.jev import OPENROUTER_BASE_URL, JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
 from ..adapters.outbound.fixtures.ledger_source import LedgerModelSource
 from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
@@ -74,6 +74,13 @@ class Adapters:
     source: PersonaFixtureSource | LedgerModelSource
 
 
+def _jev(s: Settings) -> JevDecisionModel:
+    """Jev through OpenRouter when its key is set (D-02); a TypeSafe key is only the direct path to the same API."""
+    if s.openrouter_api_key or not s.typesafe_api_key:
+        return JevDecisionModel(s.openrouter_api_key, s.jev_model, base_url=OPENROUTER_BASE_URL)
+    return JevDecisionModel(s.typesafe_api_key, s.jev_model)
+
+
 def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapters]:
     s = settings or Settings.from_env()
     if s.hmac_secret == DEV_SECRET and s.mode == "live":
@@ -112,7 +119,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         if name == "rules":
             models.append(RulesDecisionModel())
         elif name == "jev":
-            models.append(JevDecisionModel(s.typesafe_api_key, s.jev_model))
+            models.append(_jev(s))
         else:
             raise ValueError(f"unknown decision model {name!r} in NL_DECISION_CHAIN")
     decisions = DecisionService(models, AP_0_1)
