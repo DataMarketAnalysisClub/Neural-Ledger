@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..adapters.outbound.bank.simulated import SimulatedSandboxBank
+from ..adapters.outbound.classifier.sklearn_text import SklearnTextClassifier, naive_bayes
 from ..adapters.outbound.decision.jev import JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
 from ..adapters.outbound.fixtures.ledger_source import LedgerModelSource
@@ -18,6 +20,8 @@ from ..adapters.outbound.persistence.memory import (
     InMemoryConversationStore,
     InMemorySavingsRuleStore,
     InMemorySnapshotStore,
+    InMemoryStatementStore,
+    InMemoryTransactionStore,
     InMemoryUserProfileStore,
 )
 from ..adapters.outbound.persistence.sqlite import (
@@ -25,24 +29,37 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteAuditLog,
     SqliteDatabase,
     SqliteSavingsRuleStore,
+    SqliteStatementStore,
+    SqliteTransactionStore,
 )
+from ..adapters.outbound.statements.reader import OcrStatementReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
 from ..adapters.outbound.system.signer import HmacSigner
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices
+from ..application.ports import TransactionClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
+from ..application.services.posting import LedgerPosting
 from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.financial import FinancialUseCases
+from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileUseCases
+from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
 from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
 from .config import DEV_SECRET, Settings
 from .contracts import load_tool_definitions
+
+# Spending classifiers for imported statements, by NL_CLASSIFIER. To change the method, add an entry
+# (any TransactionClassifier) and select it; to change the estimator, pass another pipeline factory.
+CLASSIFIERS: dict[str, Callable[[], TransactionClassifier]] = {
+    "naive_bayes": lambda: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
+}
 
 
 @dataclass
@@ -78,8 +95,11 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
+        statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db)
+        transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
+        statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
 
     snapshots = InMemorySnapshotStore()
     conversations = InMemoryConversationStore()
@@ -107,6 +127,11 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
+    if s.classifier not in CLASSIFIERS:
+        raise ValueError(f"unknown NL_CLASSIFIER {s.classifier!r} (known: {', '.join(CLASSIFIERS)})")
+    posting = LedgerPosting(CLASSIFIERS[s.classifier](), transaction_store)
+    statements = StatementUseCases(OcrStatementReader(model_dir=s.ocr_model_dir), statement_store, posting, audit_log, clock, ids)
+    ledger = LedgerUseCases(transaction_store)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
@@ -117,6 +142,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         actions=actions,
         profiles=profile_uc,
         audit=audit_uc,
+        statements=statements,
+        ledger=ledger,
         chat=chat,
         registry=registry,
         default_user=s.persona,

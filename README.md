@@ -15,14 +15,15 @@ The agent answers three questions: *Can I afford this?* · *How much is really a
 docker compose up --build          # API on http://localhost:8000  (GET /health)
 
 # Or locally
-make install                       # pip install -e "backend[api,dev]" (use a virtualenv)
+make install                       # pip install -e "backend[api,dev,pdf,ml]" (use a virtualenv)
 make test                          # fast lane: architecture, golden, security, contracts, HTTP (no property tests)
 make test-all                      # full suite incl. hypothesis property tests: required for CI and PRs
-make test-property                 # only the property tests (pytest -m property)
-make demo                          # the six-scene demo arc in the terminal
+make test-property                 # only the property tests (pytest -m property)make demo                          # the six-scene demo arc in the terminal
 make api                           # dev server on :8000
 make evidence                      # audit log + full-suite test results into evidence/
 ```
+
+Bank statements (cartolas): `neural-ledger import-statement <file.pdf>` or `POST /v1/statements` with the file as the body. Text-layer PDFs work out of the box; scanned PDFs and photos need `pip install -e "backend[ocr]"` (EasyOCR; install the CPU torch wheel first) and the weights once: `python -c "from neural_ledger.adapters.outbound.statements.ocr_tabular import prepare_models; prepare_models()"`. Real statements go in `cartolas/`, which is git-ignored: never commit one. A verified statement is also posted to the transaction ledger with a spending category per charge (naive Bayes, the `ml` extra): `neural-ledger transactions` or `GET /v1/transactions`. Use `NL_PERSISTENCE=sqlite` to keep them between CLI runs.
 
 On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
 
