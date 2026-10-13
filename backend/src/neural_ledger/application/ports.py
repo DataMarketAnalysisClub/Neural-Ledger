@@ -8,6 +8,7 @@ wired only in neural_ledger.bootstrap.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -22,6 +23,7 @@ from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
+from ..domain.shared.envelope import Caveat, Fact
 from ..domain.statements.model import BankStatement, StoredStatement
 from ..domain.user.profile import UserProfile
 from .conversation import Entry, ModelRequest, ModelTurn
@@ -79,6 +81,25 @@ class FinancialModelSource(Protocol):
     """Where the estimated financial model comes from: persona fixtures or the sandbox ledger."""
 
     def load(self, user_id: str) -> FinancialModel: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ModelEvidence:
+    """What the estimator said about the model it built: its own snapshot id, facts and warnings."""
+
+    snapshot_id: str
+    facts: tuple[Fact, ...]
+    warnings: tuple[Caveat, ...]
+
+
+@runtime_checkable
+class EstimationEvidenceSource(Protocol):
+    """Optional: a model source that can also return the estimator's evidence (ADR-017, Proposed).
+
+    Estimates once per call. Raises like FinancialModelSource.load when no model can be built.
+    """
+
+    def load_with_evidence(self, user_id: str) -> tuple[FinancialModel, ModelEvidence]: ...
 
 
 @runtime_checkable

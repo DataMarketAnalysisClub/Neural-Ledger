@@ -82,7 +82,7 @@ def _sites(extra_emission: str = "") -> tuple[set[str], set[str], set[str]]:
                     else:
                         assert isinstance(first, ast.Name) and first.id in {"field", "path", "key"} and function.name in {
                             "_get", "_int", "_str", "_enum", "_date", "_month", "_list", "_parse_enum", "_parse_int", "_parse_month",
-                        } or function.name == "_get" and isinstance(first, ast.IfExp) or function.name == "load" and isinstance(first, ast.BoolOp), (path, function.name, ast.unparse(first))
+                        } or function.name == "_get" and isinstance(first, ast.IfExp) or function.name == "load_with_evidence" and isinstance(first, ast.BoolOp), (path, function.name, ast.unparse(first))
         for node in tree.body:
             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and node.value.args:
                 name = node.value.func.id if isinstance(node.value.func, ast.Name) else ""
@@ -128,6 +128,9 @@ def test_static_scan_detects_an_uncatalogued_source_emission(emission, kind):
 
 
 def _check(envelope, *, estimation: bool = False) -> set[str]:
+    """Every fact and warning is catalogued. A warning seen in a tool envelope (estimation=False)
+    must be catalogued as reaching one. Its message mentions itself (so the fallback narrator,
+    which echoes messages, always passes); estimator tokens are ALL substrings of the message."""
     for fact in envelope.facts:
         matches = [entry for entry in CATALOG["facts"] if _match(entry, fact.key)]
         assert len(matches) == 1 and fact.unit == matches[0]["unit"], (fact.key, fact.unit)
@@ -136,7 +139,14 @@ def _check(envelope, *, estimation: bool = False) -> set[str]:
         assert len(matches) == 1, warning.code
         entry = matches[0]
         assert bool(warning.must_mention) == entry["must_mention"]
-        assert entry["reaches_tool_envelope"] is not estimation
+        lowered = warning.message.lower()
+        assert all(token.strip() for token in warning.must_mention), warning
+        if warning.must_mention:
+            assert any(token.lower() in lowered for token in warning.must_mention), warning
+        if entry["source"] == "estimation":
+            assert all(token.lower() in lowered for token in warning.must_mention), warning
+        if not estimation:
+            assert entry["reaches_tool_envelope"] is True, warning.code
     if envelope.field:
         assert any(_match(entry, envelope.field) for entry in CATALOG["error_fields"] if entry["status"] == "INVALID_INPUT")
     for missing in envelope.missing:
@@ -158,6 +168,10 @@ def test_runtime_guard_rejects_new_emissions_and_wrong_unit():
             _check(envelope)
 
 
+def _estimator(persona: str) -> Envelope:
+    return estimate_model(parse_ledger(json.loads((LEDGERS / f"{persona}.json").read_text(encoding="utf-8"))), FC_0_1)
+
+
 @pytest.mark.parametrize("source", ["fixture", "ledger"])
 @pytest.mark.parametrize("persona", ["camila", "diego"])
 def test_tool_fact_matrix_and_forwarded_warnings(source, persona):
@@ -167,15 +181,37 @@ def test_tool_fact_matrix_and_forwarded_warnings(source, persona):
              financial.simulate_purchase(persona, 400_000, 12), financial.protected_surplus(persona),
              financial.capacity(persona), financial.permitted_profile(persona, "conservative"),
              financial.savings_plan(persona, "aggressive")]
+    forwarded = {w.code for w in _estimator(persona).warnings} if source == "ledger" else set()
     codes = set().union(*(_check(envelope) for envelope in calls))
-    assert {"RATE_ASSUMED", "FIRST_INSTALLMENT_ASSUMED"} <= codes
+    assert {"RATE_ASSUMED", "FIRST_INSTALLMENT_ASSUMED"} | forwarded <= codes
     if persona == "camila":
         assert "PROFILE_CAPPED" in codes
-    assert _check(financial.simulate_purchase(persona, 400_000, 7)) == set()
-    assert _check(financial.forecast("nobody")) == set()
+    for envelope in calls:  # every OK tool carries exactly the estimator's warnings, after its own
+        assert {w.code for w in envelope.warnings if _source_of(w.code) == "estimation"} == forwarded
+    invalid = financial.simulate_purchase(persona, 400_000, 7)
+    assert invalid.status.value == "INVALID_INPUT" and invalid.field == "installments"
+    assert invalid.facts == () and invalid.warnings == ()
+    assert _check(invalid) == set()
+    unknown = financial.forecast("nobody")
+    assert unknown.status.value == "INSUFFICIENT_DATA" and unknown.facts == () and unknown.warnings == ()
+    assert _check(unknown) == set()
 
 
-def test_estimation_warning_matrix_and_adapter_gap():
+def _source_of(code: str) -> str:
+    return next(item["source"] for item in CATALOG["warnings"] if item["code"] == code)
+
+
+@pytest.mark.parametrize("persona", ["camila", "diego"])
+def test_persona_ledgers_forward_their_seeded_duplicate_warnings(persona):
+    """S12 seeds a near-duplicate in both generated ledgers: in ledger mode it reaches every tool."""
+    estimated = _estimator(persona)
+    assert "NEAR_DUPLICATE" in {w.code for w in estimated.warnings}
+    services, _ = build(make_settings(model_source="ledger"))
+    tool = services.financial.forecast(persona)
+    assert tool.warnings[-len(estimated.warnings):] == estimated.warnings
+
+
+def test_estimation_warning_matrix_and_forwarding():
     raw = json.loads((LEDGERS / "camila.json").read_text(encoding="utf-8"))
     cases = []
     cases.append(estimate_model(parse_ledger(raw), FC_0_1))
@@ -197,13 +233,25 @@ def test_estimation_warning_matrix_and_adapter_gap():
     new = _monthly("LANDLORD B", [550_000] * 2, months[9:])
     cases.append(estimate(_without_rent(11) + old + new, FC_0_1))
     seen = set().union(*(_check(envelope, estimation=True) for envelope in cases))
-    assert {entry["code"] for entry in CATALOG["warnings"] if entry["source"] == "estimation"} <= seen
+    estimation_codes = {entry["code"] for entry in CATALOG["warnings"] if entry["source"] == "estimation"}
+    assert estimation_codes <= seen
     assert "SEASONALITY_UNOBSERVED" in seen
+    for envelope in cases:  # all nine estimator warnings carry tokens taken from their own static message
+        for warning in envelope.warnings:
+            assert warning.must_mention and all(t.lower() in warning.message.lower() for t in warning.must_mention), warning
+    for code in estimation_codes:
+        entry = next(item for item in CATALOG["warnings"] if item["code"] == code)
+        assert entry["must_mention"] is True and entry["reaches_tool_envelope"] is True, code
     services, _ = build(make_settings(model_source="ledger"))
-    assert not services.financial.forecast("camila").warnings
+    tool = services.financial.forecast("camila")
+    assert {w.code for w in tool.warnings} == {w.code for w in cases[0].warnings}
+    assert tool.warnings == cases[0].warnings  # forecast has no own warnings: exactly the estimator's
 
 
-def test_seasonality_unobserved_is_catalogued_and_estimator_only():
+PROVENANCE = re.compile(r"^(?P<base>.+); source=ledger-estimator; estimator_snapshot=(?P<est>model_[0-9a-f]{16}); tool_snapshot=(?P<tool>[a-z]+_[0-9a-f]{16})$")
+
+
+def test_seasonality_unobserved_is_catalogued_and_forwarded():
     envelope = estimate(base_transactions(8), FC_0_1)  # cycles 2026-03 .. 2026-10: no December
     assert "SEASONALITY_UNOBSERVED" in _check(envelope, estimation=True)
     warning = next(w for w in envelope.warnings if w.code == "SEASONALITY_UNOBSERVED")
@@ -211,16 +259,32 @@ def test_seasonality_unobserved_is_catalogued_and_estimator_only():
     assert "December" in warning.must_mention and "seasonal" in warning.must_mention
     entry = next(item for item in CATALOG["warnings"] if item["code"] == "SEASONALITY_UNOBSERVED")
     assert entry == {"code": "SEASONALITY_UNOBSERVED", "source": "estimation", "trigger": entry["trigger"],
-                     "must_mention": True, "reaches_tool_envelope": False}
+                     "must_mention": True, "reaches_tool_envelope": True}
     fact = next(f for f in envelope.facts if f.key == "estimate.seasonal.unobserved_months")
     catalogued = [item for item in CATALOG["facts"] if _match(item, fact.key)]
     assert len(catalogued) == 1 and catalogued[0]["source"] == "estimation"
     assert (fact.value, fact.unit) == ("12", catalogued[0]["unit"])
-    services, _ = build(make_settings(model_source="ledger"))
-    for persona in ("camila", "diego"):
-        for tool in (services.financial.financial_state(persona), services.financial.forecast(persona)):
-            assert "SEASONALITY_UNOBSERVED" not in _check(tool)
-            assert not any(f.key.startswith("estimate.") for f in tool.facts)
+
+
+@pytest.mark.parametrize("persona", ["camila", "diego"])
+def test_ledger_tools_carry_estimate_facts_with_provenance_and_fixture_tools_none(persona):
+    estimated = _estimator(persona)
+    ledger, _ = build(make_settings(model_source="ledger"))
+    fixture, _ = build(make_settings())
+    for name in ("financial_state", "forecast", "capacity"):
+        tool = getattr(ledger.financial, name)(persona)
+        _check(tool)
+        forwarded = [f for f in tool.facts if f.key.startswith("estimate.")]
+        assert [(f.key, f.value, f.unit) for f in forwarded] == [(f.key, f.value, f.unit) for f in estimated.facts]
+        assert tool.facts[-len(forwarded):] == tuple(forwarded)  # appended after the tool's own facts
+        for fact, original in zip(forwarded, estimated.facts):
+            match = PROVENANCE.fullmatch(fact.derivation)
+            assert match, fact.derivation
+            assert match["base"] == original.derivation
+            assert (match["est"], match["tool"]) == (estimated.snapshot_id, tool.snapshot_id)
+            assert next(e for e in CATALOG["facts"] if _match(e, fact.key))["source"] == "estimation"
+        assert not any(f.key.startswith("estimate.") for f in getattr(fixture.financial, name)(persona).facts)
+        assert not any(_source_of(w.code) == "estimation" for w in getattr(fixture.financial, name)(persona).warnings)
 
 
 def test_error_field_patterns_have_real_producers():

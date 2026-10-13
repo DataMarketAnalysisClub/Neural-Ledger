@@ -1,14 +1,14 @@
 {
   "warnings": [
-    {"code":"DUPLICATE_TXN_ID","source":"estimation","trigger":"Repeated identical txn_id is dropped","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"NEAR_DUPLICATE","source":"estimation","trigger":"Same date, amount and counterparty retained","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"INSTALLMENT_UNPARSED","source":"estimation","trigger":"Cuota line cannot be parsed","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"RECURRING_PROVISIONAL","source":"estimation","trigger":"Two regular payments replace ended item","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"SALARY_MISSING","source":"estimation","trigger":"Missing recent salary credit","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"SALARY_DIFFERS","source":"estimation","trigger":"Recent salary differs from contract","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"CONTRACT_UNKNOWN","source":"estimation","trigger":"No contracted salary","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"CATEGORY_SPARSE","source":"estimation","trigger":"Sparse spend merged into other","must_mention":false,"reaches_tool_envelope":false},
-    {"code":"SEASONALITY_UNOBSERVED","source":"estimation","trigger":"Seasonal month absent from estimation window","must_mention":true,"reaches_tool_envelope":false},
+    {"code":"DUPLICATE_TXN_ID","source":"estimation","trigger":"Repeated identical txn_id is dropped","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"NEAR_DUPLICATE","source":"estimation","trigger":"Same date, amount and counterparty retained","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"INSTALLMENT_UNPARSED","source":"estimation","trigger":"Cuota line cannot be parsed","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"RECURRING_PROVISIONAL","source":"estimation","trigger":"Two regular payments replace ended item","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"SALARY_MISSING","source":"estimation","trigger":"Missing recent salary credit","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"SALARY_DIFFERS","source":"estimation","trigger":"Recent salary differs from contract","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"CONTRACT_UNKNOWN","source":"estimation","trigger":"No contracted salary","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"CATEGORY_SPARSE","source":"estimation","trigger":"Sparse spend merged into other","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"SEASONALITY_UNOBSERVED","source":"estimation","trigger":"Seasonal month absent from estimation window","must_mention":true,"reaches_tool_envelope":true},
     {"code":"RATE_ASSUMED","source":"purchase","trigger":"Offer rate omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"FIRST_INSTALLMENT_ASSUMED","source":"financial","trigger":"First installment month omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"PROFILE_CAPPED","source":"financial","trigger":"Requested profile exceeds permitted","must_mention":true,"reaches_tool_envelope":true}

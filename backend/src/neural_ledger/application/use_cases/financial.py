@@ -8,7 +8,7 @@ INVALID_INPUT and touch no engine; missing data returns INSUFFICIENT_DATA (hard 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, TypeVar
@@ -48,7 +48,9 @@ from ...domain.shared.errors import InsufficientData, InvalidInput
 from ...domain.shared.hashing import content_id
 from ...domain.shared.month import Month, month_range
 from ..ports import (
+    EstimationEvidenceSource,
     FinancialModelSource,
+    ModelEvidence,
     NotFound,
     SandboxBank,
     SnapshotStore,
@@ -120,12 +122,14 @@ class FinancialUseCases:
         bank: SandboxBank,
         profiles: UserProfileStore,
         params: FinanceParams,
+        evidence: EstimationEvidenceSource | None = None,
     ) -> None:
         self._source = source
         self._snapshots = snapshots
         self._bank = bank
         self._profiles = profiles
         self._params = params
+        self._evidence = evidence  # ADR-017 (Proposed): wired only for the ledger source
 
     @property
     def params(self) -> FinanceParams:
@@ -135,8 +139,12 @@ class FinancialUseCases:
 
     def _run(self, user_id: str, body: Callable[[FinancialModel], Envelope[T]]) -> Envelope[T]:
         version = self._params.version
+        evidence: ModelEvidence | None = None
         try:
-            model = self._source.load(user_id)
+            if self._evidence is None:
+                model = self._source.load(user_id)
+            else:
+                model, evidence = self._evidence.load_with_evidence(user_id)
         except NotFound as exc:
             return Envelope.insufficient(("financial_model",), params_version=version, message=str(exc))
         except InsufficientData as exc:
@@ -147,11 +155,12 @@ class FinancialUseCases:
         if missing:
             return Envelope.insufficient(missing, params_version=version, message="financial state is incomplete")
         try:
-            return body(model)
+            result = body(model)
         except InvalidInput as exc:
             return Envelope.invalid(exc.field, exc.allowed, params_version=version, message=exc.message)
         except InsufficientData as exc:
             return Envelope.insufficient(exc.missing, params_version=version, message=exc.message)
+        return _forward(result, evidence) if evidence is not None else result
 
     def _ok(self, model: FinancialModel, data: T, facts, warnings=(), *, kind: str, parts: tuple = ()) -> Envelope[T]:
         snapshot_id = content_id(kind, model.source_version, model.as_of, self._params.version, *parts)
@@ -346,6 +355,24 @@ class FinancialUseCases:
             return envelope
 
         return self._run(user_id, body)
+
+
+FORWARDED_SOURCE = "ledger-estimator"
+
+
+def _forward(result: Envelope[T], evidence: ModelEvidence) -> Envelope[T]:
+    """Append the estimator's facts and warnings to an OK tool envelope (ADR-017, Proposed).
+
+    The tool's data, snapshot_id and own facts and warnings are untouched and come first.
+    Forwarded facts keep key, value and unit; their derivation gains a fixed provenance
+    suffix naming the estimator and tool snapshots, so the same key from two tools in one
+    turn stays two distinct facts. Non-OK envelopes carry no evidence.
+    """
+    if not result.ok:
+        return result
+    suffix = f"; source={FORWARDED_SOURCE}; estimator_snapshot={evidence.snapshot_id}; tool_snapshot={result.snapshot_id}"
+    forwarded = tuple(replace(f, derivation=f"{f.derivation}{suffix}") for f in evidence.facts)
+    return replace(result, facts=(*result.facts, *forwarded), warnings=(*result.warnings, *evidence.warnings))
 
 
 def _parse_enum(enum: type, value: Any, field: str):

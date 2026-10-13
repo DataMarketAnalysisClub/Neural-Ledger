@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, TypeVar
 
-from ....application.ports import NotFound
+from ....application.ports import ModelEvidence, NotFound
 from ....domain.finance.estimation import estimate_model
 from ....domain.finance.model import FinancialModel
 from ....domain.finance.params import FinanceParams
@@ -186,9 +186,13 @@ class LedgerModelSource:
         return parse_ledger(raw)
 
     def load(self, user_id: str) -> FinancialModel:
+        return self.load_with_evidence(user_id)[0]
+
+    def load_with_evidence(self, user_id: str) -> tuple[FinancialModel, ModelEvidence]:
+        """Estimate once; the model plus the estimator's snapshot id, facts and warnings."""
         envelope = estimate_model(self.snapshot(user_id), self._params)
         if envelope.status is Status.INVALID_INPUT:
             raise InvalidInput(envelope.field or "ledger", envelope.message or "invalid ledger", envelope.allowed)
-        if not envelope.ok or envelope.data is None:
+        if not envelope.ok or envelope.data is None or envelope.snapshot_id is None:
             raise InsufficientData(envelope.missing or ("financial_model",), envelope.message or "the ledger could not be estimated")
-        return envelope.data
+        return envelope.data, ModelEvidence(envelope.snapshot_id, envelope.facts, envelope.warnings)
