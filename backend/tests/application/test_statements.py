@@ -8,10 +8,12 @@ from importlib.util import find_spec
 import pytest
 
 from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryStatementStore, InMemoryTransactionStore
+from neural_ledger.adapters.outbound.privacy.null import NullDetector
 from neural_ledger.adapters.outbound.system.clock import FixedClock
 from neural_ledger.adapters.outbound.system.ids import SequentialIds
 from neural_ledger.application.ports import StatementReaderUnavailable, StatementUnreadable
 from neural_ledger.application.services.posting import LedgerPosting
+from neural_ledger.application.services.redaction import StatementRedactor
 from neural_ledger.application.use_cases.statements import StatementUseCases
 from neural_ledger.domain.audit.events import AuditKind
 from neural_ledger.domain.shared.envelope import Status
@@ -118,10 +120,16 @@ class _KeywordClassifier:
         return tuple(CategoryGuess("shopping", 0.9) if "SH0P" in d else CategoryGuess("dining", 0.5 - 1e-9) for d in descriptions)
 
 
-def _use_case(reader, classifier=None, transactions=None) -> StatementUseCases:
+def _use_case(reader, classifier=None, transactions=None, detector=None, store=None, audit=None) -> StatementUseCases:
     posting = LedgerPosting(classifier or _KeywordClassifier(), transactions if transactions is not None else InMemoryTransactionStore())
     return StatementUseCases(
-        reader, InMemoryStatementStore(), posting, InMemoryAuditLog(), FixedClock(datetime(2026, 10, 29, tzinfo=UTC)), SequentialIds()
+        reader,
+        StatementRedactor(detector or NullDetector()),
+        store if store is not None else InMemoryStatementStore(),
+        posting,
+        audit if audit is not None else InMemoryAuditLog(),
+        FixedClock(datetime(2026, 10, 29, tzinfo=UTC)),
+        SequentialIds(),
     )
 
 
@@ -154,6 +162,45 @@ def test_low_ocr_confidence_warns_about_descriptions_but_does_not_unverify():
     broken = replace(statement, summary=replace(statement.summary, total_credits=10_001))
     codes = [w.code for w in _use_case(_FixedReader(broken)).import_statement("camila", b"%PDF-1.7 scan").warnings]
     assert codes == ["STATEMENT_UNVERIFIED", "OCR_LOW_CONFIDENCE", "NOT_POSTED"]
+
+
+def _statement_with_personal_data():
+    """Fictional people, RUT, account and address, as a Santander cartola prints them."""
+    from datetime import date
+
+    from neural_ledger.domain.statements.model import BankStatement, DailyBalance, StatementLine, StatementSummary
+
+    return BankStatement(
+        "test", "0-000-00-12345-6", "CLP", date(2026, 9, 1), date(2026, 9, 30),
+        (
+            StatementLine(0, date(2026, 9, 2), "0000000003 Transf a JUAN PEREZ 11.111.111-1", -40_000, "2441010", "401"),
+            StatementLine(1, date(2026, 9, 3), "TEF DE MARIA SOTO maria.soto@mail.cl", 10_000, None, "90"),
+        ),
+        StatementSummary(100_000, 40_000, 10_000, 70_000),
+        (DailyBalance(date(2026, 9, 3), 70_000),),
+    )  # fmt: skip
+
+
+def test_import_redacts_before_anything_is_stored_posted_or_audited():
+    store, audit, transactions = InMemoryStatementStore(), InMemoryAuditLog(), InMemoryTransactionStore()
+    use_case = _use_case(_FixedReader(_statement_with_personal_data()), transactions=transactions, store=store, audit=audit)
+    result = use_case.import_statement("camila", b"%PDF-1.7")
+    assert result.status is Status.OK and result.data.statement.verified
+    assert result.data.statement.account_ref == "****3456"
+
+    (stored,) = store.for_user("camila")
+    clean = ["[NUMBER] Transf a [PERSON] [ID]", "TEF DE [PERSON] [EMAIL]"]
+    assert [line.description for line in stored.statement.lines] == clean
+    assert stored.statement.account_ref == "****3456"
+    assert [(line.amount, line.reference, line.branch) for line in stored.statement.lines] == [(-40_000, "2441010", "401"), (10_000, None, "90")]
+    posted = transactions.for_user("camila")
+    assert [p.transaction.merchant_raw for p in posted] == clean
+    assert {p.transaction.account_id for p in posted} == {"test:****3456"}
+
+    (event,) = audit.events()
+    assert "redacted=5 detector=none posted=2" in event.draft.detail
+    for personal in ("JUAN", "PEREZ", "MARIA", "SOTO", "11.111.111", "maria.soto", "12345"):
+        assert personal not in event.draft.detail
 
 
 def test_missing_ocr_is_insufficient_data_not_a_bad_file():

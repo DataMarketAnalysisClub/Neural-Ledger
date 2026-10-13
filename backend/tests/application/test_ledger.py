@@ -7,10 +7,12 @@ from datetime import UTC, date, datetime
 import pytest
 
 from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryStatementStore, InMemoryTransactionStore
+from neural_ledger.adapters.outbound.privacy.null import NullDetector
 from neural_ledger.adapters.outbound.system.clock import FixedClock
 from neural_ledger.adapters.outbound.system.ids import SequentialIds
 from neural_ledger.application.ports import ClassifierUnavailable
 from neural_ledger.application.services.posting import LedgerPosting
+from neural_ledger.application.services.redaction import StatementRedactor
 from neural_ledger.application.use_cases.ledger import LedgerUseCases
 from neural_ledger.application.use_cases.statements import StatementUseCases
 from neural_ledger.domain.ledger.categorization import CategoryGuess
@@ -68,7 +70,13 @@ def _build(classifier):
     transactions = InMemoryTransactionStore()
     clock = FixedClock(datetime(2026, 10, 29, tzinfo=UTC))
     statements = StatementUseCases(
-        _Reader(), InMemoryStatementStore(), LedgerPosting(classifier, transactions), InMemoryAuditLog(), clock, SequentialIds()
+        _Reader(),
+        StatementRedactor(NullDetector()),
+        InMemoryStatementStore(),
+        LedgerPosting(classifier, transactions),
+        InMemoryAuditLog(),
+        clock,
+        SequentialIds(),
     )
     return statements, LedgerUseCases(transactions)
 
