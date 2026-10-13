@@ -1,15 +1,16 @@
 import ast
+import re
 from pathlib import Path
 
 from neural_ledger.bootstrap.config import Settings
 from neural_ledger.bootstrap.container import build
 
 ROOT = Path(__file__).resolve().parents[3]
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
-def test_env_example_covers_every_config_read_and_boots_offline():
-    template = (ROOT / ".env.example").read_text(encoding="utf-8")
-    env = dict(line.split("=", 1) for line in template.splitlines() if line and not line.startswith("#"))
+def _keys_read_by_config() -> set[str]:
+    """Every environment variable Settings.from_env reads: the name in get(NAME, ...), e.get(NAME) or e[NAME]."""
     tree = ast.parse((ROOT / "backend/src/neural_ledger/bootstrap/config.py").read_text(encoding="utf-8"))
     settings_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "Settings")
     from_env = next(node for node in settings_class.body if isinstance(node, ast.FunctionDef) and node.name == "from_env")

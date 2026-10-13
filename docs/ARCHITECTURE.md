@@ -65,7 +65,7 @@ bytes ─► ocr_tabular.read_pages ─► Page (word boxes: PDF text layer, or 
 4. Register it in `banks/__init__.py` (`BANKS`).
 5. Add a synthetic sample next to `tests/statement_samples.py` that draws the layout with fictional data, and tests for the happy path and for a misprinted total. `test_local_real_cartolas_reconcile` also runs on whatever is in your local `cartolas/`.
 
-Amounts are evidence, not authority (ADR-012): a statement that does not reconcile is stored as **unverified** with a `STATEMENT_UNVERIFIED` warning (ADR-013 adds manual review), and low OCR confidence only warns (`OCR_LOW_CONFIDENCE`), because reconciliation already checks every amount and date.
+Amounts are evidence, not authority (ADR-020): a statement that does not reconcile is stored as **unverified** with a `STATEMENT_UNVERIFIED` warning (ADR-021 adds manual review), and low OCR confidence only warns (`OCR_LOW_CONFIDENCE`), because reconciliation already checks every amount and date.
 
 ### Categorize statement lines (change the classifier)
 A verified statement is posted to the transaction ledger on import:
@@ -85,9 +85,9 @@ Deposits are `income` by rule; charges are `purchase` with the accepted category
 Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet.
 
 **Decided, not built yet** (see `docs/DECISIONS.md`):
-- ADR-013: unreconciled statements go to the user for manual correction and are posted either way, flagged.
-- ADR-015: categories can be changed by the user.
-- ADR-016: new category `movement` ("Movimiento") for own transfers, card payments and investments.
+- ADR-021: unreconciled statements go to the user for manual correction and are posted either way, flagged.
+- ADR-023: categories can be changed by the user.
+- ADR-024: new category `movement` ("Movimiento") for own transfers, card payments and investments.
 
 Open issues: O-1 (re-read treated as a duplicate) and O-2 (vocabulary, training data, re-categorization).
 

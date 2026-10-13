@@ -2,6 +2,8 @@
 
 Short records of architecture decisions. Status starts as **Proposed**; the team marks each one **Accepted** or **Rejected** at a sync. A change after acceptance gets a new entry that supersedes the old one.
 
+Numbers are global: take the next free one, and check open PRs first (ADR-016 to ADR-018 belong to Role A's draft PRs).
+
 ---
 
 ### ADR-001 · Clean architecture with a standard-library core · Proposed
@@ -80,17 +82,17 @@ Short records of architecture decisions. Status starts as **Proposed**; the team
 
 ## Bank statements and the transaction ledger
 
-ADR-011 to ADR-016 cover reading cartolas and posting them to the transaction ledger. Each says whether it is **built** or **decided, not built**. O-1 and O-2 are open issues for further analysis; nothing is changed for them yet.
+ADR-019 to ADR-024 cover reading cartolas and posting them to the transaction ledger. Each says whether it is **built** or **decided, not built**. O-1 and O-2 are open issues for further analysis; nothing is changed for them yet.
 
-### ADR-011 · Statement import pipeline: ocr_tabular + one `Bank` per layout · Built
+### ADR-019 · Statement import pipeline: ocr_tabular + one `Bank` per layout · Built
 **Decision:** `ocr_tabular` (adapted into `adapters/outbound/statements/`) turns any PDF or image into word boxes and tables; a `Bank` subclass per layout (first: `SantanderCuentaMatica`) says where the table is and what the rows mean. Import = read → reconcile (domain) → store (once per user and statement) → audit `STATEMENT_IMPORTED`. Entry points: `neural-ledger import-statement`, `POST /v1/statements`, `GET /v1/statements[/{id}]`.
 **Consequences:** a new bank is one file plus a registry line (recipe in `ARCHITECTURE.md`). Real cartolas live in the git-ignored `cartolas/`; tests use synthetic samples only. Text-layer PDFs need the `pdf` extra; scans and photos also need `ocr` (EasyOCR + torch, not in the Docker image). A scan holds the HTTP request open for minutes (~80 s per page on CPU); a background job is the next step if that matters.
 
-### ADR-012 · Reconciliation is the authority over the reader · Built
+### ADR-020 · Reconciliation is the authority over the reader · Built
 **Decision:** the domain recomputes totals, the closing balance and every printed daily balance from the lines. Any misread amount, dropped line or wrong day breaks an equality. Because of that, the reader may be tolerant of OCR noise in amounts and dates (`102/09`, `1 _ 097 .805`), and low OCR confidence (< 0.5) only warns (`OCR_LOW_CONFIDENCE`): EasyOCR scores correct digits at 0.15–0.4, and descriptions are the only thing reconciliation cannot check.
 **Consequences:** amounts are never trusted because the reader is confident, only because they add up.
 
-### ADR-013 · Statements that do not reconcile go to the user for review, and are usable either way · Decided, not built
+### ADR-021 · Statements that do not reconcile go to the user for review, and are usable either way · Decided, not built
 **Context:** today an unreconciled statement is stored as unverified (`STATEMENT_UNVERIFIED`) but **not** posted to the ledger (`NOT_POSTED`).
 **Decision:**
 1. Every statement that does not reconcile is shown to the user with its issues (which total or which day's balance differs, expected vs found).
@@ -100,21 +102,21 @@ ADR-011 to ADR-016 cover reading cartolas and posting them to the transaction le
 5. The reading stays immutable. Corrections are stored separately (who, when, old → new value) and audited as user actions, so the original read can always be recovered.
 **Consequences:** replaces the current "not posted" rule. Needs: a corrections record and store, a review list (`GET /v1/statements?verified=false` or similar), edit endpoints in the UI path only (never an agent tool), a new audit kind, contract changes and a `STATEMENTS_VERSION` bump. Amounts the user types are user input, not model output, so rule 2 (deterministic authority) holds.
 
-### ADR-014 · Spending categories: a swappable classifier, gated by the domain · Built
+### ADR-022 · Spending categories: a swappable classifier, gated by the domain · Built
 **Decision:** a `TransactionClassifier` port guesses one category per charge. The default is naive Bayes (TF-IDF character n-grams, from `ocr_tabular/ml`), selected by `NL_CLASSIFIER` from a registry in `container.py`. The domain accepts a guess only if it is in the category vocabulary and has confidence ≥ 0.5; otherwise the charge is `uncategorized`. Deposits are `income` by rule. Bank boilerplate (`Compra Nacional MD`, `TDB`, `Pago`, …) is removed before features. The model trains at first use from a versioned CSV, is never pickled, and its name carries the training data's hash, recorded on every transaction with its confidence.
 **Consequences:** changing the model or method is one adapter or one registry entry. On the real sample cartola only 2 of 45 charges were categorized: the training data (96 synthetic rows) is the limit, not the method (see O-2).
 
-### ADR-015 · Categories can be changed by the user · Decided, not built
-**Decision:** the user can set or change the category of any transaction, including choosing `Movimiento` (ADR-016). A manual category is stored with `classifier = "user"` and always wins over any model, including when a new model re-categorizes the ledger. Changes are audited as user actions.
+### ADR-023 · Categories can be changed by the user · Decided, not built
+**Decision:** the user can set or change the category of any transaction, including choosing `Movimiento` (ADR-024). A manual category is stored with `classifier = "user"` and always wins over any model, including when a new model re-categorizes the ledger. Changes are audited as user actions.
 **Consequences:** needs a category-override record, an endpoint in the UI path and a contract change. Manual labels are also the best source of new training rows. A row from a real user's statement can only be used locally, never committed.
 
-### ADR-016 · New category `Movimiento` for money that is not spending or income · Decided, not built
+### ADR-024 · New category `Movimiento` for money that is not spending or income · Decided, not built
 **Context:** transfers to the user's own accounts, credit card payments, investments and savings (e.g. `Fondo Mutuo`, `Transf a Fintual`) are posted today as purchases. The financial core requires card payments and own transfers to count as `transfer_own`, never as spending, or cuotas are counted twice.
 **Decision:**
 - New category `movement`, shown to the user as **"Movimiento"**, with kind `transfer_own`. It applies in both directions: money in from the user's own account is also a Movimiento, not income.
 - Movimientos are excluded from spending and income totals and listed in totals of their own.
 - Rules come first, and they are deterministic and per bank, in the `Bank` layout: own-account transfers, card payments, mutual funds and investment platforms. A transfer to the account holder's own RUT is a Movimiento. The classifier may also suggest `movement` through the same confidence gate.
-- The user can change it either way (ADR-015).
+- The user can change it either way (ADR-023).
 - A transfer to a third party stays spending (`other`) unless the user marks it as a Movimiento.
 **Consequences:** vocabulary and contract change (`CATEGORIES`, `transactions.schema.json`), `CATEGORIZATION_VERSION` bump. Role A confirms that estimators read `transfer_own` this way.
 
@@ -123,11 +125,11 @@ ADR-011 to ADR-016 cover reading cartolas and posting them to the transaction le
 **Options to analyse:**
 - (a) Include the printed summary and balances in the id. Simple, but two readings of one cartola then both exist.
 - (b) On a duplicate, supersede the stored copy when the new reading reconciles and the old one does not, keeping the old one as history.
-- (c) Let ADR-013's manual review absorb it.
-Decide together with ADR-013, since corrections and re-reads both change which version of a statement is current.
+- (c) Let ADR-021's manual review absorb it.
+Decide together with ADR-021, since corrections and re-reads both change which version of a statement is current.
 
 ### O-2 · Open: category vocabulary, training data and re-categorization · For analysis
-- **Vocabulary:** the ledger uses English slugs: the personas' `groceries, dining, health, shopping, transport, utilities`, plus `entertainment`, `other`, `income`, `uncategorized` (and `movement` from ADR-016). The Spanish training labels are mapped to them (Supermercado → groceries, …). To settle: the final list with Role A and E (the estimators and the generator group spend by category), and the Spanish UI labels.
-- **Training data:** 96 synthetic rows with few of the merchants a real cartola shows. Options: more synthetic rows, manual labels from ADR-015 kept local, per-user models. The 0.5 confidence floor and the boilerplate word list should be re-checked once there is more data. Use a labelled hold-out set as the quality gate before changing the default model.
-- **Re-categorization:** existing transactions keep their category on re-import, and there is no "re-categorize with the current model" yet. Manual categories (ADR-015) must survive it.
-- **Classifier unavailable:** today the statement is stored but not posted, and re-importing backfills. Revisit with ADR-013, for example posting as `uncategorized` instead.
+- **Vocabulary:** the ledger uses English slugs: the personas' `groceries, dining, health, shopping, transport, utilities`, plus `entertainment`, `other`, `income`, `uncategorized` (and `movement` from ADR-024). The Spanish training labels are mapped to them (Supermercado → groceries, …). To settle: the final list with Role A and E (the estimators and the generator group spend by category), and the Spanish UI labels.
+- **Training data:** 96 synthetic rows with few of the merchants a real cartola shows. Options: more synthetic rows, manual labels from ADR-023 kept local, per-user models. The 0.5 confidence floor and the boilerplate word list should be re-checked once there is more data. Use a labelled hold-out set as the quality gate before changing the default model.
+- **Re-categorization:** existing transactions keep their category on re-import, and there is no "re-categorize with the current model" yet. Manual categories (ADR-023) must survive it.
+- **Classifier unavailable:** today the statement is stored but not posted, and re-importing backfills. Revisit with ADR-021, for example posting as `uncategorized` instead.
