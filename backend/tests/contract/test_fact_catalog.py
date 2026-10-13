@@ -198,8 +198,29 @@ def test_estimation_warning_matrix_and_adapter_gap():
     cases.append(estimate(_without_rent(11) + old + new, FC_0_1))
     seen = set().union(*(_check(envelope, estimation=True) for envelope in cases))
     assert {entry["code"] for entry in CATALOG["warnings"] if entry["source"] == "estimation"} <= seen
+    assert "SEASONALITY_UNOBSERVED" in seen
     services, _ = build(make_settings(model_source="ledger"))
     assert not services.financial.forecast("camila").warnings
+
+
+def test_seasonality_unobserved_is_catalogued_and_estimator_only():
+    envelope = estimate(base_transactions(8), FC_0_1)  # cycles 2026-03 .. 2026-10: no December
+    assert "SEASONALITY_UNOBSERVED" in _check(envelope, estimation=True)
+    warning = next(w for w in envelope.warnings if w.code == "SEASONALITY_UNOBSERVED")
+    assert warning.must_mention and all(token.strip() for token in warning.must_mention)
+    assert "December" in warning.must_mention and "seasonal" in warning.must_mention
+    entry = next(item for item in CATALOG["warnings"] if item["code"] == "SEASONALITY_UNOBSERVED")
+    assert entry == {"code": "SEASONALITY_UNOBSERVED", "source": "estimation", "trigger": entry["trigger"],
+                     "must_mention": True, "reaches_tool_envelope": False}
+    fact = next(f for f in envelope.facts if f.key == "estimate.seasonal.unobserved_months")
+    catalogued = [item for item in CATALOG["facts"] if _match(item, fact.key)]
+    assert len(catalogued) == 1 and catalogued[0]["source"] == "estimation"
+    assert (fact.value, fact.unit) == ("12", catalogued[0]["unit"])
+    services, _ = build(make_settings(model_source="ledger"))
+    for persona in ("camila", "diego"):
+        for tool in (services.financial.financial_state(persona), services.financial.forecast(persona)):
+            assert "SEASONALITY_UNOBSERVED" not in _check(tool)
+            assert not any(f.key.startswith("estimate.") for f in tool.facts)
 
 
 def test_error_field_patterns_have_real_producers():
