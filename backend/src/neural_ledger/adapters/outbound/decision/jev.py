@@ -1,9 +1,12 @@
 """TypeSafe Jev adapter (Role B; go/no-go Oct 14).
 
 Jev is a "System One" model: it answers closed questions with typed, calibrated results.
-Endpoint (https://docs.typesafe.ai/api): POST {base_url}/v1/systemone, Bearer TYPESAFE_API_KEY, body
-{"state": <text>, "model": "jev-latest", "questions": {<id>: {...}}}. All questions of one call are
-evaluated independently against the same state, so one request answers intent and injection together.
+Endpoint: POST {base_url}/v1/systemone, Bearer key, body {"state": <text>, "model": "jev-latest",
+"questions": {<id>: {...}}}. All questions of one call are evaluated independently against the same state,
+so one request answers intent and injection together. Two hosts implement the same protocol:
+- OpenRouter (https://openrouter.ai/docs/guides/community/typesafe-sdk): base https://openrouter.ai/api,
+  Bearer OPENROUTER_API_KEY. This is the default path (D-02: OpenRouter is the one provider).
+- TypeSafe direct (https://docs.typesafe.ai/api): base https://api.typesafe.ai, Bearer TYPESAFE_API_KEY.
 
 Mapping:   ChoiceQuestion -> choice  (criteria: option -> note)   answer: choice, probabilities, confidence
            ScoreQuestion  -> score   (criteria: ordered levels)   answer: score, probabilities "0".."n", confidence
@@ -34,19 +37,25 @@ from ....application.ports import DecisionModelUnavailable
 from ....domain.agent.questions import ChoiceQuestion, Judgment, Question, ScoreQuestion, YesNoQuestion
 
 USER_AGENT = "neural-ledger/0.1"
+TYPESAFE_BASE_URL = "https://api.typesafe.ai"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api"
 
 
 class JevDecisionModel:
-    def __init__(self, api_key: str | None, model: str = "jev-latest", base_url: str = "https://api.typesafe.ai", timeout_s: float = 5.0) -> None:
+    def __init__(self, api_key: str | None, model: str = "jev-latest", base_url: str = TYPESAFE_BASE_URL, timeout_s: float = 5.0) -> None:
         self.name = f"jev:{model}"
         self._api_key = api_key
         self._model = model
         self._url = base_url.rstrip("/") + "/v1/systemone"
         self._timeout_s = timeout_s
 
+    @property
+    def endpoint(self) -> str:
+        return self._url
+
     def judge(self, state: str, questions: Sequence[Question]) -> Mapping[str, Judgment]:
         if not self._api_key:
-            raise DecisionModelUnavailable("TYPESAFE_API_KEY is not set")
+            raise DecisionModelUnavailable("no API key is set for jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY)")
         body = {"state": state, "model": self._model, "questions": {q.key: _question(q) for q in questions}}
         request = urllib.request.Request(
             self._url,

@@ -5,8 +5,8 @@
     python -m tests.decision_eval.run --model jev --reverse-options --out ../evidence/decision_eval/jev.json
 
 It asks the same two questions the chat asks on every turn (intent and injection, in one call), then reports
-what the gate thresholds in AP_0_1 would do with the answers. It never prints a key; TYPESAFE_API_KEY comes
-from the environment or from the repository's .env.
+what the gate thresholds in AP_0_1 would do with the answers. It never prints a key; OPENROUTER_API_KEY (or
+TYPESAFE_API_KEY with --provider typesafe) comes from the environment or from the repository's .env.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from collections import Counter, defaultdict
 from dataclasses import replace
 from pathlib import Path
 
-from neural_ledger.adapters.outbound.decision.jev import JevDecisionModel
+from neural_ledger.adapters.outbound.decision.jev import OPENROUTER_BASE_URL, TYPESAFE_BASE_URL, JevDecisionModel
 from neural_ledger.adapters.outbound.decision.rules import RulesDecisionModel
 from neural_ledger.application.ports import DecisionModel, DecisionModelUnavailable
 from neural_ledger.domain.agent.policy import AP_0_1, Gate, gate_for
@@ -48,13 +48,17 @@ def _env_key(name: str) -> str | None:
     return None
 
 
-def build_model(name: str, model_id: str) -> DecisionModel:
+PROVIDERS = {"openrouter": ("OPENROUTER_API_KEY", OPENROUTER_BASE_URL), "typesafe": ("TYPESAFE_API_KEY", TYPESAFE_BASE_URL)}
+
+
+def build_model(name: str, model_id: str, provider: str = "openrouter") -> DecisionModel:
     if name == "rules":
         return RulesDecisionModel()
-    key = _env_key("TYPESAFE_API_KEY")
+    variable, base_url = PROVIDERS[provider]
+    key = _env_key(variable)
     if not key:
-        sys.exit("TYPESAFE_API_KEY is not set (environment or .env)")
-    return JevDecisionModel(key, model_id, timeout_s=15.0)
+        sys.exit(f"{variable} is not set (environment or .env)")
+    return JevDecisionModel(key, model_id, base_url=base_url, timeout_s=15.0)
 
 
 def evaluate(model: DecisionModel, examples: list[dict], *, notes: bool, reverse: bool) -> list[dict]:
@@ -152,6 +156,7 @@ def report(name: str, rows: list[dict]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", choices=("rules", "jev"), required=True)
+    parser.add_argument("--provider", choices=tuple(PROVIDERS), default="openrouter", help="where Jev is called (default: OpenRouter)")
     parser.add_argument("--model-id", default="jev-latest", help="Jev model or alias (pin jev-1.13.0 for a repeatable run)")
     parser.add_argument("--no-notes", action="store_true", help="send option names only, without the per-option descriptions")
     parser.add_argument("--reverse-options", action="store_true", help="also ask with the options in reverse order (position bias)")
@@ -159,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="write the per-example results as JSON")
     args = parser.parse_args(argv)
     examples = load_examples()[: args.limit or None]
-    model = build_model(args.model, args.model_id)
+    model = build_model(args.model, args.model_id, args.provider)
     rows = evaluate(model, examples, notes=not args.no_notes, reverse=args.reverse_options)
     label = f"{model.name}{' (no option notes)' if args.no_notes else ''}"
     report(label, rows)

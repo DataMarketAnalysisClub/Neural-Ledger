@@ -8,6 +8,7 @@ from neural_ledger.adapters.outbound.decision.jev import JevDecisionModel
 from neural_ledger.adapters.outbound.decision.rules import RulesDecisionModel
 from neural_ledger.application.ports import DecisionModelUnavailable
 from neural_ledger.application.services.decisions import DecisionService
+from neural_ledger.bootstrap.container import _jev
 from neural_ledger.domain.agent.policy import AP_0_1, Gate
 from neural_ledger.domain.agent.questions import (
     INJECTION_QUESTION,
@@ -17,6 +18,7 @@ from neural_ledger.domain.agent.questions import (
     Intent,
 )
 from tests.adapters.test_openai_compatible_adapters import FakeServer
+from tests.conftest import make_settings
 
 SECRET = "test_secret_value_not_a_real_key"
 
@@ -96,7 +98,7 @@ def test_a_score_answer_picks_the_most_probable_level(serve):
 
 def test_no_key_means_no_request(serve):
     server = serve(body=answer())
-    with pytest.raises(DecisionModelUnavailable, match="TYPESAFE_API_KEY"):
+    with pytest.raises(DecisionModelUnavailable, match="no API key"):
         JevDecisionModel(None, base_url=server.url).judge("x", (INTENT_QUESTION,))
     assert server.requests == []
 
@@ -149,3 +151,11 @@ def test_the_chain_uses_jev_then_falls_through_to_rules_when_it_is_down(serve):
     down = DecisionService([jev(serve(status=529, body={})), RulesDecisionModel()], AP_0_1)
     fallback = down.classify("Will I be OK in December?")
     assert fallback.answered_by == "rules-0.1" and fallback.intent is Intent.FORECAST
+
+
+def test_the_container_sends_jev_through_openrouter_unless_only_a_typesafe_key_exists():
+    via_openrouter = _jev(make_settings(openrouter_api_key="or-key", typesafe_api_key="ts-key"))
+    assert via_openrouter.endpoint == "https://openrouter.ai/api/v1/systemone"
+    direct = _jev(make_settings(typesafe_api_key="ts-key"))
+    assert direct.endpoint == "https://api.typesafe.ai/v1/systemone"
+    assert _jev(make_settings()).endpoint == "https://openrouter.ai/api/v1/systemone"  # no key: unavailable, rules answer
