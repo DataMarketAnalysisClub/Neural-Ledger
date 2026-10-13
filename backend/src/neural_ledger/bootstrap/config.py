@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 DEV_SECRET = "dev-only-insecure-secret-change-me"
+DEFAULT_LLM_MODELS = {"anthropic": "claude-sonnet-5-5", "openrouter": "anthropic/claude-haiku-5.5"}
 
 
 def _find_dir(name: str) -> Path:
@@ -25,10 +26,11 @@ def _find_dir(name: str) -> Path:
 @dataclass(frozen=True)
 class Settings:
     persona: str = "camila"
-    model_source: str = "fixture"  # fixture | ledger (Role A estimators, not implemented yet)
-    llm: str = "scripted"  # scripted | anthropic
-    llm_model: str = "claude-sonnet-5-5"
+    model_source: str = "fixture"  # fixture (calibrated personas) | ledger (data/ledgers + stage-1 estimators)
+    llm: str = "scripted"  # scripted | anthropic | openrouter
+    llm_model: str = ""  # empty = the provider's default (DEFAULT_LLM_MODELS)
     anthropic_api_key: str | None = None
+    openrouter_api_key: str | None = None
     decision_chain: tuple[str, ...] = ("rules",)  # e.g. ("jev", "rules")
     typesafe_api_key: str | None = None
     jev_model: str = "jev-latest"
@@ -41,6 +43,8 @@ class Settings:
     data_dir: Path | None = None
     contracts_dir: Path | None = None
     cors_origins: tuple[str, ...] = ("*",)
+    ocr_model_dir: str | None = None  # EasyOCR weights; None = ~/.EasyOCR/model (scans and photos only)
+    classifier: str = "naive_bayes"  # spending categories for imported statements; see CLASSIFIERS in container.py
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -49,6 +53,10 @@ class Settings:
     @property
     def resolved_contracts_dir(self) -> Path:
         return self.contracts_dir or _find_dir("contracts")
+
+    @property
+    def resolved_llm_model(self) -> str:
+        return self.llm_model or DEFAULT_LLM_MODELS.get(self.llm, "")
 
     @property
     def fixed_instant(self) -> datetime:
@@ -74,6 +82,7 @@ class Settings:
             llm=get("NL_LLM", cls.llm),
             llm_model=get("NL_LLM_MODEL", cls.llm_model),
             anthropic_api_key=e.get("ANTHROPIC_API_KEY") or None,
+            openrouter_api_key=e.get("OPENROUTER_API_KEY") or None,
             decision_chain=chain or ("rules",),
             typesafe_api_key=e.get("TYPESAFE_API_KEY") or None,
             jev_model=get("NL_JEV_MODEL", cls.jev_model),
@@ -86,4 +95,6 @@ class Settings:
             data_dir=Path(e["NL_DATA_DIR"]) if e.get("NL_DATA_DIR") else None,
             contracts_dir=Path(e["NL_CONTRACTS_DIR"]) if e.get("NL_CONTRACTS_DIR") else None,
             cors_origins=tuple(o.strip() for o in get("NL_CORS_ORIGINS", "*").split(",")),
+            ocr_model_dir=e.get("NL_OCR_MODEL_DIR") or None,
+            classifier=get("NL_CLASSIFIER", cls.classifier),
         )

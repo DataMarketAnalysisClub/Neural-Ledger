@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 
 permissions:
@@ -25,11 +25,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/pyproject.toml
-      - run: python -m pip install -e ".[api,dev]"
+      - run: python -m pip install -e ".[api,dev,pdf,ml]"
       - name: Lint
         run: ruff check .
-      - name: Tests (architecture, golden, security, contracts, adapters, HTTP)
-        run: python -m pytest --junitxml=../evidence/test-results/junit.xml
+      - name: Tests, full suite (architecture, golden, property, security, contracts, adapters, HTTP)
+        run: python -m pytest -m "" --junitxml=../evidence/test-results/junit.xml
       - name: Demo arc offline
         run: python -m neural_ledger.bootstrap.cli demo
         env:
@@ -67,6 +67,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: A copied .env.example keeps durable storage
+        run: |
+          cp .env.example .env
+          docker compose config | grep -q 'NL_PERSISTENCE: sqlite'
+          rm .env
       - run: docker compose up --build --detach --wait --wait-timeout 120
       - name: Smoke test
         run: |

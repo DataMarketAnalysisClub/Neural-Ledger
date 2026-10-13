@@ -8,9 +8,14 @@ services:
     env_file:
       - path: .env
         required: false
+    # Container-only settings are fixed here, not read from .env: they override env_file, so copying
+    # .env.example (where NL_PERSISTENCE=memory suits local runs) cannot make the container forget its
+    # audit log and sandbox bank on restart.
     environment:
-      NL_PERSISTENCE: ${NL_PERSISTENCE:-sqlite}
+      NL_PERSISTENCE: sqlite
       NL_SQLITE_PATH: /app/var/neural_ledger.db
+      NL_DATA_DIR: /app/data
+      NL_CONTRACTS_DIR: /app/contracts
     ports:
       - "8000:8000"
     volumes:

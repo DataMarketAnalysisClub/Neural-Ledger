@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from ...domain.actions.terms import Proposal
 from ...domain.agent.policy import AgentPolicy, Gate, max_tier_for
 from ...domain.agent.questions import Intent
-from ...domain.agent.verification import VerificationResult, verify_explanation
+from ...domain.agent.verification import REPAIRABLE_KINDS, VerificationResult, verify_explanation
 from ...domain.audit.events import Actor, AuditDraft, AuditKind
 from ...domain.permissions.policy import BlockReason
 from ...domain.shared.envelope import Caveat, Fact
@@ -37,7 +37,7 @@ from ..ports import (
 )
 from ..services import narration
 from ..services.decisions import Classification, DecisionService
-from ..services.prompts import SYSTEM_PROMPT, context_block
+from ..services.prompts import SYSTEM_PROMPT, context_block, repair_note
 from ..services.tools import ToolContext, ToolOutcome, ToolRegistry
 from .actions import ActionOutcome
 from .financial import FinancialUseCases
@@ -139,6 +139,18 @@ class ChatUseCase:
         outcomes: list[ToolOutcome] = []
         final_text: str | None = None
         model_name: str | None = None
+        repairs = 0
+        discarded: set[int] = set()  # rejected replies and repair notes: shown to the model once, never stored in history
+
+        def check(candidate: str) -> VerificationResult:
+            return verify_explanation(
+                candidate,
+                tuple(f for o in outcomes for f in o.facts),
+                tuple(c for o in outcomes for c in o.warnings),
+                money_units=frozenset({currency}),
+                executions_succeeded=sum(1 for o in outcomes if o.executed),
+            )
+
         for _ in range(self._policy.max_tool_rounds):
             request = ModelRequest(system, tuple(entries), tools, turn_context)
             try:
@@ -149,6 +161,21 @@ class ChatUseCase:
             entries.append(AssistantEntry(turn.text, turn.tool_calls))
             if not turn.tool_calls:
                 final_text = turn.text
+                if final_text and repairs < self._policy.max_repairs and not any(o.action for o in outcomes):
+                    issues = check(final_text).issues
+                    if issues and all(i.kind in REPAIRABLE_KINDS for i in issues):
+                        # An honest mistake (a figure with no fact behind it, a warning left out): one chance to fix it.
+                        self._record(
+                            session_id, user_id, AuditKind.VERIFICATION_FAILED, cls,
+                            detail="; ".join(f"{i.kind}:{i.detail}" for i in issues)[:480] + " (repair requested)", model_version=model_name,
+                        )
+                        messages = {c.code: c.message for o in outcomes for c in o.warnings}
+                        discarded.add(len(entries) - 1)
+                        entries.append(UserEntry(repair_note([(i.kind, i.detail) for i in issues], messages)))
+                        discarded.add(len(entries) - 1)
+                        final_text = None
+                        repairs += 1
+                        continue
                 break
             for call in turn.tool_calls:
                 outcome = self._registry.invoke(call, ctx, max_tier=max_tier, allow_stateful=allow_stateful)
@@ -157,13 +184,12 @@ class ChatUseCase:
 
         facts = tuple(f for o in outcomes for f in o.facts)
         caveats = tuple(c for o in outcomes for c in o.warnings)
-        executed = sum(1 for o in outcomes if o.executed)
         deterministic = narration.narrate([(o.name, o.payload) for o in outcomes], currency) if outcomes else None
         fallback = False
         if not final_text:
             final_text = deterministic or (narration.READ_ONLY_NOTE if cls.gate is Gate.READ_ONLY else narration.NO_RESULT)
             fallback = True
-        verification = verify_explanation(final_text, facts, caveats, money_units=frozenset({currency}), executions_succeeded=executed)
+        verification = check(final_text)
         if not verification.ok:
             self._record(
                 session_id, user_id, AuditKind.VERIFICATION_FAILED, cls,
@@ -171,11 +197,11 @@ class ChatUseCase:
             )
             final_text = deterministic or narration.NO_RESULT
             fallback = True
-            verification = verify_explanation(final_text, facts, caveats, money_units=frozenset({currency}), executions_succeeded=executed)
+            verification = check(final_text)
         if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.EXECUTE_ACTION):
             final_text = f"{final_text} {narration.READ_ONLY_NOTE}"
 
-        turn_entries = entries[len(history):]
+        turn_entries = [e for i, e in enumerate(entries) if i >= len(history) and i not in discarded]
         if isinstance(turn_entries[-1], AssistantEntry) and not turn_entries[-1].tool_calls:
             turn_entries[-1] = AssistantEntry(final_text)
         else:

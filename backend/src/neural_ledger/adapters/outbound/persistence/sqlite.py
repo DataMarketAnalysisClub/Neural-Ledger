@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from collections.abc import Sequence
 from datetime import date, datetime
 from pathlib import Path
 
@@ -21,7 +22,18 @@ from ....domain.actions.terms import (
     SavingsRule,
 )
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
+from ....domain.ledger.categorization import PostedTransaction
+from ....domain.ledger.entities import Transaction, TransactionKind
 from ....domain.shared.serialization import to_primitive
+from ....domain.statements.model import (
+    BankStatement,
+    DailyBalance,
+    Issue,
+    IssueCode,
+    StatementLine,
+    StatementSummary,
+    StoredStatement,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -42,6 +54,21 @@ CREATE TABLE IF NOT EXISTS audit_events (
     prev_hash  TEXT NOT NULL,
     event_hash TEXT NOT NULL,
     record     TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS statements (
+    sequence     INTEGER PRIMARY KEY,
+    statement_id TEXT NOT NULL,
+    user_id      TEXT NOT NULL,
+    payload      TEXT NOT NULL,
+    UNIQUE (user_id, statement_id)
+);
+CREATE TABLE IF NOT EXISTS transactions (
+    sequence  INTEGER PRIMARY KEY,
+    txn_id    TEXT NOT NULL,
+    user_id   TEXT NOT NULL,
+    posted_on TEXT NOT NULL,
+    payload   TEXT NOT NULL,
+    UNIQUE (user_id, txn_id)
 );
 CREATE TABLE IF NOT EXISTS savings_rules (
     sequence INTEGER PRIMARY KEY,
@@ -111,6 +138,116 @@ def _rule_from(payload: dict) -> SavingsRule:
         effective_date=date.fromisoformat(payload["effective_date"]),
         authorization_id=payload["authorization_id"],
     )
+
+
+def _date_or_none(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
+
+
+def _stored_statement_from(payload: dict) -> StoredStatement:
+    st = payload["statement"]
+    summary = st.get("summary")
+    return StoredStatement(
+        statement_id=payload["statement_id"],
+        user_id=payload["user_id"],
+        imported_at=datetime.fromisoformat(payload["imported_at"]),
+        statement=BankStatement(
+            bank=st["bank"],
+            account_ref=st["account_ref"],
+            currency=st["currency"],
+            period_start=date.fromisoformat(st["period_start"]),
+            period_end=date.fromisoformat(st["period_end"]),
+            lines=tuple(
+                StatementLine(
+                    index=line["index"],
+                    posted_on=date.fromisoformat(line["posted_on"]),
+                    description=line["description"],
+                    amount=int(line["amount"]),
+                    reference=line.get("reference"),
+                    branch=line.get("branch"),
+                    confidence=line.get("confidence"),
+                )
+                for line in st["lines"]
+            ),
+            summary=StatementSummary(**summary) if summary else None,
+            daily_balances=tuple(DailyBalance(date.fromisoformat(b["on"]), int(b["balance"])) for b in st["daily_balances"]),
+            statement_number=st.get("statement_number"),
+            source=st["source"],
+        ),
+        issues=tuple(
+            Issue(IssueCode(i["code"]), i["message"], i.get("expected"), i.get("found"), _date_or_none(i.get("on"))) for i in payload["issues"]
+        ),
+    )
+
+
+class SqliteStatementStore:
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, stored: StoredStatement) -> bool:
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "INSERT OR IGNORE INTO statements (statement_id, user_id, payload) VALUES (?, ?, ?)",
+                (stored.statement_id, stored.user_id, json.dumps(to_primitive(stored))),
+            )
+            return cursor.rowcount == 1
+
+    def get(self, user_id: str, statement_id: str) -> StoredStatement | None:
+        row = self._db.connection.execute(
+            "SELECT payload FROM statements WHERE user_id = ? AND statement_id = ?", (user_id, statement_id)
+        ).fetchone()
+        return _stored_statement_from(json.loads(row[0])) if row else None
+
+    def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
+        rows = self._db.connection.execute("SELECT payload FROM statements WHERE user_id = ? ORDER BY sequence", (user_id,)).fetchall()
+        return tuple(_stored_statement_from(json.loads(r[0])) for r in rows)
+
+
+def _posted_from(payload: dict) -> PostedTransaction:
+    t = payload["transaction"]
+    return PostedTransaction(
+        user_id=payload["user_id"],
+        currency=payload["currency"],
+        transaction=Transaction(
+            txn_id=t["txn_id"],
+            account_id=t["account_id"],
+            date=date.fromisoformat(t["date"]),
+            amount=int(t["amount"]),
+            merchant_raw=t["merchant_raw"],
+            category=t["category"],
+            kind=TransactionKind(t["kind"]),
+        ),
+        statement_id=payload["statement_id"],
+        line_index=int(payload["line_index"]),
+        classifier=payload["classifier"],
+        confidence=payload["confidence"],
+    )
+
+
+class SqliteTransactionStore:
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, posted: Sequence[PostedTransaction]) -> int:
+        rows = [(p.transaction.txn_id, p.user_id, p.transaction.date.isoformat(), json.dumps(to_primitive(p))) for p in posted]
+        with self._db.lock:
+            before = self._db.connection.total_changes
+            self._db.connection.execute("BEGIN")
+            try:
+                self._db.connection.executemany(
+                    "INSERT OR IGNORE INTO transactions (txn_id, user_id, posted_on, payload) VALUES (?, ?, ?, ?)", rows
+                )
+                self._db.connection.execute("COMMIT")
+            except BaseException:
+                self._db.connection.execute("ROLLBACK")
+                raise
+            return self._db.connection.total_changes - before
+
+    def for_user(self, user_id: str) -> tuple[PostedTransaction, ...]:
+        rows = self._db.connection.execute(
+            "SELECT payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,)
+        ).fetchall()
+        return tuple(_posted_from(json.loads(r[0])) for r in rows)
 
 
 class SqliteSavingsRuleStore:

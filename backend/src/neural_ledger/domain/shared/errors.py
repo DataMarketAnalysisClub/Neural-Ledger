@@ -15,3 +15,12 @@ class InvalidInput(DomainError):
         self.field = field
         self.message = message
         self.allowed = allowed
+
+
+class InsufficientData(DomainError):
+    """Unknown or incomplete state (hard rule H4). Becomes an INSUFFICIENT_DATA envelope; no guess is made."""
+
+    def __init__(self, missing: tuple[str, ...], message: str) -> None:
+        super().__init__(message)
+        self.missing = tuple(missing)
+        self.message = message

@@ -3,7 +3,7 @@
 Neural Ledger: an AI cash-flow copilot (FinTechathon 2026, Topic A). Read `docs/SCOPE.md` for the product and `docs/ARCHITECTURE.md` for where code goes.
 
 ## Commands
-- `make test` · all tests (run from the repo root). `cd backend && python -m pytest tests/<folder>` for one area.
+- `make test` · fast tests; `make test-all` · full suite required for PRs and CI; `make test-property` · property tests only (run from the repo root). `cd backend && python -m pytest tests/<folder>` for one area; add `-m property` for `tests/property`.
 - `make demo` · the six-scene demo arc offline. `make api` · dev server on :8000.
 
 ## Rules that must never break
