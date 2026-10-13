@@ -78,9 +78,15 @@ def _caveat_sentences(payload: Payload) -> list[str]:
 
 
 def narrate(results: Sequence[tuple[str, Payload]], currency: str) -> str:
+    """One sentence per distinct statement: a tool called twice with the same input, or the same warning raised
+    by several tools, is said once. The warnings keep their tokens, so the verifier still sees each one."""
     sentences: list[str] = []
+    narrated: list[tuple[str, Payload]] = []
     for name, payload in results:
-        sentences += _narrate_one(name, payload, currency)
+        if (name, payload) in narrated:
+            continue
+        narrated.append((name, payload))
+        sentences += [s for s in _narrate_one(name, payload, currency) if s not in sentences]
     return " ".join(sentences) if sentences else NO_RESULT
 
 
