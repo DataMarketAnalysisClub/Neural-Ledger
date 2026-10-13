@@ -1,5 +1,6 @@
 # Financial core: implemented behavior and handoff (Role A)
 
+**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-015 are **Proposed** pending team approval; the ledger default, ADR-014 Part 2 purchase policy, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
 **Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-016 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
 
 ## 4.1 Commitments
@@ -20,7 +21,7 @@
 
 ## 4.5 Protected surplus and planning
 
-`domain/finance/surplus.py:protected_surplus` takes the minimum conservative headroom across the requested horizon, including any plan/purchase overlay; negative means a breach, not safe money. `domain/finance/plan.py:size_plan` searches earliest starts, computes a six-cycle lowest available window, rounds `min(profile_share × lowest_available, required)` down to 10k and rejects a rule if the conservative path breaches (H5). No feasible positive rule triggers H2. `plan.py:_allocate` sends the whole rule to reserve if reserve is below minimum (H1); otherwise it allocates to near-term goals by deadline and then reserve top-up. This **currently is not monotone** in profile or purchase. ADR-014 is an unaccepted proposal, not implemented.
+`domain/finance/surplus.py:protected_surplus` takes the minimum conservative headroom across the requested horizon, including any plan/purchase overlay; negative means a breach, not safe money. `domain/finance/plan.py:size_plan` computes the earliest feasible start for each discrete share at or below the requested/permitted profile ceiling, sizing from a six-cycle lowest available window as `floor_10k(min(share × lowest_available, required))`; H5 rejects a rule that breaches the conservative path. It selects the maximum feasible rule amount, then earlier start, then higher share. No feasible positive rule triggers H2. `plan.py:_allocate` sends the whole rule to reserve if reserve is below minimum (H1); otherwise it allocates to near-term goals by deadline and then reserve top-up. This makes amount monotone in profile by candidate-set inclusion (ADR-014 Part 1 Proposed, not accepted). **Purchase-prefix monotonicity is false** on a separate shrunk ledger; Part 2 is stopped pending a team decision (`docs/DECISIONS.md`).
 
 ## 4.6 Purchase simulation
 
@@ -36,6 +37,7 @@
 
 ## Deviations and validation
 
+F9 one aggregate seasonal factor; F10 sample CV; F11 weekday-only payday; F12 sparse-to-other; F13 precise one-off shock; F14 no partial pay-cycle estimates; F15 provisional recurring replacement are implemented in `estimation.py`. F16 is an **opt-in, synthetic-only** seeded lognormal generator in `backend/tests/fixtures/stochastic.py`; calibrated persona outputs do not change. F17 documents the existing no-December factor=1 path. F1-F8 definition fixes are recorded in `docs/SCOPE.md`. ADR-011 (estimation), ADR-012 (transfer classification trust), ADR-013 (snapshot/version lock), ADR-014 (profile ceiling implemented for review; purchase-prefix STOP) and ADR-015 (synthetic backtest) all remain Proposed. `tests/golden` has E01-E14 over both sources; unit/robustness tests cover malformed ledgers, reconciliation and traceability; hypothesis property tests retain the purchase strict xfail and non-strict xpass under ADR-014. Run `make test-all`, `make test-golden`, `make test-security` and `make backtest` using absolute `PY`. The measured adverse synthetic coverage and parameter recovery are in `docs/BACKTEST.md` and its JSON; they are not real-world predictive accuracy.
 F9 one aggregate seasonal factor; F10 sample CV; F11 weekday-only payday; F12 sparse-to-other; F13 precise one-off shock; F14 no partial pay-cycle estimates; F15 provisional recurring replacement are implemented in `estimation.py`. F16 is an **opt-in, synthetic-only** seeded lognormal generator in `backend/tests/fixtures/stochastic.py`; calibrated persona outputs do not change. F17 documents the existing no-December factor=1 path, now flagged by `SEASONALITY_UNOBSERVED` without changing any number. F1-F8 definition fixes are recorded in `docs/SCOPE.md`. ADR-011 (estimation), ADR-012 (transfer classification trust), ADR-013 (snapshot/version lock), ADR-014 (plan counterexamples), ADR-015 (synthetic backtest) and ADR-016 (unobserved seasonal months flagged; the stronger H4 hard stop is a team option, not implemented) all remain Proposed. The committed backtest JSON predates ADR-016 and its `diagnostics.warning_codes` do not count the new warning. `tests/golden` has E01-E14 over both sources; unit/robustness tests cover malformed ledgers, reconciliation and traceability; hypothesis property tests retain two strict xfails and two non-strict xpasses under ADR-014. Run `make test-all`, `make test-golden`, `make test-security` and `make backtest` using absolute `PY`. The measured adverse synthetic coverage and parameter recovery are in `docs/BACKTEST.md` and its JSON; they are not real-world predictive accuracy.
 
 ## Security inputs and pending gates
@@ -44,7 +46,7 @@ Merchant strings are untrusted; source labels are wrapped as data (`domain/agent
 
 | Milestone | Status | Gate |
 |---|---|---|
-| FC-1 plan policy/invariant | PENDING | Team approval of exact ADR-014 proposals; no engine or xfail changes today |
+| FC-1 plan policy/invariant | PENDING | Review Part 1 profile-ceiling diff; Part 2 prefix invariant falsified, team decision needed. Only profile xfail converted. |
 | FC-4 ledger as default | PENDING | B approval and coordinated Oct 12 integration; `docs/runbooks/MODEL_SOURCE_SWITCH.md` |
 | FC-7 version/evidence freeze and tag | PENDING | Oct 17 and A+E parameter approval; `docs/runbooks/FREEZE.md` |
 | Main merge/push | PENDING | Human review |
