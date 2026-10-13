@@ -33,7 +33,7 @@ class Settings:
     openrouter_api_key: str | None = None
     decision_chain: tuple[str, ...] = ("rules",)  # e.g. ("jev", "rules")
     typesafe_api_key: str | None = None
-    jev_model: str = "jev-latest"
+    jev_model: str = "jev-1.13"  # pinned: the jev-latest alias moves when TypeSafe ships a release
     persistence: str = "memory"  # memory | sqlite
     sqlite_path: str = "./var/neural_ledger.db"
     clock: str = "system"  # system | fixed (tests and recorded demos)

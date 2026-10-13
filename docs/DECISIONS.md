@@ -142,3 +142,29 @@ Decide together with ADR-021, since corrections and re-reads both change which v
 - **Training data:** 96 synthetic rows with few of the merchants a real cartola shows. Options: more synthetic rows, manual labels from ADR-023 kept local, per-user models. The 0.5 confidence floor and the boilerplate word list should be re-checked once there is more data. Use a labelled hold-out set as the quality gate before changing the default model.
 - **Re-categorization:** existing transactions keep their category on re-import, and there is no "re-categorize with the current model" yet. Manual categories (ADR-023) must survive it.
 - **Classifier unavailable:** today the statement is stored but not posted, and re-importing backfills. Revisit with ADR-021, for example posting as `uncategorized` instead.
+
+---
+
+## Decision model and language model (Role B)
+
+ADR-026 and ADR-027 are numbered after Role A's ADR-014 to ADR-018, the statements ADR-019 to ADR-024 and the frontend ADR-025; renumber them if the team orders it differently.
+
+### ADR-026 · Jev first in the decision chain, through OpenRouter, pinned to jev-1.13 · Proposed (go/no-go 2026-10-14)
+**Context:** the rules model is keyword based and unmeasured. OpenRouter serves the real Jev classifier (System One protocol at `POST /api/v1/systemone`, billed to the OpenRouter key), so no second provider or key is needed (D-02).
+**Decision:** `NL_DECISION_CHAIN=jev,rules` in live mode; `rules` stays first-and-only in offline mode and is the fallback when Jev is down (S10). Jev is pinned to `jev-1.13` (`NL_JEV_MODEL`); the `jev-latest` alias moves when TypeSafe ships a release, which would silently change the calibration. Intent and injection are asked in one call, and each option of the intent question carries a short description (Jev reads criteria literally). The TypeSafe endpoint stays as a direct path when only `TYPESAFE_API_KEY` is set.
+**Evidence** (`backend/tests/decision_eval`, 112 Spanish and English examples written by Role B; `python -m tests.decision_eval.run --model jev --model-id jev-1.13 --reverse-options`):
+
+| | rules | Jev, names only | Jev, with descriptions |
+|---|---|---|---|
+| Intent correct (alternatives accepted) | 64% | 92% | 100% |
+| Confident (>= 0.80) and wrong | 6 | 0 | 0 |
+| Injection recall / false positives | 76% / 1 | 100% / 0 | 100% / 0 |
+
+Reversing the option order changed the label in 2% of the cases, all ambiguous. Median latency 570 ms (p95 830 ms) per call.
+**Limits:** the set is small, was written by the same person who wrote the option descriptions, and has no adaptive attacks or real user messages. The injection margin is narrow (lowest attack 0.64, highest legitimate request 0.31, threshold 0.5), and TypeSafe documents that text arguing for its own classification can move an answer.
+**Consequences:** Jev is advisory. A fooled or down Jev must not open any door: S13 and S14 test it, and permissions, stored authorizations and the verifier stay deterministic. Next: enlarge the set with adaptive attacks and messages from teammates, then re-check the 0.80 and 0.55 thresholds.
+
+### ADR-027 · OpenRouter is the only live LLM provider; the verifier allows one repair per turn (ap-0.2) · Proposed
+**Context:** Groq's free tier (8,000 tokens per minute) cannot hold a turn that grows from about 3,700 to over 10,000 tokens. Claude 5.x models on OpenRouter reject `temperature`, and real models quote numbers from earlier turns or do their own arithmetic.
+**Decision:** one live provider, OpenRouter (default `anthropic/claude-haiku-5.5`), with the scripted model as fallback. When the verifier rejects a reply only for `UNSUPPORTED_NUMBER` or `MISSING_WARNING`, the model gets one chance to fix it (`AgentPolicy.max_repairs=1`, `ap-0.2`, `max_tool_rounds` 6 to 8). Banned wording, contradictions and false execution claims are never retried, and there is no repair once an action was proposed. The rejected reply and the repair note are not stored in history, and the final reply is verified again.
+**Consequences:** the verifier is not loosened (rule 4). Runs are not reproducible, so the recorded demo uses offline mode. Scene 2 still falls back to deterministic text until `alternative_N.total_interest` is a fact (Role A).
