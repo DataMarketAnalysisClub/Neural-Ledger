@@ -14,7 +14,7 @@ from neural_ledger.adapters.outbound.system.ids import SequentialIds
 from neural_ledger.application.ports import StatementReaderUnavailable, StatementUnreadable
 from neural_ledger.application.services.posting import LedgerPosting
 from neural_ledger.application.services.redaction import StatementRedactor
-from neural_ledger.application.use_cases.statements import StatementUseCases
+from neural_ledger.application.use_cases.statements import RedactionView, StatementUseCases
 from neural_ledger.domain.audit.events import AuditKind
 from neural_ledger.domain.shared.envelope import Status
 from tests.statement_samples import Sample, santander_pdf
@@ -39,7 +39,11 @@ def test_import_stores_a_verified_statement_and_audits_it(services):
     assert {w.code for w in result.warnings} <= CATEGORY_WARNINGS
     ledger = result.data.ledger
     assert (ledger.posted, ledger.new) == (7, 7) and ledger.classifier.startswith("naive_bayes@")
-    assert {f.key.rsplit(".", 1)[1]: f.value for f in result.facts}["closing_balance"] == 1_402_441
+    facts = {f.key.rsplit(".", 1)[1]: f.value for f in result.facts}
+    assert facts["closing_balance"] == 1_402_441
+    # The sample's only personal data: the 10-digit ids Santander prints before transfers and payments.
+    assert result.data.redaction == RedactionView("pii-0.1", "none", False, {"NUMBER": 3}) and facts["redacted"] == 3
+    assert summary.account_ref == "****3456"
 
     listed = services.statements.list_statements("camila").data
     assert [s.statement_id for s in listed] == [summary.statement_id]
@@ -53,7 +57,7 @@ def test_import_stores_a_verified_statement_and_audits_it(services):
 def test_reimport_is_a_duplicate_and_stores_nothing_new(services):
     first = services.statements.import_statement("camila", santander_pdf())
     again = services.statements.import_statement("camila", santander_pdf())
-    assert again.data.duplicate is True
+    assert again.data.duplicate is True and again.data.redaction is None
     assert again.data.statement.statement_id == first.data.statement.statement_id
     assert {w.code for w in again.warnings} - CATEGORY_WARNINGS == {"DUPLICATE_STATEMENT"}
     assert (again.data.ledger.posted, again.data.ledger.new) == (7, 0)
@@ -187,6 +191,7 @@ def test_import_redacts_before_anything_is_stored_posted_or_audited():
     result = use_case.import_statement("camila", b"%PDF-1.7")
     assert result.status is Status.OK and result.data.statement.verified
     assert result.data.statement.account_ref == "****3456"
+    assert result.data.redaction == RedactionView("pii-0.1", "none", False, {"PERSON": 2, "ID": 1, "NUMBER": 1, "EMAIL": 1})
 
     (stored,) = store.for_user("camila")
     clean = ["[NUMBER] Transf a [PERSON] [ID]", "TEF DE [PERSON] [EMAIL]"]
@@ -222,6 +227,7 @@ def test_cli_import_and_list(services, tmp_path, capsys):
     assert main(services, ["import-statement", str(path), "--user", "camila"]) == 0
     out = capsys.readouterr().out
     assert "santander_cl_cuentamatica" in out and "VERIFIED" in out and "7 movements" in out
+    assert "account ****3456" in out and "personal data hidden: 3 NUMBER (rules pii-0.1, detector none)" in out
     assert main(services, ["statements", "--user", "camila"]) == 0
     assert "VERIFIED" in capsys.readouterr().out
     assert main(services, ["transactions", "--user", "camila"]) == 0

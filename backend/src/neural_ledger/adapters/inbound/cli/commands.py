@@ -73,12 +73,18 @@ def import_statement(services: ApplicationServices, path: Path, user_id: str, as
     print(f"statement_id {s.statement_id}  {'VERIFIED' if s.verified else 'UNVERIFIED'}{'  (already imported)' if result.data.duplicate else ''}")
     for issue in s.issues:
         print(f"  - {issue.code} {issue.on or ''} {issue.message} (expected {issue.expected}, found {issue.found})")
+    redaction = result.data.redaction
+    if redaction:
+        hidden = ", ".join(f"{count} {code}" for code, count in redaction.counts.items()) or "nothing found"
+        print(f"personal data hidden: {hidden} (rules {redaction.rules}, detector {redaction.detector})")
     ledger = result.data.ledger
     if ledger.classifier:
         print(f"ledger: {ledger.posted} transactions ({ledger.new} new) · {ledger.uncategorized} charges uncategorized · {ledger.classifier}")
     for warning in result.warnings:
         if warning.code == "NOT_POSTED":
             print(f"ledger: {warning.message}")
+        elif warning.code == "REDACTION_DEGRADED":
+            print(f"personal data: {warning.message}")
     return 0
 
 

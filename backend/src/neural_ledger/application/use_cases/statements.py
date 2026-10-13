@@ -78,9 +78,18 @@ class LedgerPostingView:
 
 
 @dataclass(frozen=True, slots=True)
+class RedactionView:
+    rules: str
+    detector: str
+    degraded: bool
+    counts: dict[str, int]  # placeholder code -> how many were inserted; codes with none are left out
+
+
+@dataclass(frozen=True, slots=True)
 class StatementImport:
     duplicate: bool
     statement: StatementSummaryView
+    redaction: RedactionView | None  # None for a duplicate: nothing new was redacted or stored
     ledger: LedgerPostingView
 
 
@@ -181,11 +190,11 @@ class StatementUseCases:
         if duplicate:
             warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
         return Envelope.success(
-            StatementImport(duplicate, summary, _ledger_view(posting)),
+            StatementImport(duplicate, summary, _redaction_view(redaction), _ledger_view(posting)),
             params_version=STATEMENTS_VERSION,
             snapshot_id=statement_id,
             as_of=summary.period_end,
-            facts=(*_facts(summary), *_posting_facts(summary.statement_id, posting)),
+            facts=(*_facts(summary), *_redaction_facts(summary.statement_id, redaction), *_posting_facts(summary.statement_id, posting)),
             warnings=tuple(warnings),
         )
 
@@ -260,6 +269,19 @@ def _degraded(redaction: RedactionReport | None) -> tuple[Caveat, ...]:
             ("personal data", "rules only"),
         ),
     )
+
+
+def _redaction_view(redaction: RedactionReport | None) -> RedactionView | None:
+    if redaction is None:
+        return None
+    counts = {placeholder.value: count for placeholder, count in redaction.counts}
+    return RedactionView(redaction.rules, redaction.detector, redaction.degraded, counts)
+
+
+def _redaction_facts(statement_id: str, redaction: RedactionReport | None) -> tuple[Fact, ...]:
+    if redaction is None:
+        return ()
+    return (Fact(f"statement.{statement_id}.redacted", redaction.masked, "count", "personal-data items replaced by placeholders at import"),)
 
 
 def _redaction_detail(redaction: RedactionReport | None) -> str:
