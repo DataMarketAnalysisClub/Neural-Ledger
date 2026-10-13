@@ -1,0 +1,459 @@
+{
+ "calendar": {
+  "as_of": "2026-12-30",
+  "first_cycle": "2025-04",
+  "grids": {
+   "A": {
+    "origin_as_of": [
+     "2025-09-29",
+     "2025-10-30",
+     "2025-11-27",
+     "2025-12-30"
+    ],
+    "origins": [
+     6,
+     7,
+     8,
+     9
+    ]
+   },
+   "B": {
+    "origin_as_of": [
+     "2026-09-29"
+    ],
+    "origins": [
+     18
+    ]
+   }
+  },
+  "horizon": 3,
+  "n_cycles": 21,
+  "recovery_origin": 18
+ },
+ "diagnostics": {
+  "commitment_set_mismatches": {},
+  "estimates": {
+   "freelance.A": 400,
+   "freelance.B": 100,
+   "salaried.A": 400,
+   "salaried.B": 100
+  },
+  "missing_category_trials": {},
+  "non_ok_envelopes": {},
+  "seasonal_factor_clamped_at_recovery": 11,
+  "warning_codes": {}
+ },
+ "label": "synthetic implementation validation; not predictive accuracy",
+ "notes": [
+  "trials clustered by seed: one seed contributes several origins, categories and cycles, so Wilson intervals are optimistic",
+  "Wilson 95% intervals only on Bernoulli coverage rates; continuous errors and recovery report n, median, p10, p90, mean_abs and no interval",
+  "relative error = (estimate - realized or true) / (realized or true); the P50 error is against a single realized draw, not the true median",
+  "december_conservative_coverage: realized December total <= model.spend.total(December, 'p80'); no nominal level",
+  "grid A evaluates December 2025 from origins 6, 7 and 8 without any December in the history (factor 1, F17); grid B evaluates December 2026 with December 2025 in the window"
+ ],
+ "parameter_recovery_relative_error": {
+  "income.cv": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.168271,
+   "median": -0.013884,
+   "n": 100,
+   "p10": -0.267254,
+   "p90": 0.254125
+  },
+  "income.p20": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.086338,
+   "median": 0.009626,
+   "n": 100,
+   "p10": -0.099552,
+   "p90": 0.184399
+  },
+  "income.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.078641,
+   "median": 0.002514,
+   "n": 100,
+   "p10": -0.114536,
+   "p90": 0.144981
+  },
+  "seasonal_factor": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.111415,
+   "median": 0.025068,
+   "n": 100,
+   "p10": -0.17192,
+   "p90": 0.22449
+  },
+  "spend.dining.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.074903,
+   "median": 0.002083,
+   "n": 100,
+   "p10": -0.116597,
+   "p90": 0.099306
+  },
+  "spend.dining.p80": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.088648,
+   "median": -0.037823,
+   "n": 100,
+   "p10": -0.175791,
+   "p90": 0.098457
+  },
+  "spend.groceries.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.075129,
+   "median": 0.013258,
+   "n": 100,
+   "p10": -0.117045,
+   "p90": 0.126288
+  },
+  "spend.groceries.p80": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.084022,
+   "median": -0.025391,
+   "n": 100,
+   "p10": -0.157579,
+   "p90": 0.107503
+  },
+  "spend.health.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.105604,
+   "median": 0.001042,
+   "n": 100,
+   "p10": -0.154375,
+   "p90": 0.190417
+  },
+  "spend.health.p80": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.139404,
+   "median": -0.058948,
+   "n": 100,
+   "p10": -0.205648,
+   "p90": 0.205142
+  },
+  "spend.shopping.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.10549,
+   "median": 0.013021,
+   "n": 100,
+   "p10": -0.171979,
+   "p90": 0.163854
+  },
+  "spend.shopping.p80": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.120159,
+   "median": -0.045185,
+   "n": 100,
+   "p10": -0.188761,
+   "p90": 0.175385
+  },
+  "spend.transport.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.070698,
+   "median": -0.013021,
+   "n": 100,
+   "p10": -0.117708,
+   "p90": 0.105208
+  },
+  "spend.transport.p80": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.085148,
+   "median": -0.055545,
+   "n": 100,
+   "p10": -0.155983,
+   "p90": 0.061436
+  },
+  "spend.utilities.p50": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.089528,
+   "median": 0.009722,
+   "n": 100,
+   "p10": -0.127917,
+   "p90": 0.15625
+  },
+  "spend.utilities.p80": {
+   "kind": "continuous_summary_no_interval",
+   "mean_abs": 0.092905,
+   "median": -0.029946,
+   "n": 100,
+   "p10": -0.144732,
+   "p90": 0.149886
+  }
+ },
+ "results": {
+  "A": {
+   "december_conservative_coverage": {
+    "hits": 4,
+    "kind": "bernoulli_rate",
+    "n": 300,
+    "nominal": null,
+    "rate": 0.013333,
+    "wilson95": [
+     0.005197,
+     0.033776
+    ]
+   },
+   "december_seasonal_factor_used": {
+    "kind": "continuous_summary_no_interval",
+    "mean_abs": 1.0,
+    "median": 1.0,
+    "n": 300,
+    "p10": 1.0,
+    "p90": 1.0
+   },
+   "freelance_income_p20_coverage": {
+    "hits": 919,
+    "kind": "bernoulli_rate",
+    "n": 1200,
+    "nominal": 0.8,
+    "rate": 0.765833,
+    "wilson95": [
+     0.741048,
+     0.788922
+    ]
+   },
+   "p50_signed_relative_error_non_december": {
+    "kind": "continuous_summary_no_interval",
+    "mean_abs": 0.272637,
+    "median": -0.003772,
+    "n": 5400,
+    "p10": -0.347796,
+    "p90": 0.496728
+   },
+   "p80_coverage_by_origin": {
+    "6": {
+     "hits": 875,
+     "kind": "bernoulli_rate",
+     "n": 1200,
+     "nominal": 0.8,
+     "rate": 0.729167,
+     "wilson95": [
+      0.703322,
+      0.753549
+     ]
+    },
+    "7": {
+     "hits": 876,
+     "kind": "bernoulli_rate",
+     "n": 1200,
+     "nominal": 0.8,
+     "rate": 0.73,
+     "wilson95": [
+      0.704177,
+      0.754356
+     ]
+    },
+    "8": {
+     "hits": 874,
+     "kind": "bernoulli_rate",
+     "n": 1200,
+     "nominal": 0.8,
+     "rate": 0.728333,
+     "wilson95": [
+      0.702467,
+      0.752743
+     ]
+    },
+    "9": {
+     "hits": 1318,
+     "kind": "bernoulli_rate",
+     "n": 1800,
+     "nominal": 0.8,
+     "rate": 0.732222,
+     "wilson95": [
+      0.711287,
+      0.752168
+     ]
+    }
+   },
+   "p80_coverage_non_december": {
+    "hits": 3943,
+    "kind": "bernoulli_rate",
+    "n": 5400,
+    "nominal": 0.8,
+    "rate": 0.730185,
+    "wilson95": [
+     0.718186,
+     0.741857
+    ]
+   },
+   "p80_coverage_per_seed_rate": {
+    "kind": "continuous_summary_no_interval",
+    "mean_abs": 0.730185,
+    "median": 0.740741,
+    "n": 100,
+    "p10": 0.611111,
+    "p90": 0.851852
+   }
+  },
+  "B": {
+   "december_conservative_coverage": {
+    "hits": 81,
+    "kind": "bernoulli_rate",
+    "n": 100,
+    "nominal": null,
+    "rate": 0.81,
+    "wilson95": [
+     0.722212,
+     0.874852
+    ]
+   },
+   "december_seasonal_factor_used": {
+    "kind": "continuous_summary_no_interval",
+    "mean_abs": 1.664488,
+    "median": 1.674278,
+    "n": 100,
+    "p10": 1.352531,
+    "p90": 2.0
+   },
+   "freelance_income_p20_coverage": {
+    "hits": 232,
+    "kind": "bernoulli_rate",
+    "n": 300,
+    "nominal": 0.8,
+    "rate": 0.773333,
+    "wilson95": [
+     0.722675,
+     0.81708
+    ]
+   },
+   "p50_signed_relative_error_non_december": {
+    "kind": "continuous_summary_no_interval",
+    "mean_abs": 0.250433,
+    "median": 0.002157,
+    "n": 1200,
+    "p10": -0.31319,
+    "p90": 0.456469
+   },
+   "p80_coverage_by_origin": {
+    "18": {
+     "hits": 908,
+     "kind": "bernoulli_rate",
+     "n": 1200,
+     "nominal": 0.8,
+     "rate": 0.756667,
+     "wilson95": [
+      0.731595,
+      0.780101
+     ]
+    }
+   },
+   "p80_coverage_non_december": {
+    "hits": 908,
+    "kind": "bernoulli_rate",
+    "n": 1200,
+    "nominal": 0.8,
+    "rate": 0.756667,
+    "wilson95": [
+     0.731595,
+     0.780101
+    ]
+   },
+   "p80_coverage_per_seed_rate": {
+    "kind": "continuous_summary_no_interval",
+    "mean_abs": 0.756667,
+    "median": 0.75,
+    "n": 100,
+    "p10": 0.583333,
+    "p90": 0.916667
+   }
+  }
+ },
+ "seeds": {
+  "freelance": [
+   250000,
+   250099
+  ],
+  "n": 100,
+  "salaried": [
+   150000,
+   150099
+  ]
+ },
+ "spec": {
+  "freelance": {
+   "income": {
+    "cv": 0.306878,
+    "p20": 1398360,
+    "p50": 1800000,
+    "sigma": "3/10"
+   },
+   "seasonal_factor": "49/30",
+   "spend": {
+    "dining": {
+     "p50": 144000,
+     "p80": 177722,
+     "sigma": "1/4"
+    },
+    "groceries": {
+     "p50": 264000,
+     "p80": 325823,
+     "sigma": "1/4"
+    },
+    "health": {
+     "p50": 48000,
+     "p80": 67212,
+     "sigma": "2/5"
+    },
+    "shopping": {
+     "p50": 96000,
+     "p80": 134424,
+     "sigma": "2/5"
+    },
+    "transport": {
+     "p50": 96000,
+     "p80": 118481,
+     "sigma": "1/4"
+    },
+    "utilities": {
+     "p50": 72000,
+     "p80": 88861,
+     "sigma": "1/4"
+    }
+   }
+  },
+  "salaried": {
+   "seasonal_factor": "49/30",
+   "spend": {
+    "dining": {
+     "p50": 144000,
+     "p80": 177722,
+     "sigma": "1/4"
+    },
+    "groceries": {
+     "p50": 264000,
+     "p80": 325823,
+     "sigma": "1/4"
+    },
+    "health": {
+     "p50": 48000,
+     "p80": 67212,
+     "sigma": "2/5"
+    },
+    "shopping": {
+     "p50": 96000,
+     "p80": 134424,
+     "sigma": "2/5"
+    },
+    "transport": {
+     "p50": 96000,
+     "p80": 118481,
+     "sigma": "1/4"
+    },
+    "utilities": {
+     "p50": 72000,
+     "p80": 88861,
+     "sigma": "1/4"
+    }
+   }
+  },
+  "step": 100
+ },
+ "versions": {
+  "backtest": "bt-0.1",
+  "generator": "gen-0.1",
+  "params": "fc-0.1"
+ },
+ "wilson_z": 1.959964
+}

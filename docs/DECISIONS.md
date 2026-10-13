@@ -2,6 +2,8 @@
 
 Short records of architecture decisions. Status starts as **Proposed**; the team marks each one **Accepted** or **Rejected** at a sync. A change after acceptance gets a new entry that supersedes the old one.
 
+Numbers are global: take the next free one, and check open PRs first (ADR-016 to ADR-018 belong to Role A's draft PRs).
+
 ---
 
 ### ADR-001 · Clean architecture with a standard-library core · Proposed
@@ -53,3 +55,116 @@ Short records of architecture decisions. Status starts as **Proposed**; the team
 - `c_max = min over months of H_m / k_m` for the largest affordable amount.
 - Seasonal factors stored exactly (`Fraction`), e.g. 49/30, not 1.633.
 **Owner:** Role A confirms or replaces these in `domain/finance/`.
+
+### ADR-025 · Frontend stack and design system (closes D-04) · Proposed
+**Context:** D-04 left the framework to Role D ("fastest stack, web first"). The Figma mockup was audited with WCAG, UX and several design skills; the findings asked for a minimalist, accessible UI that does not read as a generic AI dashboard, legible in a compressed demo video and for international judges.
+**Decision:**
+- Stack: React 18 + Vite + TypeScript + Tailwind v4, Radix primitives, Recharts, TanStack Query, Phosphor icons, Geist (self-hosted). Types are generated from `contracts/` (`npm run contracts`); served by nginx in `docker compose`, which proxies `/api` to the API.
+- Style: minimalist with flat surfaces; cool neutrals with a cobalt accent reserved for action, focus, selection and the current step; green, amber and red only as states, always with icon and words. Tokens in three layers in `web/src/index.css`; the design record is `docs/DESIGN.md`.
+- Language and money: English first with every string in `web/src/i18n/en.ts` (more languages are new files); every amount shows its ISO code (`CLP 1,500,000`). The UI formats engine facts and never computes money.
+- `/health` exposes `server_time` so countdowns use the API clock (fixed in recorded demos).
+- The statements screen stays behind `VITE_FEATURE_STATEMENTS` until `/v1/statements` reaches `main`.
+**Consequences:** the UI is one adapter over the contracts; a framework swap touches only `web/`. Open items for other roles: a typed `pending_proposal`, a flag for "the verifier replaced the reply", an HTTP profile endpoint, structured amounts in audit events, a purchase-segment breakdown for the simulator, and ISO-formatted amounts and month names in the copilot's narration.
+### ADR-011 · Stage-1 estimation over pay cycles, with exact statistics · Proposed
+**Context:** the estimators must produce exactly the `FinancialModel` the fixtures define, without changing stage 2.
+**Decision:** months are pay cycles (`paycycle.py`, payday = last weekday); quantiles use linear interpolation on `Fraction`s; the income CV uses the sample standard deviation; one seasonal factor per month (total ÷ Σ category P50); sparse categories merge into `other`; as_of must be the day before a payday or the result is `INVALID_INPUT`. Details: `docs/SCOPE.md` F9–F14. Capacity with zero essentials raises `InsufficientData` (H4) instead of dividing by zero.
+**Consequences:** the ledger source and the fixtures are interchangeable (`NL_MODEL_SOURCE`), and the goldens guard both. The design doc (§3, §4.2, §4.3, §8) should record F9–F14.
+
+### ADR-012 · The estimators trust the `transfer_own` classification · Proposed
+**Context:** card payments and own-account sweeps appear in checking as outflows. Counting them as spending would double-count the cuotas and card purchases (design §3).
+**Decision:** Role C (the ledger/platform) classifies own-account movements as `kind=transfer_own` (and the card side as `card_payment`). The stage-1 estimators trust that classification and exclude those movements from income, variable spend, commitments and the one-off expense. The generated ledgers reconcile per account (opening + Σ movements = closing; `tests/golden/test_reconciliation.py`).
+**Consequences:** a real outflow mislabelled `transfer_own` would disappear from variable spend and overstate the protected surplus. This is a **known risk for the security self-assessment** (`docs/SECURITY.md`). Mitigation for real data: reconcile both legs of each own transfer (out of one sandbox account, into another) and treat unmatched `transfer_own` as spending; not needed on synthetic data.
+
+### ADR-013 · Content-addressed snapshot ids and a parameter lock · Proposed
+**Decision:** a ledger's `source_version` is `ledger:<user>:<sha256[:16]>` of its canonical content (user, currency, as_of, accounts, buckets, goals, income profile and the effective transactions, one per `txn_id`, sorted; card rates as exact text), never a version label. Every `snapshot_id` hashes `source_version`, `as_of` and `params_version`. `FinanceParams.fingerprint()` hashes every value exactly (Fraction as n/d); `tests/unit/test_params_lock.py` pins it per version, so changing a value without bumping `params_version` fails the build.
+**Consequences:** one peso anywhere changes the snapshot id; order and exact duplicates do not. The audit log's `forecast_snapshot_id` and `policy_version` always name the data and the numbers used.
+
+### ADR-014 · size_plan is not monotone in the profile or in purchases · Proposed (team decision)
+**Context:** the hypothesis invariants (design §8) found two minimal counterexamples (`tests/property/test_plan_counterexamples.py`):
+1. A higher profile gives a smaller rule: conservative 20,000 (from 2027-02), moderate 30,000 (from 2027-06), aggressive 0 (H2). Available is 55,200 a month and −596,636 every December; 40,000 a month breaches before every next December within the 12 start months searched.
+2. A purchase raises the plan: without it the rule is 80,000 from 2026-11 (capped by Required 81,819); a purchase in 3 cuotas from 2026-11 pushes the start to 2027-01, fewer months remain to the trip deadline, Required rises to 100,000 and the rule becomes 90,000.
+**Updated proposal (NOT accepted or implemented):** treat the permitted profile's share as a ceiling. For **every** eligible share at or below that ceiling, compute the feasible rule amount at its earliest feasible start. Select the share with the **maximum feasible RULE AMOUNT**, breaking ties by earlier start. Taking merely the highest feasible share is not equivalent and is not authorized. Separately propose that adding a purchase never increases cumulative planned savings **at each month** over the horizon (the prefix sum of rule amount over funded months), not merely the final horizon total. This replaces the earlier suggestion to size Required from an unconstrained/no-purchase start; do not adopt that workaround. Team approval and engine design are pending; E01–E14 and existing strict xfails/non-strict xpasses stay unchanged.
+
+### ADR-015 · Seeded synthetic rolling-origin implementation backtest · Proposed
+**Decision proposed:** opt-in independent lognormal category spend and freelance income, with December factor 49/30, fixed seed lists and no changes to calibrated persona ledgers. Origins after 6/7/8/9 cycles with horizon 3 plus a separately labelled origin after 18 cycles evaluate a second December after observing the first. Truncate the ledger at each origin before estimation. Bernoulli coverage alone gets Wilson intervals; continuous error and recovery get n, median, p10/p90 and mean absolute value. Overlapping trials cluster by seed, so Wilson intervals are optimistic. This validates implementation on known synthetic distributions, not predictive accuracy. Measured results and limitations: `docs/BACKTEST.md`. No estimator parameters were tuned to improve coverage.
+---
+
+## Bank statements and the transaction ledger
+
+ADR-019 to ADR-024 cover reading cartolas and posting them to the transaction ledger. Each says whether it is **built** or **decided, not built**. O-1 and O-2 are open issues for further analysis; nothing is changed for them yet.
+
+### ADR-019 · Statement import pipeline: ocr_tabular + one `Bank` per layout · Built
+**Decision:** `ocr_tabular` (adapted into `adapters/outbound/statements/`) turns any PDF or image into word boxes and tables; a `Bank` subclass per layout (first: `SantanderCuentaMatica`) says where the table is and what the rows mean. Import = read → reconcile (domain) → store (once per user and statement) → audit `STATEMENT_IMPORTED`. Entry points: `neural-ledger import-statement`, `POST /v1/statements`, `GET /v1/statements[/{id}]`.
+**Consequences:** a new bank is one file plus a registry line (recipe in `ARCHITECTURE.md`). Real cartolas live in the git-ignored `cartolas/`; tests use synthetic samples only. Text-layer PDFs need the `pdf` extra; scans and photos also need `ocr` (EasyOCR + torch, not in the Docker image). A scan holds the HTTP request open for minutes (~80 s per page on CPU); a background job is the next step if that matters.
+
+### ADR-020 · Reconciliation is the authority over the reader · Built
+**Decision:** the domain recomputes totals, the closing balance and every printed daily balance from the lines. Any misread amount, dropped line or wrong day breaks an equality. Because of that, the reader may be tolerant of OCR noise in amounts and dates (`102/09`, `1 _ 097 .805`), and low OCR confidence (< 0.5) only warns (`OCR_LOW_CONFIDENCE`): EasyOCR scores correct digits at 0.15–0.4, and descriptions are the only thing reconciliation cannot check.
+**Consequences:** amounts are never trusted because the reader is confident, only because they add up.
+
+### ADR-021 · Statements that do not reconcile go to the user for review, and are usable either way · Decided, not built
+**Context:** today an unreconciled statement is stored as unverified (`STATEMENT_UNVERIFIED`) but **not** posted to the ledger (`NOT_POSTED`).
+**Decision:**
+1. Every statement that does not reconcile is shown to the user with its issues (which total or which day's balance differs, expected vs found).
+2. The user can correct it by hand: a line's amount, date or description, add a missed line, or remove a duplicated one. Reconciliation runs again after each change.
+3. It can be used either way: corrected and reconciling, or accepted by the user as it is. In both cases its movements are posted to the ledger.
+4. Its transactions stay flagged as coming from an unverified statement until it reconciles. Envelopes that use them carry a warning the agent must mention.
+5. The reading stays immutable. Corrections are stored separately (who, when, old → new value) and audited as user actions, so the original read can always be recovered.
+**Consequences:** replaces the current "not posted" rule. Needs: a corrections record and store, a review list (`GET /v1/statements?verified=false` or similar), edit endpoints in the UI path only (never an agent tool), a new audit kind, contract changes and a `STATEMENTS_VERSION` bump. Amounts the user types are user input, not model output, so rule 2 (deterministic authority) holds.
+
+### ADR-022 · Spending categories: a swappable classifier, gated by the domain · Built
+**Decision:** a `TransactionClassifier` port guesses one category per charge. The default is naive Bayes (TF-IDF character n-grams, from `ocr_tabular/ml`), selected by `NL_CLASSIFIER` from a registry in `container.py`. The domain accepts a guess only if it is in the category vocabulary and has confidence ≥ 0.5; otherwise the charge is `uncategorized`. Deposits are `income` by rule. Bank boilerplate (`Compra Nacional MD`, `TDB`, `Pago`, …) is removed before features. The model trains at first use from a versioned CSV, is never pickled, and its name carries the training data's hash, recorded on every transaction with its confidence.
+**Consequences:** changing the model or method is one adapter or one registry entry. On the real sample cartola only 2 of 45 charges were categorized: the training data (96 synthetic rows) is the limit, not the method (see O-2).
+
+### ADR-023 · Categories can be changed by the user · Decided, not built
+**Decision:** the user can set or change the category of any transaction, including choosing `Movimiento` (ADR-024). A manual category is stored with `classifier = "user"` and always wins over any model, including when a new model re-categorizes the ledger. Changes are audited as user actions.
+**Consequences:** needs a category-override record, an endpoint in the UI path and a contract change. Manual labels are also the best source of new training rows. A row from a real user's statement can only be used locally, never committed.
+
+### ADR-024 · New category `Movimiento` for money that is not spending or income · Decided, not built
+**Context:** transfers to the user's own accounts, credit card payments, investments and savings (e.g. `Fondo Mutuo`, `Transf a Fintual`) are posted today as purchases. The financial core requires card payments and own transfers to count as `transfer_own`, never as spending, or cuotas are counted twice.
+**Decision:**
+- New category `movement`, shown to the user as **"Movimiento"**, with kind `transfer_own`. It applies in both directions: money in from the user's own account is also a Movimiento, not income.
+- Movimientos are excluded from spending and income totals and listed in totals of their own.
+- Rules come first, and they are deterministic and per bank, in the `Bank` layout: own-account transfers, card payments, mutual funds and investment platforms. A transfer to the account holder's own RUT is a Movimiento. The classifier may also suggest `movement` through the same confidence gate.
+- The user can change it either way (ADR-023).
+- A transfer to a third party stays spending (`other`) unless the user marks it as a Movimiento.
+**Consequences:** vocabulary and contract change (`CATEGORIES`, `transactions.schema.json`), `CATEGORIZATION_VERSION` bump. Role A confirms that estimators read `transfer_own` this way.
+
+### O-1 · Open: a corrected re-read of the same cartola is treated as a duplicate · For analysis
+**Observed:** the statement id hashes bank, account, period and lines, but not the printed summary or daily balances. If a scan misreads only a printed balance, the statement is stored unverified. Importing the clean PDF of the same cartola then has the same id, counts as a duplicate, and the stored unverified copy wins.
+**Options to analyse:**
+- (a) Include the printed summary and balances in the id. Simple, but two readings of one cartola then both exist.
+- (b) On a duplicate, supersede the stored copy when the new reading reconciles and the old one does not, keeping the old one as history.
+- (c) Let ADR-021's manual review absorb it.
+Decide together with ADR-021, since corrections and re-reads both change which version of a statement is current.
+
+### O-2 · Open: category vocabulary, training data and re-categorization · For analysis
+- **Vocabulary:** the ledger uses English slugs: the personas' `groceries, dining, health, shopping, transport, utilities`, plus `entertainment`, `other`, `income`, `uncategorized` (and `movement` from ADR-024). The Spanish training labels are mapped to them (Supermercado → groceries, …). To settle: the final list with Role A and E (the estimators and the generator group spend by category), and the Spanish UI labels.
+- **Training data:** 96 synthetic rows with few of the merchants a real cartola shows. Options: more synthetic rows, manual labels from ADR-023 kept local, per-user models. The 0.5 confidence floor and the boilerplate word list should be re-checked once there is more data. Use a labelled hold-out set as the quality gate before changing the default model.
+- **Re-categorization:** existing transactions keep their category on re-import, and there is no "re-categorize with the current model" yet. Manual categories (ADR-023) must survive it.
+- **Classifier unavailable:** today the statement is stored but not posted, and re-importing backfills. Revisit with ADR-021, for example posting as `uncategorized` instead.
+
+---
+
+## Decision model and language model (Role B)
+
+ADR-026 and ADR-027 are numbered after Role A's ADR-014 to ADR-018, the statements ADR-019 to ADR-024 and the frontend ADR-025; renumber them if the team orders it differently.
+
+### ADR-026 · Jev first in the decision chain, through OpenRouter, pinned to jev-1.13.0 · Proposed (go/no-go 2026-10-14)
+**Context:** the rules model is keyword based and unmeasured. OpenRouter serves the real Jev classifier (System One protocol at `POST /api/v1/systemone`, billed to the OpenRouter key), so no second provider or key is needed (D-02).
+**Decision:** `NL_DECISION_CHAIN=jev,rules` in live mode; `rules` stays first-and-only in offline mode and is the fallback when Jev is down (S10). Jev is pinned to `jev-1.13.0` (`NL_JEV_MODEL`); the `jev-latest` alias moves when TypeSafe ships a release, which would silently change the calibration. Intent and injection are asked in one call, and each option of the intent question carries a short description (Jev reads criteria literally). The TypeSafe endpoint stays as a direct path when only `TYPESAFE_API_KEY` is set.
+**Evidence** (`backend/tests/decision_eval`, 112 Spanish and English examples written by Role B; `python -m tests.decision_eval.run --model jev --model-id jev-1.13.0 --reverse-options`):
+
+| | rules | Jev, names only | Jev, with descriptions |
+|---|---|---|---|
+| Intent correct (alternatives accepted) | 64% | 92% | 100% |
+| Confident (>= 0.80) and wrong | 6 | 0 | 0 |
+| Injection recall / false positives | 76% / 1 | 100% / 0 | 100% / 0 |
+
+Reversing the option order changed the label in 2% of the cases, all ambiguous. Median latency 570 ms (p95 830 ms) per call.
+**Limits:** the set is small, was written by the same person who wrote the option descriptions, and has no adaptive attacks or real user messages. The injection margin is narrow (lowest attack 0.64, highest legitimate request 0.31, threshold 0.5), and TypeSafe documents that text arguing for its own classification can move an answer.
+**Consequences:** Jev is advisory. A fooled or down Jev must not open any door: S13 and S14 test it, and permissions, stored authorizations and the verifier stay deterministic. Next: enlarge the set with adaptive attacks and messages from teammates, then re-check the 0.80 and 0.55 thresholds.
+
+### ADR-027 · OpenRouter is the only live LLM provider; the verifier allows one repair per turn (ap-0.2) · Proposed
+**Context:** Groq's free tier (8,000 tokens per minute) cannot hold a turn that grows from about 3,700 to over 10,000 tokens. Claude 5.x models on OpenRouter reject `temperature`, and real models quote numbers from earlier turns or do their own arithmetic.
+**Decision:** one live provider, OpenRouter (default `anthropic/claude-haiku-5.5`), with the scripted model as fallback. When the verifier rejects a reply only for `UNSUPPORTED_NUMBER` or `MISSING_WARNING`, the model gets one chance to fix it (`AgentPolicy.max_repairs=1`, `ap-0.2`, `max_tool_rounds` 6 to 8). Banned wording, contradictions and false execution claims are never retried, and there is no repair once an action was proposed. The rejected reply and the repair note are not stored in history, and the final reply is verified again.
+**Consequences:** the verifier is not loosened (rule 4). Runs are not reproducible, so the recorded demo uses offline mode. Scene 2 still falls back to deterministic text until `alternative_N.total_interest` is a fact (Role A).

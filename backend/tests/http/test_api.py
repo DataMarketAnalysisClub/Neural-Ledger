@@ -18,6 +18,7 @@ def client(services):
 def test_health(client):
     body = client.get("/health").json()
     assert body["mode"] == "offline" and body["audit_chain_ok"] and "simulate_purchase" in body["tools"]
+    assert body["server_time"].startswith("2026-10-29T12:00:00")  # the fixed demo clock, for UI countdowns
 
 
 def test_forecast_and_simulation(client):
@@ -57,3 +58,57 @@ def test_audit_reads_are_scoped_to_the_caller(client):
 def test_chat(client):
     reply = client.post("/v1/chat", json={"session_id": "c", "message": "Will I be OK in December?"}).json()
     assert reply["intent"] == "forecast" and reply["verification"]["ok"]
+
+
+def test_statement_upload_list_and_detail(client):
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    from tests.statement_samples import santander_pdf
+
+    upload = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"})
+    assert upload.status_code == 200, upload.text
+    summary = upload.json()["data"]["statement"]
+    assert summary["verified"] and summary["line_count"] == 7
+
+    listed = client.get("/v1/statements", headers={"X-User-Id": "camila"}).json()["data"]
+    assert [s["statement_id"] for s in listed] == [summary["statement_id"]]
+    detail = client.get(f"/v1/statements/{summary['statement_id']}", headers={"X-User-Id": "camila"}).json()
+    assert detail["data"]["lines"][0]["description"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
+
+    other = client.get(f"/v1/statements/{summary['statement_id']}", headers={"X-User-Id": "diego"})
+    assert other.status_code == 409 and client.get("/v1/statements", headers={"X-User-Id": "diego"}).json()["data"] == []
+
+
+def test_imported_statement_reaches_the_transaction_ledger(client):
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    pytest.importorskip("sklearn")
+    from tests.statement_samples import santander_pdf
+
+    ledger = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"}).json()["data"]["ledger"]
+    assert ledger["posted"] == ledger["new"] == 7 and ledger["classifier"].startswith("naive_bayes@")
+
+    body = client.get("/v1/transactions", headers={"X-User-Id": "camila"}).json()
+    txns = body["data"]["transactions"]
+    assert len(txns) == 7 and txns[0]["merchant"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
+    assert sum(t["spent"] for t in body["data"]["spending"]) == 61_080 and body["data"]["income"][0]["spent"] == 463_521
+    assert client.get("/v1/transactions", headers={"X-User-Id": "diego"}).json()["data"]["transactions"] == []
+
+
+def test_statement_upload_rejects_bad_files(client):
+    assert client.post("/v1/statements", content=b"hello", headers={"Content-Type": "application/pdf"}).status_code == 422
+    too_big = client.post("/v1/statements", content=b"%PDF", headers={"Content-Type": "application/pdf", "Content-Length": str(16 * 1024 * 1024)})
+    assert too_big.status_code == 413
+
+
+def test_statement_upload_limit_holds_without_content_length(client):
+    """A chunked body announces no size; the endpoint must count while reading and stop at the limit.
+
+    Before the fix the whole body was buffered and the use case answered 422 afterwards."""
+
+    def chunks():
+        for _ in range(16):
+            yield b"0" * (1024 * 1024)
+
+    response = client.post("/v1/statements", content=chunks(), headers={"Content-Type": "application/pdf"})
+    assert response.status_code == 413

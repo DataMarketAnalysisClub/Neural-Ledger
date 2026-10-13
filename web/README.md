@@ -1,19 +1,47 @@
 # Web (Role D)
 
-Framework is decision D-04: whatever ships fastest for the demo, web first (Angular is fine; wrap with Ionic later if needed).
+React + Vite + TypeScript + Tailwind v4, Radix primitives, Recharts, TanStack Query, Phosphor icons, Geist (self-hosted). Closes decision D-04 (ADR-025 in `docs/DECISIONS.md`); the design system is recorded in `docs/DESIGN.md`.
+
+## Run
+
+```bash
+make api                 # backend on :8000 (offline, no keys)
+cd web && npm install
+npm run dev              # UI on http://localhost:3000, proxies /api to :8000
+```
+
+Or `docker compose up --build`: API on :8000, UI on :3000 (nginx proxies `/api`).
+
+| Script | Does |
+|---|---|
+| `npm run contracts` | Regenerates `src/contracts/` from `../contracts` (commit the result; CI checks it is current) |
+| `npm run lint` / `npm run typecheck` | ESLint and TypeScript |
+| `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, an axe accessibility check |
+| `npm run build` | Production bundle in `dist/` |
 
 ## Rules
-- **The UI never computes money.** It renders `data` and `facts` from the API.
-- The **confirmation card** shows exactly `pending_proposal.terms` and sends those same terms to `POST /v1/actions/proposals/{proposal_id}/confirm`. Never let the user or the agent edit the terms on the card.
-- Types are generated from `contracts/` (see `contracts/README.md`).
-- Untrusted text (`{"untrusted_text": …}`) is rendered as plain text, never as HTML.
 
-## Screens for the demo arc
-1. Dashboard: balance, commitments by month, conservative vs. typical trough chart with the floor line (`GET /v1/forecast?scenario=…`).
-2. What-if: purchase form → verdict, before/after chart, alternatives (`POST /v1/simulate-purchase`).
-3. Chat (`POST /v1/chat`) with the confirmation card when `pending_proposal` is present.
-4. Protected surplus and capacity (`GET /v1/protected-surplus`, `GET /v1/capacity`).
-5. Audit view with blocked attempts and the chain status (`GET /v1/audit`, `GET /v1/audit/verify`).
+- **The UI never computes money.** It renders `data` and `facts` from the API. `src/lib/format.ts` only formats.
+- **Every amount shows its ISO currency code** (`CLP 1,500,000`), whatever the currency.
+- The **confirmation receipt** sends exactly the `terms` object it received to `POST /v1/actions/proposals/{proposal_id}/confirm`. Execution is a separate step that sends only the `authorization_id`. Nothing on screen changes until the API answers.
+- Untrusted text (`{"untrusted_text": …}`, model replies) is rendered as plain text, never as HTML.
+- **English first.** Every string lives in `src/i18n/en.ts`; a new language is another file with the same shape, registered in `src/i18n/index.ts`.
+- No emojis anywhere.
 
-## API
-Base URL `http://localhost:8000`; select the persona with the header `X-User-Id: camila` or `diego`. `GET /health` shows the mode (offline or live).
+## Screens (demo arc)
+
+| Route | Scene | Endpoints |
+|---|---|---|
+| `/` Overview | 1, 4 | `/v1/state`, `/v1/forecast`, `/v1/protected-surplus`, `/v1/savings-plan` |
+| `/commitments` | 1 | `/v1/commitments`, `/v1/capacity` |
+| `/simulator` Purchase check | 2, 3 | `POST /v1/simulate-purchase` |
+| `/plan` Savings plan | 4 | `/v1/capacity`, `/v1/permitted-profile`, `/v1/savings-plan` |
+| `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` |
+| `/audit` Audit trail | 6 | `/v1/audit`, `/v1/audit/verify` |
+| `/statements` | — | hidden until `/v1/statements` reaches main (`VITE_FEATURE_STATEMENTS=true`) |
+
+## Known API gaps (for contract PRs)
+
+- The chat reply cannot tell "offline narration" from "the verifier replaced the model's text" (`fallback_used` covers both).
+- No HTTP endpoint for the user profile (declared tolerance); the Plan screen lets the user choose the tolerance to test.
+- Audit events carry mismatch amounts only inside `detail`.

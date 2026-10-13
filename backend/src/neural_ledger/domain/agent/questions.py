@@ -27,6 +27,7 @@ class ChoiceQuestion:
     key: str
     prompt: str
     options: tuple[str, ...]
+    notes: tuple[str, ...] = ()  # optional description per option, same order; models that take criteria use them
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +62,16 @@ INTENT_QUESTION = ChoiceQuestion(
     key="intent",
     prompt="Which request type best matches the user's message to a personal cash-flow assistant?",
     options=tuple(i.value for i in Intent),
+    notes=(
+        "Asks whether a specific purchase or installment plan is affordable, or how it would change the budget",
+        "Asks how the coming months or the balance will look, or when money gets tight",
+        "Asks how much money is free to spend now after commitments and reserve",
+        "Asks to build or size a plan to save toward a goal or to rebuild the reserve",
+        "Tells the assistant to carry out or confirm an action it proposed, such as creating a rule or moving money",
+        "Asks what a term means, or how or why the assistant produced an answer",
+        "Asks about something other than the user's own cash flow: investing, taxes, general knowledge, writing",
+        "Greeting, thanks, farewell or chit-chat with no request",
+    ),
 )
 
 INJECTION_QUESTION = YesNoQuestion(

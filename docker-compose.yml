@@ -8,17 +8,27 @@ services:
     env_file:
       - path: .env
         required: false
+    # Container-only settings are fixed here, not read from .env: they override env_file, so copying
+    # .env.example (where NL_PERSISTENCE=memory suits local runs) cannot make the container forget its
+    # audit log and sandbox bank on restart.
     environment:
-      NL_PERSISTENCE: ${NL_PERSISTENCE:-sqlite}
+      NL_PERSISTENCE: sqlite
       NL_SQLITE_PATH: /app/var/neural_ledger.db
+      NL_DATA_DIR: /app/data
+      NL_CONTRACTS_DIR: /app/contracts
     ports:
       - "8000:8000"
     volumes:
       - ledger-data:/app/var
 
-  # web:
-  #   Role D adds the frontend here (build ./web, port 3000), talking to http://api:8000.
-  #   The UI never computes money: it renders facts returned by the API.
+  # The UI never computes money: it renders facts returned by the API (proxied at /api by nginx).
+  web:
+    build:
+      context: ./web
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
 
 volumes:
   ledger-data:

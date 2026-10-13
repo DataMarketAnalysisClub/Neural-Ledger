@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/statements.schema.json",
+  "title": "Statements",
+  "description": "data of GET /v1/statements: the user's imported statements, oldest import first.",
+  "type": "array",
+  "items": {"$ref": "statement.schema.json#/$defs/summary"}
+}

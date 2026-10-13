@@ -26,15 +26,17 @@ class AgentPolicy:
     clarify_threshold: float
     injection_threshold: float
     max_tool_rounds: int
+    max_repairs: int  # verifier rejections the model may correct in one turn (honest mistakes only)
     history_limit: int
 
 
 AP_0_1 = AgentPolicy(
-    version="ap-0.1",
+    version="ap-0.2",
     proceed_threshold=0.80,
     clarify_threshold=0.55,
     injection_threshold=0.50,
-    max_tool_rounds=6,
+    max_tool_rounds=8,
+    max_repairs=1,
     history_limit=40,
 )
 

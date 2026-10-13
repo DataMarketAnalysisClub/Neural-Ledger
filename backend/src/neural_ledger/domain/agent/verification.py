@@ -47,6 +47,10 @@ _CLAIMS_EXECUTION = re.compile(
 )
 _NOT_FITTING = {"FITS_TYPICAL_ONLY", "BREACHES_ALL", "BASELINE_BREACH"}
 
+# Honest mistakes a model may correct once. Banned wording, contradictions and false execution claims are never
+# retried: they go straight to the deterministic narration.
+REPAIRABLE_KINDS = frozenset({"UNSUPPORTED_NUMBER", "MISSING_WARNING"})
+
 
 @dataclass(frozen=True, slots=True)
 class VerificationIssue:
