@@ -86,7 +86,17 @@ class SqliteDatabase:
         self.connection = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.executescript(_SCHEMA)
+        # One connection is shared by every request thread, so every use of it, reads included,
+        # goes through this lock. Unserialized reads interleave cursors across threads.
         self.lock = threading.Lock()
+
+    def fetchone(self, sql: str, params: tuple = ()) -> tuple | None:
+        with self.lock:
+            return self.connection.execute(sql, params).fetchone()
+
+    def fetchall(self, sql: str, params: tuple = ()) -> list[tuple]:
+        with self.lock:
+            return self.connection.execute(sql, params).fetchall()
 
 
 def _proposal_from(payload: dict) -> Proposal:
@@ -254,12 +264,11 @@ class SqliteSavingsRuleStore:
             )
 
     def count(self) -> int:
-        return self._db.connection.execute("SELECT COUNT(*) FROM savings_rules").fetchone()[0]
+        row = self._db.fetchone("SELECT COUNT(*) FROM savings_rules")
+        return row[0] if row else 0
 
     def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
-        rows = self._db.connection.execute(
-            "SELECT payload FROM savings_rules WHERE user_id = ? ORDER BY sequence", (user_id,)
-        ).fetchall()
+        rows = self._db.fetchall("SELECT payload FROM savings_rules WHERE user_id = ? ORDER BY sequence", (user_id,))
         return tuple(_rule_from(json.loads(r[0])) for r in rows)
 
 
@@ -275,7 +284,7 @@ class SqliteActionRepository:
             )
 
     def get_proposal(self, proposal_id: str) -> Proposal | None:
-        row = self._db.connection.execute("SELECT payload FROM proposals WHERE proposal_id = ?", (proposal_id,)).fetchone()
+        row = self._db.fetchone("SELECT payload FROM proposals WHERE proposal_id = ?", (proposal_id,))
         return _proposal_from(json.loads(row[0])) if row else None
 
     def update_proposal(self, proposal: Proposal) -> None:
@@ -295,9 +304,7 @@ class SqliteActionRepository:
             )
 
     def get_authorization(self, authorization_id: str) -> Authorization | None:
-        row = self._db.connection.execute(
-            "SELECT payload, consumed_at FROM authorizations WHERE authorization_id = ?", (authorization_id,)
-        ).fetchone()
+        row = self._db.fetchone("SELECT payload, consumed_at FROM authorizations WHERE authorization_id = ?", (authorization_id,))
         return _authorization_from(json.loads(row[0]), row[1]) if row else None
 
     def consume_authorization(self, authorization_id: str, at: datetime) -> bool:
@@ -309,10 +316,8 @@ class SqliteActionRepository:
             return cursor.rowcount == 1
 
     def for_session(self, session_id: str) -> tuple[tuple[Proposal, ...], tuple[Authorization, ...]]:
-        proposals = self._db.connection.execute("SELECT payload FROM proposals WHERE session_id = ?", (session_id,)).fetchall()
-        auths = self._db.connection.execute(
-            "SELECT payload, consumed_at FROM authorizations WHERE session_id = ?", (session_id,)
-        ).fetchall()
+        proposals = self._db.fetchall("SELECT payload FROM proposals WHERE session_id = ?", (session_id,))
+        auths = self._db.fetchall("SELECT payload, consumed_at FROM authorizations WHERE session_id = ?", (session_id,))
         return (
             tuple(_proposal_from(json.loads(r[0])) for r in proposals),
             tuple(_authorization_from(json.loads(r[0]), r[1]) for r in auths),
@@ -343,9 +348,7 @@ class SqliteAuditLog:
 
     def events(self, session_id: str | None = None) -> tuple[AuditEvent, ...]:
         if session_id is None:
-            rows = self._db.connection.execute("SELECT record FROM audit_events ORDER BY sequence").fetchall()
+            rows = self._db.fetchall("SELECT record FROM audit_events ORDER BY sequence")
         else:
-            rows = self._db.connection.execute(
-                "SELECT record FROM audit_events WHERE session_id = ? ORDER BY sequence", (session_id,)
-            ).fetchall()
+            rows = self._db.fetchall("SELECT record FROM audit_events WHERE session_id = ? ORDER BY sequence", (session_id,))
         return tuple(AuditEvent.from_record(json.loads(r[0])) for r in rows)

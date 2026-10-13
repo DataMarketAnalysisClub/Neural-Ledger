@@ -40,6 +40,10 @@ evidence/test-results/*.xml
 # Local drafts (commit messages, session summaries)
 commit_message.txt
 resumen-*.md
+.impeccable/
+# Playwright artifacts
+web/test-results/
+web/playwright-report/
 
 # Real bank statements carry personal data: never commit them (tests use synthetic statements)
 cartolas/

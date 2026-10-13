@@ -153,6 +153,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         mode=s.mode,
         language_model=llm.name,
         decision_chain=decisions.chain,
+        clock=clock,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source)
 

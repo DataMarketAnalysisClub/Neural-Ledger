@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .ports import Clock
 from .services.tools import ToolRegistry
 from .use_cases.actions import ActionUseCases
 from .use_cases.audit import AuditUseCases
@@ -28,3 +29,4 @@ class ApplicationServices:
     mode: str  # "offline" or "live": shown in /health so the demo never runs in the wrong mode
     language_model: str
     decision_chain: tuple[str, ...]
+    clock: Clock | None = None  # exposed as /health server_time so UI timers follow the API clock (fixed in demos)

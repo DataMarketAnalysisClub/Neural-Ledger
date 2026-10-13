@@ -56,6 +56,8 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
             "params_version": services.financial.params.version,
             "audit_chain_ok": check.ok,
             "tools": list(services.registry.names),
+            # The API's own clock (fixed in recorded demos), so UI countdowns use the same time as expires_at.
+            "server_time": services.clock.now().isoformat() if services.clock else None,
         }
 
     # ---- financial reads (T0/T1) --------------------------------------------------------------

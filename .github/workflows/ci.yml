@@ -41,6 +41,27 @@ jobs:
           name: junit
           path: evidence/test-results/junit.xml
 
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Contract types are up to date
+        run: npm run contracts && git diff --exit-code -- src/contracts
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Unit and accessibility tests
+        run: npm test
+      - run: npm run build
+
   compose:
     # The submission path: `docker compose up` from a clean checkout, no keys.
     runs-on: ubuntu-latest
@@ -58,6 +79,8 @@ jobs:
           grep -q '"mode":"offline"' health.json
           grep -q '"audit_chain_ok":true' health.json
           curl --fail --silent -H 'X-User-Id: camila' 'http://localhost:8000/v1/forecast?scenario=conservative' > /dev/null
+          curl --fail --silent http://localhost:3000/ | grep -q '<div id="root">'
+          curl --fail --silent -H 'X-User-Id: camila' http://localhost:3000/api/health | grep -q '"audit_chain_ok":true'
       - if: failure()
         run: docker compose logs
       - if: always()

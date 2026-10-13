@@ -18,6 +18,7 @@ def client(services):
 def test_health(client):
     body = client.get("/health").json()
     assert body["mode"] == "offline" and body["audit_chain_ok"] and "simulate_purchase" in body["tools"]
+    assert body["server_time"].startswith("2026-10-29T12:00:00")  # the fixed demo clock, for UI countdowns
 
 
 def test_forecast_and_simulation(client):
