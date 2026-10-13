@@ -36,6 +36,9 @@ partial cycles are out of scope and return INVALID_INPUT.
     design doc section 3 (docs/SCOPE.md F9): one factor per month, not per category, because
     SpendModel applies a single factor to the summed quantiles. Categories with fewer than 6
     observed cycles are merged into "other" (essential if any merged category was) and flagged.
+    A seasonal month with no cycle in the window gets no factor (SpendModel uses 1, F17); it
+    is flagged SEASONALITY_UNOBSERVED with the fact estimate.seasonal.unobserved_months
+    (ADR-016, Proposed). Flag only: no number changes.
 Duplicates: exact txn_id duplicates are dropped; same date, amount and counterparty is
 flagged and kept (it can be two real purchases). Merchant text is data only: it feeds the
 category lookup and the untrusted `label` field, and never appears in a warning message.
@@ -112,6 +115,9 @@ MERCHANT_CATEGORIES: dict[str, str] = {
 _CUOTA_NUMBERS = re.compile(r"\bCUOTA\s*(\d{1,2})\s*/\s*(\d{1,2})\b", re.IGNORECASE)
 _CUOTA_WORD = re.compile(r"\bCUOTA\b", re.IGNORECASE)
 _SLUG = re.compile(r"[^a-z0-9]+")
+# Static English names (not `calendar`, which is locale dependent); index = month number.
+_MONTH_NAMES = ("", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December")
 
 
 # ---- exact statistics -----------------------------------------------------------------------
@@ -423,6 +429,22 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
         Fact("estimate.spend.p80_total", sum(c.p80 for c in spend.categories), snapshot.currency, "sum of category P80"),
         Fact("estimate.commitments", len(commitments), "count", "installments + recurring items"),
     )
+    # ADR-016 (Proposed): flag, never model, a seasonal month the window has not observed.
+    unobserved = tuple(sorted(set(params.seasonal_months) - {c.month for c in window}))
+    if unobserved:
+        names = tuple(_MONTH_NAMES[m] for m in unobserved)
+        warnings.append(Caveat(
+            "SEASONALITY_UNOBSERVED",
+            f"{len(unobserved)} seasonal month(s) ({', '.join(names)}) are not in the estimation window; "
+            "no seasonal uplift was applied for them (factor 1).",
+            (*names, "seasonal"),
+        ))
+        facts = (*facts, Fact(
+            "estimate.seasonal.unobserved_months",
+            ",".join(str(m) for m in unobserved),
+            "month_numbers",
+            "params.seasonal_months not in the estimation window; factor defaults to 1",
+        ))
     return Envelope.success(
         model,
         params_version=version,

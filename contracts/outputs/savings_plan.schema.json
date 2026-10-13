@@ -9,7 +9,7 @@
     "profile": {"enum": ["conservative", "moderate", "aggressive"]},
     "amount": {"type": "integer", "minimum": 0},
     "start_month": {"type": ["string", "null"]},
-    "share": {"type": "number"},
+    "share": {"type": "number", "description": "Share actually selected from profile_share at or below the permitted profile ceiling. Each eligible share contributes its earliest H5-feasible rule; choose maximum rule amount, then earliest start, then higher share. With no feasible rule, this is the profile ceiling share."},
     "lowest_available_in_window": {"type": ["integer", "null"]},
     "required_monthly": {"type": "integer"},
     "allocation": {"type": "array", "items": {"type": "object", "required": ["bucket", "monthly_amount"]}},

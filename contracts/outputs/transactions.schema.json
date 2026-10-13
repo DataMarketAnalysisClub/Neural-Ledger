@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/transactions.schema.json",
+  "title": "Transactions",
+  "description": "data of GET /v1/transactions: the user's transaction ledger built from verified imported statements, oldest first, with totals. Money is integer minor units of `currency`; charges are negative. Categories are a classifier's guesses, gated to the vocabulary below; merchant text is untrusted.",
+  "type": "object",
+  "required": [
+    "transactions",
+    "spending",
+    "income"
+  ],
+  "properties": {
+    "transactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "txn_id",
+          "account_id",
+          "date",
+          "amount",
+          "currency",
+          "merchant",
+          "kind",
+          "category",
+          "classifier",
+          "confidence",
+          "statement_id",
+          "line_index"
+        ],
+        "properties": {
+          "txn_id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string",
+            "description": "<bank layout code>:<account reference>."
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "amount": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "merchant": {
+            "type": "object",
+            "required": [
+              "untrusted_text"
+            ],
+            "properties": {
+              "untrusted_text": {
+                "type": "string",
+                "maxLength": 120
+              }
+            },
+            "additionalProperties": false
+          },
+          "kind": {
+            "enum": [
+              "purchase",
+              "income"
+            ],
+            "description": "From the amount's sign; never from a model."
+          },
+          "category": {
+            "$ref": "#/$defs/category"
+          },
+          "classifier": {
+            "type": "string",
+            "description": "What chose the category: a classifier name with its training-data hash, or \"rule\" for income."
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1,
+            "description": "The classifier's confidence, kept even when too low to accept; null for rules."
+          },
+          "statement_id": {
+            "type": "string"
+          },
+          "line_index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "spending": {
+      "type": "array",
+      "description": "Charges per currency and category, largest first.",
+      "items": {
+        "$ref": "#/$defs/total"
+      }
+    },
+    "income": {
+      "type": "array",
+      "description": "Deposits per currency (category \"income\").",
+      "items": {
+        "$ref": "#/$defs/total"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "category": {
+      "enum": [
+        "groceries",
+        "dining",
+        "health",
+        "shopping",
+        "transport",
+        "utilities",
+        "entertainment",
+        "other",
+        "income",
+        "uncategorized"
+      ]
+    },
+    "total": {
+      "type": "object",
+      "required": [
+        "category",
+        "currency",
+        "spent",
+        "count"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "spent": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Positive magnitude."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

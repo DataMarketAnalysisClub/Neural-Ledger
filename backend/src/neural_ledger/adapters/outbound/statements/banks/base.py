@@ -1,0 +1,90 @@
+"""One `Bank` subclass per statement layout. Adding a bank = one subclass + register it in `banks/__init__.py`.
+
+A Bank knows three things about its cartola:
+  1. how to recognize it (`recognizes`, from the first page's text);
+  2. where its table is (`table`: header words and where the table ends), which `ocr_tabular`
+     uses to rebuild one Table per page;
+  3. what the rows mean (`parse`): dates, charge/deposit columns, daily balances, printed totals.
+
+Parsing is strict: a cell that is not what the layout says raises TableError instead of being
+guessed. Reconciliation (domain) then checks that what was read adds up.
+"""
+
+from __future__ import annotations
+
+import re
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from datetime import date
+from typing import ClassVar
+
+from .....domain.statements.model import BankStatement
+from ..ocr_tabular import Table, TableError, TableSpec, norm_text
+
+# Thousands groups; the separator may be lost or turned into a space or '_' by OCR ('3 280', '1 _ 097 .805').
+_THOUSANDS = re.compile(r"^-?\d{1,3}(\.?\d{3})*$")
+
+
+class Bank(ABC):
+    code: ClassVar[str]  # stable id stored with each statement, e.g. "santander_cl_cuentamatica"
+    name: ClassVar[str]
+    currency: ClassVar[str] = "CLP"
+    table: ClassVar[TableSpec]
+
+    @abstractmethod
+    def recognizes(self, first_page_text: str) -> bool:
+        """True if this layout printed the page. Called with `norm_text`-ed text."""
+
+    @abstractmethod
+    def parse(self, tables: Sequence[Table]) -> BankStatement:
+        """Tables (one per page, in order) → statement. Raise TableError on anything unexpected."""
+
+
+def parse_clp(text: str) -> int | None:
+    """'1.116.492' → 1116492; '' → None. CLP has no minor unit, so pesos are minor units.
+
+    Tolerant of lost or noisy separators, strict about digit groups. A misread digit still
+    parses, which is why every amount is reconciled against the printed totals afterwards."""
+    cleaned = re.sub(r"[\s_$]", "", text)
+    if not cleaned:
+        return None
+    if not _THOUSANDS.match(cleaned):
+        raise TableError(f"not an amount: {text!r}")
+    return int(cleaned.replace(".", ""))
+
+
+def day_month(text: str, period_end: date) -> date:
+    """'02/09' → the latest such date not after the period end, so Dec→Jan statements get the right year."""
+    # Searched, not matched: OCR reads the table's left rule as '1' or '|' ('102/09', '|16/09').
+    match = re.search(r"(\d{1,2})/(\d{1,2})$", text.strip())
+    if not match:
+        raise TableError(f"not a day/month: {text!r}")
+    day, month = int(match.group(1)), int(match.group(2))
+    for year in (period_end.year, period_end.year - 1):
+        try:
+            candidate = date(year, month, day)
+        except ValueError as exc:
+            raise TableError(f"not a date: {text!r}") from exc
+        if candidate <= period_end:
+            return candidate
+    raise TableError(f"date outside any plausible year: {text!r}")
+
+
+def column_index(header: Sequence[str], name: str) -> int:
+    """Index of the header cell naming `name`. OCR reads table rules as letters ('INUMERO',
+    '[DEPOSITOS') and swaps glyphs ('BUC' for 'SUC'), so a cell matches if its first word
+    contains `name` or is one edit away from it."""
+    for i, cell in enumerate(header):
+        words = norm_text(cell).split()
+        if words and (name in words[0] or _one_edit(words[0], name)):
+            return i
+    raise TableError(f"column {name!r} not found in header {list(header)!r}")
+
+
+def _one_edit(a: str, b: str) -> bool:
+    if abs(len(a) - len(b)) > 1 or min(len(a), len(b)) < 3:
+        return False
+    i = 0
+    while i < min(len(a), len(b)) and a[i] == b[i]:
+        i += 1
+    return a[i + 1 :] == b[i + 1 :] or a[i:] == b[i + 1 :] or a[i + 1 :] == b[i:]

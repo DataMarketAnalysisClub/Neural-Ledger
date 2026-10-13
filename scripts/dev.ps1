@@ -34,7 +34,7 @@ $Demo = @{ NL_CLOCK = "fixed"; NL_IDS = "sequential"; PYTHONPATH = "src" }
 switch ($Task) {
     "install" {
         if (-not (Test-Path $Venv)) { & py -3.12 -m venv (Join-Path $Root ".venv") }
-        & $Venv -m pip install -e "$Backend[api,dev]"
+        & $Venv -m pip install -e "$Backend[api,dev,pdf,ml]"
     }
     "test" { Invoke-Py @("-m", "pytest") }
     "test-golden" { Invoke-Py @("-m", "pytest", "-m", "golden", "-v") }

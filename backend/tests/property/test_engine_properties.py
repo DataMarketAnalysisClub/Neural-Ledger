@@ -95,7 +95,6 @@ def test_no_plan_breaches_the_floor_and_rules_are_multiples_of_10k(raw, profile)
         assert not project(model, FC_0_1, Scenario.CONSERVATIVE, check, plan=plan.as_recurring()).breaches  # H5
 
 
-@KNOWN_PLAN_ISSUE
 @PROPERTY_SETTINGS
 @given(raw_ledgers())
 def test_a_higher_profile_never_gives_a_smaller_rule(raw):
