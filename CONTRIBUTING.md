@@ -1,15 +1,16 @@
 # Contributing
 
 ## Workflow
-- Branch from `main`: `<role>/<topic>`, e.g. `a/estimators`, `b/jev-adapter`, `d/dashboard`.
-- Small PRs into `main`, one reviewer from another role, CI green. The integration owner merges.
+- Branch from `staging`: `<role>/<topic>`, e.g. `a/estimators`, `b/jev-adapter`, `d/dashboard`.
+- Small PRs into `staging`, one reviewer from another role, CI green. Never push to `staging` or `main` directly: CI only checks what arrives through a PR or a push to those branches, and a direct push skips review.
+- `staging` is the integration branch. The integration owner merges PRs into it and promotes `staging` to `main` once it is green; merge with a merge commit, not a squash, so authorship and stacked PRs survive.
 - Daily 15-minute sync: what merged, what is blocked, what changes a contract.
 - After the **Oct 17 feature freeze**, only fixes merge.
 
 ## Definition of done (every PR)
 - [ ] `make test-all` passes (the full suite, property tests and architecture tests included). `make test` is only the fast iteration lane and is not enough for a PR or CI.
 - [ ] If an interface changed: the contract in `contracts/` changed in the same PR and the contract tests pass.
-- [ ] No new import in `domain/` or `application/` beyond the Python standard library.
+- [ ] No new import in `domain/` or `application/` beyond the Python standard library, and no clock, randomness or I/O there either (time and ids come through ports; `tests/architecture` checks both).
 - [ ] Every path that can move money is audited and covered by a security test.
 - [ ] Golden numbers unchanged, or the change is a recorded team decision with a new `params_version`.
 - [ ] Docs updated if behaviour changed (`docs/SCOPE.md`, `docs/DECISIONS.md`).

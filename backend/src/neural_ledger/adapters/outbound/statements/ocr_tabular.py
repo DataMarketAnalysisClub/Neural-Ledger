@@ -22,7 +22,7 @@ changes bank statements need:
   per-column grouping with order-preserving alignment, which survives page curvature.
 
 Heavy libraries (pdfplumber, pymupdf, easyocr) are imported lazily: install the `pdf` extra
-for text-layer PDFs and the `ocr` extra for scans and photos.
+for text-layer PDFs and the `ocr` extra (pymupdf + easyocr) for scans and photos.
 """
 
 from __future__ import annotations

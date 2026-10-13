@@ -98,6 +98,34 @@ def test_fastapi_only_in_http_adapter():
     assert offenders == []
 
 
+# Standard-library modules that bring a clock, randomness, files, processes or the network. They pass the
+# import rule above (they are stdlib) but break determinism: the core gets time, ids and I/O through ports.
+IMPURE_MODULES = {"random", "secrets", "uuid", "os", "sys", "time", "subprocess", "socket", "urllib", "http", "pathlib", "shutil", "tempfile", "io"}
+CLOCK_READS = {"now", "utcnow", "today"}  # datetime.now(), datetime.utcnow(), date.today(); a Clock port's now() is fine
+
+
+def _impure_call(call: ast.Call) -> str | None:
+    func = call.func
+    if isinstance(func, ast.Name) and func.id == "open":
+        return "open()"
+    if isinstance(func, ast.Attribute) and func.attr in CLOCK_READS:
+        owner = func.value.attr if isinstance(func.value, ast.Attribute) else getattr(func.value, "id", "")
+        if owner in ("datetime", "date"):
+            return f"{owner}.{func.attr}()"
+    return None
+
+
+@pytest.mark.parametrize("layer", ["domain", "application"])
+def test_core_is_deterministic(layer):
+    problems = []
+    for path in _files(layer):
+        problems += [f"{_module_name(path)} imports {t}" for t in _imports(path) if t.split(".")[0] in IMPURE_MODULES]
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and (call := _impure_call(node)):
+                problems.append(f"{_module_name(path)}:{node.lineno} calls {call}")
+    assert problems == []
+
+
 def test_core_declares_zero_runtime_dependencies():
     pyproject = (SRC.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     assert "dependencies = []" in pyproject
