@@ -37,6 +37,9 @@ Thumbs.db
 evidence/sandbox-logs/*.jsonl
 evidence/test-results/*.xml
 
+# Local agent orchestration state (never tracked)
+.omo/
+
 # Local drafts (commit messages, session summaries)
 commit_message.txt
 resumen-*.md
