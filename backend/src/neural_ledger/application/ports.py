@@ -22,8 +22,8 @@ from ..domain.actions.terms import (
 from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
-from ..domain.shared.envelope import Caveat, Fact
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
+from ..domain.shared.envelope import Caveat, Fact
 from ..domain.statements.model import BankStatement, StoredStatement
 from ..domain.user.profile import UserProfile
 from .conversation import Entry, ModelRequest, ModelTurn
