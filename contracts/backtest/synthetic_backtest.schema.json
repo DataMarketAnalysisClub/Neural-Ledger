@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/backtest/synthetic_backtest.schema.json",
+  "title": "Synthetic rolling-origin implementation backtest",
+  "type": "object",
+  "required": ["label", "notes", "versions", "calendar", "seeds", "spec", "wilson_z", "results", "parameter_recovery_relative_error", "diagnostics", "reference"],
+  "additionalProperties": false,
+  "properties": {
+    "label": {"type": "string"},
+    "notes": {"type": "array", "items": {"type": "string"}},
+    "versions": {
+      "type": "object", "required": ["backtest", "generator", "params"], "additionalProperties": false,
+      "properties": {"backtest": {"type": "string"}, "generator": {"type": "string"}, "params": {"type": "string"}}
+    },
+    "calendar": {
+      "type": "object", "required": ["first_cycle", "n_cycles", "as_of", "horizon", "grids", "recovery_origin"], "additionalProperties": false,
+      "properties": {
+        "first_cycle": {"type": "string"}, "n_cycles": {"type": "integer", "minimum": 1},
+        "as_of": {"type": "string", "format": "date"}, "horizon": {"type": "integer", "minimum": 1},
+        "recovery_origin": {"type": "integer", "minimum": 1},
+        "grids": {"$ref": "#/$defs/calendarGrids"}
+      }
+    },
+    "seeds": {
+      "type": "object", "required": ["n", "salaried", "freelance"], "additionalProperties": false,
+      "properties": {
+        "n": {"type": "integer", "minimum": 1},
+        "salaried": {"$ref": "#/$defs/seedRange"}, "freelance": {"$ref": "#/$defs/seedRange"}
+      }
+    },
+    "spec": {
+      "type": "object", "required": ["salaried", "freelance", "step"], "additionalProperties": false,
+      "properties": {
+        "step": {"type": "integer", "const": 100},
+        "salaried": {"$ref": "#/$defs/sourceSpec"}, "freelance": {"$ref": "#/$defs/sourceSpec"}
+      }
+    },
+    "wilson_z": {"type": "number"},
+    "results": {"$ref": "#/$defs/grids"},
+    "parameter_recovery_relative_error": {
+      "type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/continuous"}
+    },
+    "diagnostics": {
+      "type": "object", "required": ["estimates", "non_ok_envelopes", "commitment_set_mismatches", "missing_category_trials", "warning_codes", "seasonal_factor_clamped_at_recovery"],
+      "additionalProperties": false,
+      "properties": {
+        "estimates": {"$ref": "#/$defs/counts"}, "non_ok_envelopes": {"$ref": "#/$defs/counts"},
+        "commitment_set_mismatches": {"$ref": "#/$defs/counts"}, "missing_category_trials": {"$ref": "#/$defs/counts"},
+        "warning_codes": {"$ref": "#/$defs/counts"},
+        "seasonal_factor_clamped_at_recovery": {"type": "integer", "minimum": 0}
+      }
+    },
+    "reference": {"$ref": "#/$defs/reference"}
+  },
+  "$defs": {
+    "counts": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "seedRange": {"type": "array", "prefixItems": [{"type": "integer"}, {"type": "integer"}], "minItems": 2, "maxItems": 2},
+    "calendarGrids": {
+      "type": "object", "required": ["A", "B"], "additionalProperties": false,
+      "properties": {"A": {"$ref": "#/$defs/origins"}, "B": {"$ref": "#/$defs/origins"}}
+    },
+    "origins": {
+      "type": "object", "required": ["origins", "origin_as_of"], "additionalProperties": false,
+      "properties": {
+        "origins": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1},
+        "origin_as_of": {"type": "array", "items": {"type": "string", "format": "date"}, "minItems": 1}
+      }
+    },
+    "sourceSpec": {
+      "type": "object", "required": ["spend", "seasonal_factor"], "additionalProperties": false,
+      "properties": {
+        "spend": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/spendDistribution"}},
+        "seasonal_factor": {"type": "string"},
+        "income": {"type": "object", "required": ["p50", "p20", "cv", "sigma"], "additionalProperties": false,
+          "properties": {"p50": {"type": "integer"}, "p20": {"type": "integer"}, "cv": {"type": "number"}, "sigma": {"type": "string"}}}
+      }
+    },
+    "spendDistribution": {
+      "type": "object", "required": ["p50", "p80", "sigma"], "additionalProperties": false,
+      "properties": {"p50": {"type": "integer"}, "p80": {"type": "integer"}, "sigma": {"type": "string"}}
+    },
+    "rate": {
+      "type": "object", "required": ["kind", "n", "hits", "nominal", "rate", "wilson95"], "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "bernoulli_rate"}, "n": {"type": "integer", "minimum": 0},
+        "hits": {"type": "integer", "minimum": 0}, "nominal": {"type": ["number", "null"]},
+        "rate": {"type": ["number", "null"]},
+        "wilson95": {"oneOf": [{"type": "null"}, {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}], "minItems": 2, "maxItems": 2}]}
+      }
+    },
+    "continuous": {
+      "type": "object", "required": ["kind", "n", "median", "p10", "p90", "mean_abs"], "additionalProperties": false,
+      "properties": {
+        "kind": {"const": "continuous_summary_no_interval"}, "n": {"type": "integer", "minimum": 0},
+        "median": {"type": ["number", "null"]}, "p10": {"type": ["number", "null"]},
+        "p90": {"type": ["number", "null"]}, "mean_abs": {"type": ["number", "null"]}
+      }
+    },
+    "grids": {
+      "type": "object", "required": ["A", "B"], "additionalProperties": false,
+      "properties": {"A": {"$ref": "#/$defs/grid"}, "B": {"$ref": "#/$defs/grid"}}
+    },
+    "grid": {
+      "type": "object", "required": ["p80_coverage_non_december", "p80_coverage_by_origin", "p80_coverage_per_seed_rate", "p50_signed_relative_error_non_december", "december_conservative_coverage", "december_seasonal_factor_used", "freelance_income_p20_coverage"], "additionalProperties": false,
+      "properties": {
+        "p80_coverage_non_december": {"$ref": "#/$defs/rate"},
+        "p80_coverage_by_origin": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/rate"}},
+        "p80_coverage_per_seed_rate": {"$ref": "#/$defs/continuous"},
+        "p50_signed_relative_error_non_december": {"$ref": "#/$defs/continuous"},
+        "december_conservative_coverage": {"$ref": "#/$defs/rate"},
+        "december_seasonal_factor_used": {"$ref": "#/$defs/continuous"},
+        "freelance_income_p20_coverage": {"$ref": "#/$defs/rate"}
+      }
+    },
+    "referenceCell": {
+      "type": "object", "required": ["median", "sigma", "window_n", "trials", "hits", "expected", "mc_se", "seed", "grid", "origin", "observed_n", "observed_hits"],
+      "properties": {
+        "median": {"type": "integer", "minimum": 1}, "sigma": {"type": "string", "pattern": "^[0-9]+/[0-9]+$"},
+        "window_n": {"type": "integer", "minimum": 1}, "trials": {"type": "integer", "minimum": 1},
+        "hits": {"type": "integer", "minimum": 0}, "expected": {"type": "number", "minimum": 0, "maximum": 1},
+        "mc_se": {"type": "number", "minimum": 0}, "seed": {"type": "integer"},
+        "grid": {"enum": ["A", "B"]}, "origin": {"type": "integer", "minimum": 1},
+        "observed_n": {"type": "integer", "minimum": 1}, "observed_hits": {"type": "integer", "minimum": 0}, "category": {"type": "string"}
+      }, "additionalProperties": false
+    },
+    "pooled": {
+      "type": "object", "required": ["spend_p80", "freelance_income_p20"], "additionalProperties": false,
+      "properties": {"spend_p80": {"$ref": "#/$defs/pooledRate"}, "freelance_income_p20": {"$ref": "#/$defs/pooledRate"}}
+    },
+    "pooledRate": {
+      "type": "object", "required": ["expected", "mc_se", "observed_n"], "additionalProperties": false,
+      "properties": {"expected": {"type": "number", "minimum": 0, "maximum": 1}, "mc_se": {"type": "number", "minimum": 0}, "observed_n": {"type": "integer", "minimum": 1}}
+    },
+    "reference": {
+      "type": "object", "required": ["method", "base_seed", "trials_per_cell", "rounding_step", "cells", "pooled", "exact_continuous", "assumptions"], "additionalProperties": false,
+      "properties": {
+        "method": {"type": "string"}, "base_seed": {"type": "integer"},
+        "trials_per_cell": {"type": "integer", "minimum": 1}, "rounding_step": {"const": 100},
+        "cells": {
+          "type": "object", "required": ["spend_p80", "freelance_income_p20"], "additionalProperties": false,
+          "properties": {
+            "spend_p80": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/referenceCell"}},
+            "freelance_income_p20": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/referenceCell"}}
+          }
+        },
+        "pooled": {"type": "object", "required": ["A", "B"], "additionalProperties": false,
+          "properties": {"A": {"$ref": "#/$defs/pooled"}, "B": {"$ref": "#/$defs/pooled"}}},
+        "exact_continuous": {
+          "type": "object", "required": ["spend_p80_n6", "spend_p80_n11", "freelance_income_p20_n6"], "additionalProperties": false,
+          "properties": {"spend_p80_n6": {"type": "string", "pattern": "^[0-9]+/[0-9]+$"}, "spend_p80_n11": {"type": "string", "pattern": "^[0-9]+/[0-9]+$"}, "freelance_income_p20_n6": {"type": "string", "pattern": "^[0-9]+/[0-9]+$"}}
+        },
+        "assumptions": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+      }
+    }
+  }
+}

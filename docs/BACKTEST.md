@@ -13,4 +13,31 @@ The run uses 100 salaried seeds 150000-150099 and 100 freelance seeds 250000-250
 
 Grid A P80 coverage by origin: 6: 875/1200 = 0.729167; 7: 876/1200 = 0.73; 8: 874/1200 = 0.728333; 9: 1318/1800 = 0.732222. Per-seed non-December coverage median is 0.740741 (A) and 0.75 (B), n=100 each. Seasonal factor recovery at origin 18 has relative-error median 0.025068, p10 -0.17192, p90 0.22449, mean abs 0.111415, n=100; 11 fitted factors hit a parameter clamp. Freelance income P50 recovery median 0.002514, p10 -0.114536, p90 0.144981, mean abs 0.078641, n=100; P20 median 0.009626, p10 -0.099552, p90 0.184399, mean abs 0.086338, n=100; CV median -0.013884, p10 -0.267254, p90 0.254125, mean abs 0.168271, n=100. Per-category P50/P80 recovery is in the JSON, with n=100 each. No estimates returned non-OK; no missing category trials or commitment-set mismatches occurred in these seeds. These zeros are observed diagnostics, not guarantees that the recurring detector cannot misclassify a different draw.
 
+## Finite-sample reference (ADR-018, Proposed)
+
+The seeded `reference` block simulates 20,000 independent histories and one future draw **per cell** from each known synthetic category/freelance lognormal marginal (seed 810018 plus sorted cell index). Every draw is rounded to 100 CLP as in the generator; the historical type-7 quantile is interpolated exactly and then rounded half up as in the estimator. Expected coverage below is the cell simulation hit fraction, pooled by the **actual observed category/origin trial counts**, not a fitted predictive accuracy estimate. The ± term is one Monte Carlo standard error (MCSE) of the independent reference simulations; each spend origin pools six category cells (each 20,000 trials), while income uses one 20,000-trial cell. Observed fractions are the backtest's 100 persona seeds, with repeated overlapping origins/cycles.
+
+| Metric | Grid / origin | Window size (estimator observations) | Expected ± MCSE | Observed hits / trials (rate) |
+|---|---|---:|---:|---:|
+| Non-Dec category P80 | A / 6 | 6 | 0.714025 ± 0.001304 | 875/1200 (0.729167) |
+| Non-Dec category P80 | A / 7 | 7 | 0.731775 ± 0.001279 | 876/1200 (0.730000) |
+| Non-Dec category P80 | A / 8 | 8 | 0.740567 ± 0.001265 | 874/1200 (0.728333) |
+| Non-Dec category P80 | A / 9 | 8 | 0.741192 ± 0.001264 | 1318/1800 (0.732222) |
+| Non-Dec category P80 | B / 18 | 11 | 0.750883 ± 0.001248 | 908/1200 (0.756667) |
+| Non-Dec category P80 | A pooled | 6/7/8/8 | 0.732923 ± 0.000649 | 3943/5400 (0.730185) |
+| Non-Dec category P80 | B pooled | 11 | 0.750883 ± 0.001248 | 908/1200 (0.756667) |
+| Freelance income P20 (future ≥ bound) | A / 6 | 6 | 0.716400 ± 0.003187 | 228/300 (0.760000) |
+| Freelance income P20 (future ≥ bound) | A / 7 | 7 | 0.727100 ± 0.003150 | 234/300 (0.780000) |
+| Freelance income P20 (future ≥ bound) | A / 8 | 8 | 0.735750 ± 0.003118 | 236/300 (0.786667) |
+| Freelance income P20 (future ≥ bound) | A / 9 | 9 | 0.739250 ± 0.003105 | 221/300 (0.736667) |
+| Freelance income P20 (future ≥ bound) | B / 18 | 12 | 0.753850 ± 0.003046 | 232/300 (0.773333) |
+| Freelance income P20 (future ≥ bound) | A pooled | 6/7/8/9 | 0.729625 ± 0.001570 | 919/1200 (0.765833) |
+| Freelance income P20 (future ≥ bound) | B pooled | 12 | 0.753850 ± 0.003046 | 232/300 (0.773333) |
+
+The trailing spend estimator excludes December from its non-seasonal category baseline: Grid A's ninth origin has nine history cycles but only eight usable category observations; Grid B has 12 history cycles but only **11** non-December category observations. Freelance income includes December, giving 9 and 12 respectively. For continuous iid draws with no ties, type-7 selects an exact order statistic only when `q × (n − 1)` is an integer. With rank `j = 1 + q × (n − 1)`, the upper-hit probability is `j/(n+1)` and the lower-hit probability is `(n+1−j)/(n+1)`: spend P80 at n=6 is 5/7, at n=11 is 9/12, and freelance lower P20 at n=6 is 5/7. Interpolated quantiles have no distribution-free rank probability; rounded draws can tie, so even exact-rank continuous fractions need not equal the simulated result.
+
+Against the nominal 0.80, observed P80 is A 0.730185 and B 0.756667, versus finite-sample expected 0.732923 and 0.750883. Observed freelance lower-P20 coverage is A 0.765833 and B 0.773333, versus expected 0.729625 and 0.753850. The nominal gap is an expected property of type-7 finite windows on these marginals, not a reason to report the backtest as predictive calibration; differences between observed and expected also reflect finite, seed-clustered evaluation trials. The reference MCSE describes only independent simulations of the known distribution, **not** the uncertainty in observed coverage; the observed Wilson intervals are optimistic under clustering. The adverse December A result (4/300) remains unchanged and is outside this non-December reference. A Weibull/type-6 quantile, with continuous-rank expected coverage around 0.80 for appropriate n, is only a **post-submission option**: switching now would move calibrated persona/golden amounts and needs a separate team decision and params version.
+
+For freelance P20 specifically, observed coverage exceeds the reference: A 0.765833 vs 0.729625 and B 0.773333 vs 0.753850. Seed clustering alone does not obviously explain the larger A gap. Finite-sample variation, overlap among trials, and rounding/ties are candidate contributors, but none has been verified as an explanation. This comparison does not establish a new claim of fit.
+
 Wilson intervals are reported **only for Bernoulli coverage**, not for continuous relative errors or recovery (which have n, median, p10/p90 and mean absolute value). Origins, categories and cycles overlap within a seed: treating their hits as independent makes the Wilson intervals optimistic. The low Grid A December coverage is an adverse observed result of having no previous December; P80 coverage also falls below nominal. Do not retune the generator or estimator to force 80%, and do not extrapolate these synthetic statistics to real forecasts. The resulting JSON is sorted, timestamp-free and byte-identical across reruns with the same seeds.

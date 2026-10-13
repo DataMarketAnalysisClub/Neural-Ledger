@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from datetime import date
+from fractions import Fraction
 
 import jsonschema
 import pytest
@@ -13,6 +14,7 @@ from neural_ledger.domain.finance.paycycle import is_eve_of_payday
 from neural_ledger.domain.shared.month import Month
 from tests.backtest import run as bt
 from tests.backtest.metrics import BERNOULLI, CONTINUOUS, coverage, summary, wilson
+from tests.backtest.reference import BASE_SEED, exact_continuous_rank, exact_continuous_rank_text
 from tests.conftest import CONTRACTS
 from tests.fixtures.ledger_generator import generate_ledger_with_truth
 
@@ -24,7 +26,7 @@ def salaried():
 
 @pytest.fixture(scope="module")
 def results():
-    return bt.run(2)
+    return bt.run(2, reference_trials=200)
 
 
 # ---- calendar ---------------------------------------------------------------------------------
@@ -92,7 +94,77 @@ def test_changing_post_origin_data_does_not_change_the_origin_estimate(salaried)
 
 
 def test_two_runs_are_byte_identical(results):
-    assert bt.render(bt.run(2)) == bt.render(results)
+    assert bt.render(bt.run(2, reference_trials=200)) == bt.render(results)
+
+
+def test_reference_uses_actual_marginals_windows_and_origin_weights(results):
+    reference = results["reference"]
+    spend = reference["cells"]["spend_p80"]
+    income = reference["cells"]["freelance_income_p20"]
+    assert reference["base_seed"] == BASE_SEED
+    assert [spend[f"A.{origin}.groceries"]["window_n"] for origin in bt.GRIDS["A"]] == [6, 7, 8, 8]
+    assert spend["B.18.groceries"]["window_n"] == 11
+    assert [income[f"A.{origin}"]["window_n"] for origin in bt.GRIDS["A"]] == [6, 7, 8, 9]
+    assert income["B.18"]["window_n"] == 12
+    assert spend["A.6.groceries"]["median"] == bt.SPEND["groceries"].median
+    assert spend["A.6.health"]["sigma"] == str(bt.SPEND["health"].sigma)
+    for grid in bt.GRIDS:
+        assert reference["pooled"][grid]["spend_p80"]["observed_n"] == results["results"][grid]["p80_coverage_non_december"]["n"]
+        assert reference["pooled"][grid]["freelance_income_p20"]["observed_n"] == results["results"][grid]["freelance_income_p20_coverage"]["n"]
+        assert sum(cell["observed_hits"] for cell in spend.values() if cell["grid"] == grid) == results["results"][grid]["p80_coverage_non_december"]["hits"]
+        assert sum(cell["observed_hits"] for cell in income.values() if cell["grid"] == grid) == results["results"][grid]["freelance_income_p20_coverage"]["hits"]
+
+
+@pytest.mark.parametrize("n,q,upper,expected", [
+    (6, Fraction(4, 5), True, Fraction(5, 7)),
+    (6, Fraction(1, 5), False, Fraction(5, 7)),
+    (11, Fraction(4, 5), True, Fraction(9, 12)),
+    (7, Fraction(4, 5), True, None),
+])
+def test_exact_continuous_rank_when_quantile_is_an_order_statistic(n, q, upper, expected):
+    assert exact_continuous_rank(n, q, upper) == expected
+
+
+def test_exact_continuous_rank_text_preserves_order_statistic_denominator(results):
+    assert results["reference"]["exact_continuous"] == {
+        "spend_p80_n6": "5/7", "spend_p80_n11": "9/12", "freelance_income_p20_n6": "5/7",
+    }
+    assert exact_continuous_rank_text(7, Fraction(4, 5), True) is None
+
+
+def test_rounded_monte_carlo_agrees_with_continuous_n6_rank():
+    from tests.backtest.reference import _cell
+
+    upper = _cell(bt.SPEND["groceries"], bt.SALARIED_SPEC, 6, Fraction(4, 5), True, 10_000, BASE_SEED)
+    lower = _cell(bt.FREELANCE_SPEC.freelance, bt.FREELANCE_SPEC, 6, Fraction(1, 5), False, 10_000, BASE_SEED + 1)
+    assert abs(upper["expected"] - 5 / 7) < 4 * upper["mc_se"]
+    assert abs(lower["expected"] - 5 / 7) < 4 * lower["mc_se"]
+
+
+@pytest.mark.parametrize("origin", [6, 7, 8, 9, 18])
+def test_estimator_quantiles_use_generator_truth_window(salaried, origin):
+    from neural_ledger.domain.finance.estimation import quantile
+    from neural_ledger.domain.shared.numbers import round_half_up
+
+    raw, truth = salaried
+    model = bt.estimate_at(raw, origin).data
+    window = bt.CYCLES[max(0, origin - bt.FC_0_1.spend_window_months):origin]
+    base_cycles = [cycle for cycle in window if cycle.month != 12]
+    assert model.spend.window_months == len(window)
+    for fitted in model.spend.categories:
+        expected = round_half_up(quantile([truth["spend"][fitted.category][cycle] for cycle in base_cycles], Fraction(4, 5)))
+        assert fitted.p80 == expected
+
+
+@pytest.mark.parametrize("origin", [6, 7, 8, 9, 18])
+def test_freelance_lower_bound_uses_generator_truth_window(origin):
+    from neural_ledger.domain.finance.estimation import quantile
+    from neural_ledger.domain.shared.numbers import round_half_up
+
+    raw, truth = generate_ledger_with_truth(bt.config("freelance", bt.FREELANCE_SEED))
+    model = bt.estimate_at(raw, origin).data
+    window = bt.CYCLES[max(0, origin - bt.FC_0_1.spend_window_months):origin]
+    assert model.income.conservative == round_half_up(quantile([truth["income"][cycle] for cycle in window], Fraction(1, 5)))
 
 
 def test_results_carry_labels_sizes_and_diagnostics(results):

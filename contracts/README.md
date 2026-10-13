@@ -12,6 +12,7 @@ JSON Schema 2020-12. If code and a contract disagree, the contract wins and the 
 | `chat/` | Chat request and reply |
 | `ledger/` | `ledger.schema.json`: the sandbox ledger the stage-1 estimators read. Its limits (CLP only, \|amount\| ≤ 10^9) mirror `domain/finance/estimation.py`; `tests/contract/test_ledger_contract.py` keeps them aligned and validates the generated ledgers |
 | `catalog/` | Existing financial Fact key templates, Caveat codes and error-field patterns; `test_fact_catalog.py` checks static emissions and runtime examples. Estimation-only warnings are not forwarded by the ledger adapter. |
+| `backtest/` | `synthetic_backtest.schema.json`: full rolling-origin output, including observed metrics and the seeded finite-sample `reference` block (ADR-018, Proposed); `test_backtest_contract.py` validates the committed artifact and a small run. |
 
 **Frontend (Role D):** generate TypeScript types instead of writing them by hand, e.g. `npx json-schema-to-typescript -i 'contracts/**/*.json' -o web/src/contracts`.
 
