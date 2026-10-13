@@ -149,10 +149,10 @@ Decide together with ADR-021, since corrections and re-reads both change which v
 
 ADR-026 and ADR-027 are numbered after Role A's ADR-014 to ADR-018, the statements ADR-019 to ADR-024 and the frontend ADR-025; renumber them if the team orders it differently.
 
-### ADR-026 · Jev first in the decision chain, through OpenRouter, pinned to jev-1.13 · Proposed (go/no-go 2026-10-14)
+### ADR-026 · Jev first in the decision chain, through OpenRouter, pinned to jev-1.13.0 · Proposed (go/no-go 2026-10-14)
 **Context:** the rules model is keyword based and unmeasured. OpenRouter serves the real Jev classifier (System One protocol at `POST /api/v1/systemone`, billed to the OpenRouter key), so no second provider or key is needed (D-02).
-**Decision:** `NL_DECISION_CHAIN=jev,rules` in live mode; `rules` stays first-and-only in offline mode and is the fallback when Jev is down (S10). Jev is pinned to `jev-1.13` (`NL_JEV_MODEL`); the `jev-latest` alias moves when TypeSafe ships a release, which would silently change the calibration. Intent and injection are asked in one call, and each option of the intent question carries a short description (Jev reads criteria literally). The TypeSafe endpoint stays as a direct path when only `TYPESAFE_API_KEY` is set.
-**Evidence** (`backend/tests/decision_eval`, 112 Spanish and English examples written by Role B; `python -m tests.decision_eval.run --model jev --model-id jev-1.13 --reverse-options`):
+**Decision:** `NL_DECISION_CHAIN=jev,rules` in live mode; `rules` stays first-and-only in offline mode and is the fallback when Jev is down (S10). Jev is pinned to `jev-1.13.0` (`NL_JEV_MODEL`); the `jev-latest` alias moves when TypeSafe ships a release, which would silently change the calibration. Intent and injection are asked in one call, and each option of the intent question carries a short description (Jev reads criteria literally). The TypeSafe endpoint stays as a direct path when only `TYPESAFE_API_KEY` is set.
+**Evidence** (`backend/tests/decision_eval`, 112 Spanish and English examples written by Role B; `python -m tests.decision_eval.run --model jev --model-id jev-1.13.0 --reverse-options`):
 
 | | rules | Jev, names only | Jev, with descriptions |
 |---|---|---|---|
