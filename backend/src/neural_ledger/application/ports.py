@@ -23,6 +23,8 @@ from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
 from ..domain.shared.envelope import Caveat, Fact
+from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
+from ..domain.statements.model import BankStatement, StoredStatement
 from ..domain.user.profile import UserProfile
 from .conversation import Entry, ModelRequest, ModelTurn
 
@@ -39,8 +41,20 @@ class LanguageModelUnavailable(PortUnavailable):
     pass
 
 
+class StatementReaderUnavailable(PortUnavailable):
+    """The reader lacks what this file needs (e.g. OCR for a scan). Not the file's fault."""
+
+
+class ClassifierUnavailable(PortUnavailable):
+    """The transaction classifier cannot run (e.g. the `ml` extra is missing). Statements are stored, not posted."""
+
+
 class NotFound(Exception):
     pass
+
+
+class StatementUnreadable(Exception):
+    """The file is not a statement of any known bank layout, or does not fit its layout."""
 
 
 @runtime_checkable
@@ -86,6 +100,54 @@ class EstimationEvidenceSource(Protocol):
     """
 
     def load_with_evidence(self, user_id: str) -> tuple[FinancialModel, ModelEvidence]: ...
+
+
+@runtime_checkable
+class StatementReader(Protocol):
+    """Turns a statement file (PDF or image bytes) into a BankStatement. Never decides whether it adds up."""
+
+    def read(self, content: bytes) -> BankStatement: ...
+
+
+@runtime_checkable
+class StatementStore(Protocol):
+    def add(self, stored: StoredStatement) -> bool:
+        """Store unless this user already has this statement_id. Returns False for a duplicate."""
+        ...
+
+    def get(self, user_id: str, statement_id: str) -> StoredStatement | None: ...
+
+    def for_user(self, user_id: str) -> tuple[StoredStatement, ...]: ...
+
+
+@runtime_checkable
+class TransactionClassifier(Protocol):
+    """Guesses a spending category per description. Its labels are gated by domain/ledger/categorization.
+
+    Swap the method by registering another adapter in bootstrap; nothing else changes.
+    """
+
+    name: str  # recorded on every transaction it categorizes; change it when the method or its data change
+
+    def classify(self, descriptions: Sequence[str]) -> Sequence[CategoryGuess]:
+        """One guess per description, in the same order."""
+        ...
+
+
+@runtime_checkable
+class TransactionStore(Protocol):
+    """The transaction ledger built from imported statements, per user."""
+
+    def add(self, posted: Sequence[PostedTransaction]) -> int:
+        """Store the transactions this user does not have yet (by txn_id); existing ones keep their category.
+
+        Returns how many were new.
+        """
+        ...
+
+    def for_user(self, user_id: str) -> tuple[PostedTransaction, ...]:
+        """Oldest first: by date, then statement line."""
+        ...
 
 
 @runtime_checkable

@@ -108,3 +108,103 @@ def test_sqlite_survives_a_restart(tmp_path):
     assert SqliteSavingsRuleStore(reopened).for_user("camila") == (_rule("rule_0001", "camila"),)
     assert SqliteActionRepository(reopened).consume_authorization("auth_1", NOW) is False
     assert verify_chain(SqliteAuditLog(reopened).events()).ok
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def statement_store(request, tmp_path):
+    from neural_ledger.adapters.outbound.persistence.memory import InMemoryStatementStore
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteStatementStore
+
+    if request.param == "memory":
+        return InMemoryStatementStore()
+    return SqliteStatementStore(SqliteDatabase(tmp_path / "test.db"))
+
+
+def _stored(statement_id: str = "stmt_1", user_id: str = "camila"):
+    from neural_ledger.domain.statements.model import (
+        BankStatement,
+        DailyBalance,
+        Issue,
+        IssueCode,
+        StatementLine,
+        StatementSummary,
+        StoredStatement,
+    )
+
+    statement = BankStatement(
+        bank="test",
+        account_ref="0-000-00-00000-0",
+        currency="CLP",
+        period_start=date(2026, 8, 31),
+        period_end=date(2026, 9, 30),
+        lines=(
+            StatementLine(0, date(2026, 9, 2), "Compra Nacional MD SHOP", -3_280, "2441010", "401"),
+            StatementLine(1, date(2026, 9, 4), "PAGO PROVEEDOR", 163_521, None, "90", 0.734512),
+        ),
+        summary=StatementSummary(1_000_000, 3_280, 163_521, 1_160_241),
+        daily_balances=(DailyBalance(date(2026, 9, 2), 996_720),),
+        statement_number="64",
+        source="ocr",
+    )
+    issues = (Issue(IssueCode.DAILY_BALANCE, "differs", 996_720, 996_721, date(2026, 9, 2)),)
+    return StoredStatement(statement_id, user_id, NOW, statement, issues)
+
+
+def test_statement_round_trip_and_duplicates(statement_store):
+    stored = _stored()
+    assert statement_store.add(stored) is True
+    assert statement_store.add(stored) is False  # same user, same statement: stored once
+    assert statement_store.get("camila", "stmt_1") == stored
+    assert statement_store.for_user("camila") == (stored,)
+
+
+def test_statements_are_scoped_to_their_user(statement_store):
+    statement_store.add(_stored())
+    assert statement_store.get("diego", "stmt_1") is None
+    assert statement_store.for_user("diego") == ()
+    assert statement_store.add(_stored(user_id="diego")) is True  # another user's copy is theirs
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def transaction_store(request, tmp_path):
+    from neural_ledger.adapters.outbound.persistence.memory import InMemoryTransactionStore
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteTransactionStore
+
+    if request.param == "memory":
+        return InMemoryTransactionStore()
+    return SqliteTransactionStore(SqliteDatabase(tmp_path / "test.db"))
+
+
+def _posted(user_id: str = "camila"):
+    from dataclasses import replace
+
+    from neural_ledger.domain.ledger.categorization import CategoryGuess, post_statement
+
+    stored = replace(_stored(user_id=user_id), issues=())
+    return post_statement(stored, {0: CategoryGuess("shopping", 0.734512)}, "naive_bayes@abc")
+
+
+def test_transaction_round_trip_and_duplicates(transaction_store):
+    posted = _posted()
+    assert transaction_store.add(posted) == 2
+    assert transaction_store.add(posted) == 0  # same transactions: stored once
+    assert transaction_store.add(()) == 0
+    assert transaction_store.for_user("camila") == posted
+
+
+def test_transactions_are_scoped_to_their_user_and_ordered_by_date(transaction_store):
+    posted = _posted()
+    transaction_store.add(tuple(reversed(posted)))
+    assert transaction_store.for_user("camila") == posted  # 2026-09-02 before 2026-09-04
+    assert transaction_store.for_user("diego") == ()
+    assert transaction_store.add(_posted(user_id="diego")) == 2
+
+
+def test_transactions_survive_a_restart(tmp_path):
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteTransactionStore
+
+    path = tmp_path / "ledger.db"
+    db = SqliteDatabase(path)
+    SqliteTransactionStore(db).add(_posted())
+    db.connection.close()
+    assert SqliteTransactionStore(SqliteDatabase(path)).for_user("camila") == _posted()

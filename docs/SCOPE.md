@@ -161,6 +161,10 @@ flowchart LR
 | `UserProfileStore` | Typed user record | memory (seeded from fixtures) | SQLite |
 | `ConversationStore` | Session history | memory | SQLite |
 | `Signer` | HMAC over canonical terms | `HmacSigner` (env secret) | KMS |
+| `StatementReader` | Bank statement file → `BankStatement` | `OcrStatementReader` (ocr_tabular + one `Bank` per layout; offline) | more banks |
+| `StatementStore` | Imported statements, once per user and statement | memory, SQLite | Postgres |
+| `TransactionClassifier` | Spending category guess per statement charge (gated by the domain) | `SklearnTextClassifier` with naive Bayes (`ml` extra; offline, trained from package data) | other methods: one registry entry in `container.py` |
+| `TransactionStore` | Transaction ledger built from verified statements, once per user and transaction | memory, SQLite | Postgres |
 | `Clock`, `IdGenerator` | Testability | system/fixed, uuid/sequential | — |
 
 ### 5.4 One chat turn
