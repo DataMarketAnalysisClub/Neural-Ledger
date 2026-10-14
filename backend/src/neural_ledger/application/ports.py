@@ -252,3 +252,23 @@ class SessionStore(Protocol):
     def revoke(self, session_ref: str, at: datetime) -> bool:
         """Atomically mark as revoked. Returns False if unknown or already revoked."""
         ...
+
+
+class IdCollision(Exception):
+    """A generated identifier already exists; no account mutation was committed."""
+
+
+@runtime_checkable
+class AccountWrites(Protocol):
+    """Commit account state and its audit drafts together, or leave both unchanged.
+
+    False is a failed precondition with no writes; exceptions also leave no writes.
+    """
+
+    def register(self, account: UserAccount, profile: UserProfile, session: Session, events: Sequence[AuditDraft]) -> bool: ...
+
+    def open_session(self, session: Session, events: Sequence[AuditDraft]) -> None: ...
+
+    def close_session(self, session: Session, at: datetime, events: Sequence[AuditDraft]) -> bool: ...
+
+    def set_sample_data(self, user_id: str, enabled: bool, events: Sequence[AuditDraft]) -> bool: ...
