@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/profile/profile_update.schema.json",
+  "title": "ProfileUpdate",
+  "description": "User-only PUT /v1/profile request. Display names use the domain's 1-40 code-point Unicode letters/spaces/periods/apostrophes/hyphens rule without controls or newlines. The domain derives declared_tolerance only from POST /v1/profile/questionnaire; neither tolerance nor questionnaire fields are writable here. The response reuses common/envelope and outputs/user_profile.",
+  "type": "object",
+  "minProperties": 1,
+  "properties": {
+    "display_name": {"type": "string", "minLength": 1, "maxLength": 40},
+    "language": {"type": "string", "pattern": "^[a-z]{2}$"}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"display_name": "Ana María"},
+    {"language": "es"}
+  ]
+}
