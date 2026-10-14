@@ -32,17 +32,19 @@ from neural_ledger.adapters.inbound.http.app import create_app  # noqa: E402
 
 pytestmark = pytest.mark.security
 
-ACCOUNT = "0-000-00-98765-4"
+# Numbers with distinctive digits: a needle like 0000000002 also matches where SQLite stores the all-zero genesis hash
+# right before an event hash that starts with 2, and event hashes differ by platform (they cover the classifier's name).
+ACCOUNT = "0-713-52-98765-4"
 CARTOLA = Sample(
     movements=(
         ("02/12", "2441010", "401", "Compra Nacional MD SHOP ONE", -3_280),
-        ("03/12", "", "93", "0000000003 Transf a JUAN PEREZ", -40_000),
+        ("03/12", "", "93", "0071548293 Transf a JUAN PEREZ", -40_000),
         ("03/12", "", "93", "Transf a 11.111.111-1 MARIA SOTO", -25_000),
         ("05/12", "", "90", "TEF DE PEDRO ROJAS 12.345.678-5", 150_000),
         ("09/12", "", "90", "Aviso maria.soto@mail.cl", -1_000),
         ("10/12", "", "90", "Fono +56 9 8765 4321", -2_000),
         ("15/12", "", "90", "PAGO TARJETA 4555 1234 5678 9012", -60_000),
-        ("29/12", "", "90", "0000000002 REMUNERACION EMPRESA SPA", 900_000),
+        ("29/12", "", "90", "0062739184 REMUNERACION EMPRESA SPA", 900_000),
     ),
     period=("30/11/2025", "31/12/2025"),
     account=ACCOUNT,
@@ -54,8 +56,8 @@ PERSONAL = (
     "maria.soto@mail.cl", "mail.cl",
     "8765 4321", "87654321",
     "4555 1234 5678 9012", "4555123456789012",
-    ACCOUNT, "000000987654",
-    "0000000003", "0000000002",
+    ACCOUNT, "071352987654",
+    "0071548293", "0062739184",
 )  # fmt: skip
 
 
