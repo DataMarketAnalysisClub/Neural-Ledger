@@ -22,6 +22,7 @@ from ....domain.actions.terms import (
     SavingsRule,
 )
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
+from ....domain.finance.profile import RiskProfile
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import Transaction, TransactionKind
 from ....domain.shared.serialization import to_primitive
@@ -34,6 +35,7 @@ from ....domain.statements.model import (
     StatementSummary,
     StoredStatement,
 )
+from ....domain.user.profile import QuestionnaireAnswer, UserProfile
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -76,6 +78,10 @@ CREATE TABLE IF NOT EXISTS savings_rules (
     user_id  TEXT NOT NULL,
     payload  TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL
+);
 """
 
 
@@ -97,6 +103,32 @@ class SqliteDatabase:
     def fetchall(self, sql: str, params: tuple = ()) -> list[tuple]:
         with self.lock:
             return self.connection.execute(sql, params).fetchall()
+
+
+class SqliteUserProfileStore:
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def get(self, user_id: str) -> UserProfile | None:
+        row = self._db.fetchone("SELECT payload FROM user_profiles WHERE user_id = ?", (user_id,))
+        if row is None:
+            return None
+        payload = json.loads(row[0])
+        return UserProfile(
+            user_id=payload["user_id"],
+            display_name=payload["display_name"],
+            language=payload["language"],
+            declared_tolerance=RiskProfile(payload["declared_tolerance"]) if payload["declared_tolerance"] is not None else None,
+            questionnaire=tuple(QuestionnaireAnswer(**answer) for answer in payload["questionnaire"]),
+            questionnaire_version=payload["questionnaire_version"],
+        )
+
+    def put(self, profile: UserProfile) -> None:
+        with self._db.lock:
+            self._db.connection.execute(
+                "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
+                (profile.user_id, json.dumps(to_primitive(profile))),
+            )
 
 
 def _proposal_from(payload: dict) -> Proposal:
