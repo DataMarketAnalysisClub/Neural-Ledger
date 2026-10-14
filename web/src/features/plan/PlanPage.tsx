@@ -1,13 +1,10 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Prohibit, Warning } from "@phosphor-icons/react";
-import { useCapacity, useFinancialState, usePermittedProfile, useSavingsPlan } from "@/api/hooks";
+import { useCapacity, useFinancialState, usePermittedProfile, usePersona, useSavingsPlan, useUserProfile } from "@/api/hooks";
+import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
 import { Button, ErrorState, Loading, Notice, PageHeader, Section, StatusBadge, Surface, cn } from "@/components/ui";
 import { formatAmount, formatMoney, formatMonth, formatNumber, formatPercent } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
-
-const LEVELS = ["conservative", "moderate", "aggressive"] as const;
-type Level = (typeof LEVELS)[number];
 
 function factorValue(name: string, value: number): string {
   if (name === "reserve_coverage" || name === "stress_coverage") return t("plan.factors.units.months", { value: formatNumber(value, 2) });
@@ -16,7 +13,15 @@ function factorValue(name: string, value: number): string {
 }
 
 export function PlanPage() {
-  const [tolerance, setTolerance] = useState<Level>("aggressive");
+  const { persona } = usePersona();
+  const profile = useUserProfile();
+  if (profile.isPending) return <Loading className="max-w-5xl" />;
+
+  const tolerance = profile.isError ? "conservative" : profile.data?.data?.declared_tolerance ?? "conservative";
+  return <PlanForProfile key={persona} tolerance={tolerance} />;
+}
+
+function PlanForProfile({ tolerance }: { tolerance: PermittedProfile["tolerance"] }) {
   const state = useFinancialState();
   const capacity = useCapacity();
   const permitted = usePermittedProfile(tolerance);
@@ -63,23 +68,10 @@ export function PlanPage() {
 
       <Section id="profile" title={t("plan.profile.title")} subtitle={t("plan.profile.explain")}>
         <Surface className="grid gap-8 p-6 md:grid-cols-[1.2fr_auto_1fr_auto_1fr] md:items-center">
-          <fieldset>
-            <legend className="text-sm text-ink-2">{t("plan.profile.choose")}</legend>
-            <div role="radiogroup" className="mt-2 inline-grid grid-cols-3 gap-1 rounded-control bg-canvas p-1">
-              {LEVELS.map((level) => (
-                <label
-                  key={level}
-                  className={cn(
-                    "cursor-pointer rounded-[4px] px-3 py-1.5 text-sm transition-colors duration-150",
-                    level === tolerance ? "bg-surface font-medium text-ink ring-1 ring-line" : "text-ink-2 hover:text-ink",
-                  )}
-                >
-                  <input type="radio" name="tolerance" value={level} checked={level === tolerance} onChange={() => setTolerance(level)} className="sr-only" />
-                  {t(`plan.profile.levels.${level}`)}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <div>
+            <p className="text-sm text-ink-2">{t("plan.profile.tolerance")}</p>
+            <p className="mt-1 text-lg font-semibold text-ink">{t(`plan.profile.levels.${tolerance}`)}</p>
+          </div>
           <span aria-hidden className="hidden text-ink-3 md:block">
             min
           </span>

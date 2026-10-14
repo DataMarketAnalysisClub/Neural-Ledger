@@ -13,6 +13,7 @@ import type { SavingsPlan } from "@/contracts/outputs/savings_plan";
 import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
 import type { PurchaseSimulation } from "@/contracts/outputs/purchase_simulation";
 import { request, requestEnvelope, type ActionOutcome, type AuditEvent, type ChatReply, type PersonaId } from "./client";
+import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
 export type Scenario = "typical" | "conservative" | "stress";
@@ -108,6 +109,11 @@ export function useCommitments() {
 export function useCapacity() {
   const { persona } = usePersona();
   return useQuery({ queryKey: [persona, "capacity"], queryFn: () => requestEnvelope<CapacityAssessment>("/v1/capacity", { user: persona }) });
+}
+
+export function useUserProfile() {
+  const { persona } = usePersona();
+  return useQuery({ queryKey: [persona, "profile"], queryFn: () => requestEnvelope<ProfileTolerance>("/v1/profile", { user: persona }) });
 }
 
 export function useSavingsPlan(permittedProfile?: string) {
