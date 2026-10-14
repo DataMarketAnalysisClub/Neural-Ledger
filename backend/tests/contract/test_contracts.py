@@ -97,13 +97,13 @@ def test_statement_outputs_and_audit_match_contracts(services):
     imported = to_primitive(services.statements.import_statement("camila", santander_pdf(Sample(daily_override={"04/12": 1}))))
     validate(imported, "common/envelope.schema.json")
     validate(imported["data"], "outputs/statement_import.schema.json")
-    assert imported["data"]["statement"]["issues"], "the unverified path must be covered too"
+    assert imported["data"]["imports"][0]["statement"]["issues"], "the unverified path must be covered too"
 
     listed = to_primitive(services.statements.list_statements("camila"))
     validate(listed, "common/envelope.schema.json")
     validate(listed["data"], "outputs/statements.schema.json")
 
-    detail = to_primitive(services.statements.get_statement("camila", imported["data"]["statement"]["statement_id"]))
+    detail = to_primitive(services.statements.get_statement("camila", imported["data"]["imports"][0]["statement"]["statement_id"]))
     validate(detail, "common/envelope.schema.json")
     validate(detail["data"], "outputs/statement.schema.json")
 
@@ -121,8 +121,33 @@ def test_statement_outputs_and_audit_match_contracts(services):
         validate(event.to_record(), "audit/audit_event.schema.json")
 
 
+def test_card_and_spreadsheet_statements_match_contracts(services):
+    """Card statements (obligations, cuotas, kinds), provisional Excel exports and their ledger rows."""
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    from tests.statement_samples import CardSample, bice_xlsx, card_pdf, santander_xlsx
+
+    for content in (card_pdf(), card_pdf(CardSample(upcoming=(1, 2, 0, 0))), bice_xlsx(), santander_xlsx()):
+        imported = to_primitive(services.statements.import_statement("camila", content))
+        validate(imported, "common/envelope.schema.json")
+        validate(imported["data"], "outputs/statement_import.schema.json")
+        for entry in imported["data"]["imports"]:
+            detail = to_primitive(services.statements.get_statement("camila", entry["statement"]["statement_id"]))
+            validate(detail["data"], "outputs/statement.schema.json")
+    validate(to_primitive(services.statements.list_statements("camila"))["data"], "outputs/statements.schema.json")
+    transactions = to_primitive(services.ledger.list_transactions("camila"))
+    validate(transactions["data"], "outputs/transactions.schema.json")
+    if find_spec("sklearn"):
+        kinds = {t["kind"] for t in transactions["data"]["transactions"]}
+        assert {"card_payment", "refund", "fee", "purchase", "income"} <= kinds
+        assert any(t["installment"] for t in transactions["data"]["transactions"])
+
+
 def test_transaction_categories_match_the_domain_vocabulary():
-    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, UNCATEGORIZED
+    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, MOVEMENT, UNCATEGORIZED
+    from neural_ledger.domain.ledger.entities import TransactionKind
 
     schema = json.loads((CONTRACTS / "outputs/transactions.schema.json").read_text())
-    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | {INCOME, UNCATEGORIZED}
+    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | {INCOME, MOVEMENT, UNCATEGORIZED}
+    posted_kinds = {TransactionKind.INCOME, TransactionKind.PURCHASE, TransactionKind.CARD_PAYMENT, TransactionKind.REFUND, TransactionKind.FEE}
+    assert set(schema["properties"]["transactions"]["items"]["properties"]["kind"]["enum"]) == {k.value for k in posted_kinds}

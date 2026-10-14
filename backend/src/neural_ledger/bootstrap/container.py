@@ -33,7 +33,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteStatementStore,
     SqliteTransactionStore,
 )
-from ..adapters.outbound.statements.reader import OcrStatementReader
+from ..adapters.outbound.statements.reader import StatementFileReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
 from ..adapters.outbound.system.signer import HmacSigner
@@ -140,7 +140,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if s.classifier not in CLASSIFIERS:
         raise ValueError(f"unknown NL_CLASSIFIER {s.classifier!r} (known: {', '.join(CLASSIFIERS)})")
     posting = LedgerPosting(CLASSIFIERS[s.classifier](), transaction_store)
-    statements = StatementUseCases(OcrStatementReader(model_dir=s.ocr_model_dir), statement_store, posting, audit_log, clock, ids)
+    statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), statement_store, posting, audit_log, clock, ids)
     ledger = LedgerUseCases(transaction_store)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version

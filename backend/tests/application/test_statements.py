@@ -30,12 +30,12 @@ CATEGORY_WARNINGS = {"UNCATEGORIZED_SPENDING"}
 def test_import_stores_a_verified_statement_and_audits_it(services):
     result = services.statements.import_statement("camila", santander_pdf())
     assert result.status is Status.OK
-    assert result.data.duplicate is False
-    summary = result.data.statement
+    assert result.data.imports[0].duplicate is False
+    summary = result.data.imports[0].statement
     assert summary.verified and summary.issues == ()
     assert (summary.line_count, summary.total_debits, summary.total_credits) == (7, 61_080, 463_521)
     assert {w.code for w in result.warnings} <= CATEGORY_WARNINGS
-    ledger = result.data.ledger
+    ledger = result.data.imports[0].ledger
     assert (ledger.posted, ledger.new) == (7, 7) and ledger.classifier.startswith("naive_bayes@")
     assert {f.key.rsplit(".", 1)[1]: f.value for f in result.facts}["closing_balance"] == 1_402_441
 
@@ -51,10 +51,10 @@ def test_import_stores_a_verified_statement_and_audits_it(services):
 def test_reimport_is_a_duplicate_and_stores_nothing_new(services):
     first = services.statements.import_statement("camila", santander_pdf())
     again = services.statements.import_statement("camila", santander_pdf())
-    assert again.data.duplicate is True
-    assert again.data.statement.statement_id == first.data.statement.statement_id
+    assert again.data.imports[0].duplicate is True
+    assert again.data.imports[0].statement.statement_id == first.data.imports[0].statement.statement_id
     assert {w.code for w in again.warnings} - CATEGORY_WARNINGS == {"DUPLICATE_STATEMENT"}
-    assert (again.data.ledger.posted, again.data.ledger.new) == (7, 0)
+    assert (again.data.imports[0].ledger.posted, again.data.imports[0].ledger.new) == (7, 0)
     assert len(services.statements.list_statements("camila").data) == 1
     assert len(services.ledger.list_transactions("camila").data.transactions) == 7
 
@@ -62,20 +62,20 @@ def test_reimport_is_a_duplicate_and_stores_nothing_new(services):
 def test_statement_that_does_not_add_up_is_stored_unverified_with_a_warning(services):
     result = services.statements.import_statement("camila", santander_pdf(Sample(daily_override={"04/12": 1_154_942})))
     assert result.status is Status.OK
-    assert result.data.statement.verified is False
-    assert {i.code for i in result.data.statement.issues} == {"DAILY_BALANCE"}
+    assert result.data.imports[0].statement.verified is False
+    assert {i.code for i in result.data.imports[0].statement.issues} == {"DAILY_BALANCE"}
     unverified, not_posted = result.warnings
     assert unverified.code == "STATEMENT_UNVERIFIED" and "DAILY_BALANCE" in unverified.message
     assert not_posted.code == "NOT_POSTED" and "does not reconcile" in not_posted.message
-    assert result.data.ledger.posted == 0 and result.data.ledger.classifier is None
+    assert result.data.imports[0].ledger.posted == 0 and result.data.imports[0].ledger.classifier is None
     assert services.ledger.list_transactions("camila").data.transactions == ()
 
-    detail = services.statements.get_statement("camila", result.data.statement.statement_id)
+    detail = services.statements.get_statement("camila", result.data.imports[0].statement.statement_id)
     assert [w.code for w in detail.warnings] == ["STATEMENT_UNVERIFIED"]
 
 
 def test_detail_wraps_descriptions_as_untrusted_and_is_scoped_to_the_owner(services):
-    statement_id = services.statements.import_statement("camila", santander_pdf()).data.statement.statement_id
+    statement_id = services.statements.import_statement("camila", santander_pdf()).data.imports[0].statement.statement_id
     detail = services.statements.get_statement("camila", statement_id).data
     assert detail.lines[0].description == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
     assert detail.lines[0].amount == -3_280
@@ -130,7 +130,7 @@ class _FixedReader:
         self.statement = statement
 
     def read(self, content: bytes):
-        return self.statement
+        return (self.statement,)
 
 
 def test_low_ocr_confidence_warns_about_descriptions_but_does_not_unverify():
@@ -147,7 +147,7 @@ def test_low_ocr_confidence_warns_about_descriptions_but_does_not_unverify():
         source="ocr",
     )  # fmt: skip
     result = _use_case(_FixedReader(statement)).import_statement("camila", b"%PDF-1.7 scan")
-    assert result.data.statement.verified is True
+    assert result.data.imports[0].statement.verified is True
     (warning,) = result.warnings
     assert warning.code == "OCR_LOW_CONFIDENCE" and warning.message.startswith("1 of 2 lines")
 

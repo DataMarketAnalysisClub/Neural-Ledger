@@ -141,8 +141,8 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
 
     @app.post("/v1/statements")
     async def import_statement(request: Request, x_user_id: str | None = Header(default=None)):
-        """The raw file is the body (Content-Type application/pdf or image/*). Reading a scan runs OCR,
-        which takes seconds to minutes, so it runs off the event loop."""
+        """The raw file is the body: an .xlsx export, a PDF or an image (the bytes decide, not the
+        Content-Type). Reading a scan runs OCR, which takes seconds to minutes, so it runs off the event loop."""
         too_large = JSONResponse({"detail": "the file is larger than 15 MB"}, status_code=413)
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_STATEMENT_BYTES:

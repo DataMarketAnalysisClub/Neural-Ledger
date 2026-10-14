@@ -67,7 +67,7 @@ def test_statement_upload_list_and_detail(client):
 
     upload = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"})
     assert upload.status_code == 200, upload.text
-    summary = upload.json()["data"]["statement"]
+    summary = upload.json()["data"]["imports"][0]["statement"]
     assert summary["verified"] and summary["line_count"] == 7
 
     listed = client.get("/v1/statements", headers={"X-User-Id": "camila"}).json()["data"]
@@ -85,7 +85,7 @@ def test_imported_statement_reaches_the_transaction_ledger(client):
     pytest.importorskip("sklearn")
     from tests.statement_samples import santander_pdf
 
-    ledger = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"}).json()["data"]["ledger"]
+    ledger = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"}).json()["data"]["imports"][0]["ledger"]
     assert ledger["posted"] == ledger["new"] == 7 and ledger["classifier"].startswith("naive_bayes@")
 
     body = client.get("/v1/transactions", headers={"X-User-Id": "camila"}).json()
