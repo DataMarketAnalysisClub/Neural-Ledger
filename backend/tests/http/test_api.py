@@ -18,6 +18,7 @@ def client(services):
 def test_health(client):
     body = client.get("/health").json()
     assert body["mode"] == "offline" and body["audit_chain_ok"] and "simulate_purchase" in body["tools"]
+    assert body["pii_detector"] == "none"  # statements are redacted by the rules alone: nothing leaves the process
     assert body["server_time"].startswith("2026-10-29T12:00:00")  # the fixed demo clock, for UI countdowns
 
 

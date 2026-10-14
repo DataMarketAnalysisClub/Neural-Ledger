@@ -33,6 +33,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteStatementStore,
     SqliteTransactionStore,
 )
+from ..adapters.outbound.privacy.azure_language import AzureLanguageDetector
 from ..adapters.outbound.privacy.null import NullDetector
 from ..adapters.outbound.statements.reader import OcrStatementReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
@@ -40,7 +41,7 @@ from ..adapters.outbound.system.ids import SequentialIds, UuidIds
 from ..adapters.outbound.system.signer import HmacSigner
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices
-from ..application.ports import TransactionClassifier
+from ..application.ports import PersonalDataDetector, TransactionClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
@@ -62,6 +63,13 @@ from .contracts import load_tool_definitions
 # (any TransactionClassifier) and select it; to change the estimator, pass another pipeline factory.
 CLASSIFIERS: dict[str, Callable[[], TransactionClassifier]] = {
     "naive_bayes": lambda: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
+}
+
+# Personal-data detectors, by NL_PII_DETECTOR: a second layer after the domain rules on every imported statement
+# (ADR-028). To add one, implement PersonalDataDetector in adapters/outbound/privacy/ and add an entry here.
+DETECTORS: dict[str, Callable[[Settings], PersonalDataDetector]] = {
+    "none": lambda s: NullDetector(),  # rules only: CI, docker compose, the recorded demo
+    "azure": lambda s: AzureLanguageDetector(s.azure_language_endpoint or "", s.azure_language_api_key or ""),
 }
 
 
@@ -142,7 +150,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if s.classifier not in CLASSIFIERS:
         raise ValueError(f"unknown NL_CLASSIFIER {s.classifier!r} (known: {', '.join(CLASSIFIERS)})")
     posting = LedgerPosting(CLASSIFIERS[s.classifier](), transaction_store)
-    redactor = StatementRedactor(NullDetector())  # personal data is removed at import, before anything is stored (ADR-028)
+    if s.pii_detector not in DETECTORS:
+        raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
+    redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(OcrStatementReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
     ledger = LedgerUseCases(transaction_store)
     registry = build_registry(
@@ -163,6 +173,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         mode=s.mode,
         language_model=llm.name,
         decision_chain=decisions.chain,
+        pii_detector=redactor.detector,
         clock=clock,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source)
