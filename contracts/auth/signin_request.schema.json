@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/signin_request.schema.json",
+  "title": "SigninRequest",
+  "description": "POST /v1/auth/signin. Both fields are strings without signup length constraints. Unknown or malformed email and wrong password must receive the same generic INVALID_CREDENTIALS response and password-check work; neither value appears in the response.",
+  "type": "object",
+  "required": ["email", "password"],
+  "properties": {
+    "email": {"type": "string"},
+    "password": {"type": "string"}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"email": "ana@accounts.invalid", "password": "example-passphrase"}
+  ]
+}
