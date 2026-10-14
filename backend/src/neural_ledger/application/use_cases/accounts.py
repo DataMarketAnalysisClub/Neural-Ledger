@@ -1,6 +1,7 @@
 """Sign-up, sign-in and sessions. HTTP-only flows: the agent has no tool for any of them.
 
-They return AccountOutcome, never an Envelope, because a session token must never travel in an
+They commit account state with its audit events through AccountWrites. They return AccountOutcome,
+never an Envelope, because a session token must never travel in an
 envelope. The token exists only in IssuedSession, for the HTTP adapter to set as a cookie; the
 store keeps its digest. Audit records carry the session_ref, never the email, the display name,
 the password or the token. Every sign-in failure is the same outcome and costs one password check,
@@ -17,7 +18,7 @@ from ...domain.audit.events import Actor, AuditDraft, AuditKind
 from ...domain.shared.errors import InvalidInput
 from ...domain.user.account import SESSION_PREFIX, USER_PREFIX, Session, UserAccount, normalize_email, token_digest, validate_password
 from ...domain.user.profile import UserProfile
-from ..ports import AuditLog, Clock, IdGenerator, PasswordHasher, SessionStore, TokenGenerator, UserAccountStore, UserProfileStore
+from ..ports import AccountWrites, Clock, IdGenerator, PasswordHasher, SessionStore, TokenGenerator, UserAccountStore
 
 
 class AccountStatus(str, Enum):
@@ -57,19 +58,17 @@ class AccountUseCases:
         self,
         accounts: UserAccountStore,
         sessions: SessionStore,
-        profiles: UserProfileStore,
+        writes: AccountWrites,
         hasher: PasswordHasher,
         tokens: TokenGenerator,
-        audit: AuditLog,
         clock: Clock,
         ids: IdGenerator,
     ) -> None:
         self._accounts = accounts
         self._sessions = sessions
-        self._profiles = profiles
+        self._writes = writes
         self._hasher = hasher
         self._tokens = tokens
-        self._audit = audit
         self._clock = clock
         self._ids = ids
 
@@ -86,14 +85,14 @@ class AccountUseCases:
         password_hash = self._hasher.hash(password)
         user_id = self._ids.new(USER_PREFIX)
         now = self._clock.now()
-        # Profile first: a lost race leaves an unreachable profile, never an account without one.
-        self._profiles.put(replace(draft, user_id=user_id))
-        if not self._accounts.add(UserAccount(user_id, normalized, password_hash, now)):
+        token, session = self._new_session(user_id, now)
+        events = (
+            self._draft(AuditKind.USER_REGISTERED, user_id, session.session_ref, None, now),
+            self._draft(AuditKind.SESSION_STARTED, user_id, session.session_ref, "reason=signup", now),
+        )
+        if not self._writes.register(UserAccount(user_id, normalized, password_hash, now), replace(draft, user_id=user_id), session, events):
             return EMAIL_TAKEN
-        issued = self._issue(user_id, now)
-        self._record(AuditKind.USER_REGISTERED, user_id, issued.session_ref, None)
-        self._record(AuditKind.SESSION_STARTED, user_id, issued.session_ref, "reason=signup")
-        return AccountOutcome(AccountStatus.OK, session=issued)
+        return AccountOutcome(AccountStatus.OK, session=IssuedSession(user_id, session.session_ref, session.expires_at, token))
 
     def signin(self, email: str, password: str) -> AccountOutcome:
         try:
@@ -103,9 +102,10 @@ class AccountUseCases:
         matches = self._hasher.verify(password, account.password_hash if account is not None else None)
         if account is None or not matches:
             return INVALID_CREDENTIALS
-        issued = self._issue(account.user_id, self._clock.now())
-        self._record(AuditKind.SESSION_STARTED, account.user_id, issued.session_ref, "reason=signin")
-        return AccountOutcome(AccountStatus.OK, session=issued)
+        now = self._clock.now()
+        token, session = self._new_session(account.user_id, now)
+        self._writes.open_session(session, (self._draft(AuditKind.SESSION_STARTED, account.user_id, session.session_ref, "reason=signin", now),))
+        return AccountOutcome(AccountStatus.OK, session=IssuedSession(account.user_id, session.session_ref, session.expires_at, token))
 
     def resolve(self, token: str) -> Session | None:
         """The active session for this token. Read-only: using a session never extends it."""
@@ -116,26 +116,30 @@ class AccountUseCases:
 
     def signout(self, token: str) -> bool:
         session = self.resolve(token)
-        if session is None or not self._sessions.revoke(session.session_ref, self._clock.now()):
+        if session is None:
             return False
-        self._record(AuditKind.SESSION_ENDED, session.user_id, session.session_ref, "reason=signout")
-        return True
+        now = self._clock.now()
+        return self._writes.close_session(
+            session, now, (self._draft(AuditKind.SESSION_ENDED, session.user_id, session.session_ref, "reason=signout", now),)
+        )
 
     def set_sample_data(self, user_id: str, session_ref: str, enabled: bool) -> AccountOutcome:
         """Stores the user's choice only. Personas have no account, so they are NOT_FOUND here."""
-        if not self._accounts.set_sample_data(user_id, enabled):
+        now = self._clock.now()
+        event = self._draft(
+            AuditKind.PROFILE_UPDATED, user_id, session_ref, f"fields=sample_data;enabled={'true' if enabled else 'false'}", now
+        )
+        if not self._writes.set_sample_data(user_id, enabled, (event,)):
             return AccountOutcome(AccountStatus.NOT_FOUND, field="user_id", message="no account for this user")
-        self._record(AuditKind.PROFILE_UPDATED, user_id, session_ref, f"fields=sample_data;enabled={'true' if enabled else 'false'}")
         return AccountOutcome(AccountStatus.OK)
 
-    def _issue(self, user_id: str, now: datetime) -> IssuedSession:
+    def _new_session(self, user_id: str, now: datetime) -> tuple[str, Session]:
         token = self._tokens.new_token()
         session = Session.open(self._ids.new(SESSION_PREFIX), user_id, token_digest(token), now)
-        self._sessions.add(session)
-        return IssuedSession(user_id, session.session_ref, session.expires_at, token)
+        return token, session
 
-    def _record(self, kind: AuditKind, user_id: str, session_ref: str, detail: str | None) -> None:
-        self._audit.append(AuditDraft(
-            event_id=self._ids.new("evt"), timestamp=self._clock.now(), session_id=session_ref,
+    def _draft(self, kind: AuditKind, user_id: str, session_ref: str, detail: str | None, now: datetime) -> AuditDraft:
+        return AuditDraft(
+            event_id=self._ids.new("evt"), timestamp=now, session_id=session_ref,
             user_id=user_id, actor=Actor.USER, kind=kind, detail=detail,
-        ))
+        )

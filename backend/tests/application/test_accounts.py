@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from neural_ledger.adapters.outbound.persistence.memory import (
+    InMemoryAccountWrites,
     InMemoryAuditLog,
     InMemorySessionStore,
     InMemoryUserAccountStore,
@@ -58,7 +59,8 @@ class World:
         self.tokens = CountingTokens()
         self.audit = InMemoryAuditLog()
         self.use_cases = AccountUseCases(
-            self.accounts, self.sessions, self.profiles, self.hasher, self.tokens, self.audit, self.clock, SequentialIds()
+            self.accounts, self.sessions, InMemoryAccountWrites(self.accounts, self.sessions, self.profiles, self.audit),
+            self.hasher, self.tokens, self.clock, SequentialIds()
         )
 
     def kinds(self) -> list[AuditKind]:

@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime
 
 from neural_ledger.adapters.outbound.persistence.memory import (
+    InMemoryAccountWrites,
     InMemoryAuditLog,
     InMemorySessionStore,
     InMemoryUserAccountStore,
@@ -26,9 +27,10 @@ def test_account_flow_audit_events_match_the_contract():
     from .test_contracts import validate  # skips when jsonschema is not installed
 
     audit = InMemoryAuditLog()
+    account_store, session_store, profile_store = InMemoryUserAccountStore(), InMemorySessionStore(), InMemoryUserProfileStore()
     accounts = AccountUseCases(
-        InMemoryUserAccountStore(), InMemorySessionStore(), InMemoryUserProfileStore(), ScryptHasher(), SecretsTokens(),
-        audit, FixedClock(datetime(2026, 10, 29, 9, tzinfo=UTC)), SequentialIds(),
+        account_store, session_store, InMemoryAccountWrites(account_store, session_store, profile_store, audit),
+        ScryptHasher(), SecretsTokens(), FixedClock(datetime(2026, 10, 29, 9, tzinfo=UTC)), SequentialIds(),
     )
     issued = accounts.signup("ana@example.com", "correct horse battery", "Ana").session
     signin = accounts.signin("ana@example.com", "correct horse battery").session
