@@ -1,12 +1,14 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { PersonaProvider } from "@/api/hooks";
 import { AppShell } from "@/app/AppShell";
-import { Loading } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Loading, PageHeader } from "@/components/ui";
 import { features } from "@/lib/features";
+import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
+import { t } from "@/i18n";
 
 // Each screen is its own chunk; the chart library loads only where a chart is drawn.
 const OverviewPage = lazy(() => import("@/features/overview/OverviewPage").then((m) => ({ default: m.OverviewPage })));
@@ -16,6 +18,10 @@ const PlanPage = lazy(() => import("@/features/plan/PlanPage").then((m) => ({ de
 const CopilotPage = lazy(() => import("@/features/copilot/CopilotPage").then((m) => ({ default: m.CopilotPage })));
 const AuditPage = lazy(() => import("@/features/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
 const StatementsPage = lazy(() => import("@/features/statements/StatementsPage").then((m) => ({ default: m.StatementsPage })));
+const SignInPage = lazy(() => import("@/features/auth/AuthPages").then((m) => ({ default: m.SignInPage })));
+const SignUpPage = lazy(() => import("@/features/auth/AuthPages").then((m) => ({ default: m.SignUpPage })));
+const OnboardingPage = lazy(() => import("@/features/onboarding/OnboardingPage").then((m) => ({ default: m.OnboardingPage })));
+const ProfilePage = lazy(() => import("@/features/profile/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 import "./index.css";
 
 const queryClient = new QueryClient({
@@ -30,26 +36,58 @@ const queryClient = new QueryClient({
   },
 });
 
+function FinancialRoute({ children }: { readonly children: React.ReactNode }) {
+  const auth = useAuth();
+  if (auth.mode === "accounts" && (auth.me?.data_source === "empty" || (import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true"))) {
+    return <>
+      <PageHeader title={t("profile.emptyTitle")} subtitle={t("profile.emptyDetail")} />
+      <EmptyState title={auth.me?.data_source === "sample" ? t("auth.mock") : t("profile.emptyTitle")}
+        action={<Button asChild variant="primary"><Link to="/profile">{t("profile.openProfile")}</Link></Button>}>
+        {auth.me?.data_source === "sample" ? t("profile.mockFinancial") : t("profile.capacityMissing")}
+      </EmptyState>
+    </>;
+  }
+  return children;
+}
+
+function AppRoutes() {
+  const auth = useAuth();
+  if (auth.pending) return <main className="mx-auto max-w-3xl px-6 py-16"><Loading /></main>;
+  if (auth.error) return <main className="mx-auto max-w-3xl px-6 py-16"><ErrorState error={auth.error} onRetry={auth.retry} /></main>;
+  if (auth.mode === "accounts" && !auth.me) return <Suspense fallback={<Loading className="mx-auto mt-16 max-w-md" />}>
+    <Routes>
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="*" element={<SignInPage />} />
+    </Routes>
+  </Suspense>;
+
+  return <PersonaProvider key={auth.me?.user_id ?? "demo"}>
+    <AppShell>
+      <Suspense fallback={<Loading className="max-w-5xl" />}>
+        <Routes>
+          <Route path="/" element={<FinancialRoute><OverviewPage /></FinancialRoute>} />
+          <Route path="/commitments" element={<FinancialRoute><CommitmentsPage /></FinancialRoute>} />
+          <Route path="/simulator" element={<FinancialRoute><SimulatorPage /></FinancialRoute>} />
+          <Route path="/plan" element={<FinancialRoute><PlanPage /></FinancialRoute>} />
+          <Route path="/copilot" element={<FinancialRoute><CopilotPage /></FinancialRoute>} />
+          <Route path="/audit" element={<FinancialRoute><AuditPage /></FinancialRoute>} />
+          <Route path="/statements" element={<FinancialRoute><StatementsPage unavailable={!features.statements} /></FinancialRoute>} />
+          <Route path="/profile" element={auth.mode === "accounts" ? <ProfilePage /> : <Navigate to="/" replace />} />
+          <Route path="/onboarding" element={auth.mode === "accounts" ? <OnboardingPage /> : <Navigate to="/" replace />} />
+          <Route path="/signin" element={<Navigate to="/" replace />} />
+          <Route path="/signup" element={<Navigate to={auth.mode === "accounts" ? "/onboarding" : "/"} replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AppShell>
+  </PersonaProvider>;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <PersonaProvider>
-          <AppShell>
-            <Suspense fallback={<Loading className="max-w-5xl" />}>
-            <Routes>
-              <Route path="/" element={<OverviewPage />} />
-              <Route path="/commitments" element={<CommitmentsPage />} />
-              <Route path="/simulator" element={<SimulatorPage />} />
-              <Route path="/plan" element={<PlanPage />} />
-              <Route path="/copilot" element={<CopilotPage />} />
-              <Route path="/audit" element={<AuditPage />} />
-              <Route path="/statements" element={features.statements ? <StatementsPage /> : <StatementsPage unavailable />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-            </Suspense>
-          </AppShell>
-        </PersonaProvider>
+        <AuthProvider><AppRoutes /></AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
