@@ -370,6 +370,15 @@ export const en = {
     unavailable: "Statement import is not available in this build yet.",
     unavailableDetail: "It ships with the statements API. Until then, the projections use the demo scenario.",
   },
+  /** Personal data removed at import, by placeholder code (contracts/common/redaction.schema.json). */
+  redaction: {
+    PERSON: "Name hidden",
+    ID: "ID number hidden",
+    NUMBER: "Number hidden",
+    EMAIL: "Email hidden",
+    PHONE: "Phone hidden",
+    ADDRESS: "Address hidden",
+  },
   scenario: { typical: "Typical", conservative: "Conservative", stress: "Stress" },
   warnings: {
     title: "Assumptions",
