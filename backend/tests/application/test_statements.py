@@ -197,7 +197,8 @@ def test_import_redacts_before_anything_is_stored_posted_or_audited():
     clean = ["[NUMBER] Transf a [PERSON] [ID]", "TEF DE [PERSON] [EMAIL]"]
     assert [line.description for line in stored.statement.lines] == clean
     assert stored.statement.account_ref == "****3456"
-    assert [(line.amount, line.reference, line.branch) for line in stored.statement.lines] == [(-40_000, "2441010", "401"), (10_000, None, "90")]
+    kept = [(line.amount, line.reference, line.branch) for line in stored.statement.lines]
+    assert kept == [(-40_000, "2441010", "401"), (10_000, None, "90")]  # amounts, document number and branch
     posted = transactions.for_user("camila")
     assert [p.transaction.merchant_raw for p in posted] == clean
     assert {p.transaction.account_id for p in posted} == {"test:****3456"}
@@ -206,6 +207,106 @@ def test_import_redacts_before_anything_is_stored_posted_or_audited():
     assert "redacted=5 detector=none posted=2" in event.draft.detail
     for personal in ("JUAN", "PEREZ", "MARIA", "SOTO", "11.111.111", "maria.soto", "12345"):
         assert personal not in event.draft.detail
+
+
+# ---- redaction flows (ADR-028): duplicates, a detector that is down, a redaction that crashes --------
+
+
+class _CountingDetector:
+    name = "counting"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def detect(self, texts):
+        self.calls += 1
+        return tuple(() for _ in texts)
+
+
+class _DownDetector:
+    name = "down"
+
+    def detect(self, texts):
+        from neural_ledger.application.ports import DetectorUnavailable
+
+        raise DetectorUnavailable("HTTP 503")
+
+
+class _BuggyDetector:
+    name = "buggy"
+
+    def detect(self, texts):
+        raise RuntimeError(f"cannot parse {texts[0]!r}")  # an error message that quotes the statement
+
+
+def test_the_statement_id_is_still_the_hash_of_the_statement_as_read():
+    from dataclasses import replace
+
+    from neural_ledger.domain.shared.hashing import content_id
+
+    raw = _statement_with_personal_data()
+    store = InMemoryStatementStore()
+    first = _use_case(_FixedReader(raw), store=store).import_statement("camila", b"%PDF-1.7")
+    assert first.data.statement.statement_id == content_id(
+        "stmt", "camila", raw.bank, raw.account_ref, raw.period_start, raw.period_end, raw.lines
+    )
+    # Two cartolas that differ only in personal data redact to the same text, yet stay two statements.
+    lines = (replace(raw.lines[0], description=raw.lines[0].description.replace("JUAN PEREZ", "ANA ROJAS")), *raw.lines[1:])
+    second = _use_case(_FixedReader(replace(raw, lines=lines)), store=store).import_statement("camila", b"%PDF-1.7")
+    assert second.data.duplicate is False and second.data.statement.statement_id != first.data.statement.statement_id
+    stored = [[line.description for line in s.statement.lines] for s in store.for_user("camila")]
+    assert len(stored) == 2 and stored[0] == stored[1]
+
+
+def test_a_duplicate_is_still_detected_and_never_redacted_or_sent_to_the_detector_again():
+    detector, store, audit = _CountingDetector(), InMemoryStatementStore(), InMemoryAuditLog()
+    use_case = _use_case(_FixedReader(_statement_with_personal_data()), detector=detector, store=store, audit=audit)
+    first = use_case.import_statement("camila", b"%PDF-1.7")
+    again = use_case.import_statement("camila", b"%PDF-1.7")
+    assert again.status is Status.OK and again.data.duplicate is True and again.data.redaction is None
+    assert again.data.statement.statement_id == first.data.statement.statement_id
+    assert len(store.for_user("camila")) == 1 and detector.calls == 1
+    assert [w.code for w in again.warnings][-1] == "DUPLICATE_STATEMENT"
+    assert [e.draft.execution_result for e in audit.events()] == ["VERIFIED", "DUPLICATE"]
+    assert "redacted=" not in audit.events()[1].draft.detail
+
+
+def test_a_detector_that_is_down_gives_a_degraded_import_still_redacted_by_the_rules(caplog):
+    store, audit = InMemoryStatementStore(), InMemoryAuditLog()
+    use_case = _use_case(_FixedReader(_statement_with_personal_data()), detector=_DownDetector(), store=store, audit=audit)
+    with caplog.at_level("WARNING"):
+        result = use_case.import_statement("camila", b"%PDF-1.7")
+    assert result.status is Status.OK and result.data.statement.verified
+    assert (result.data.redaction.detector, result.data.redaction.degraded) == ("down", True)
+    (degraded,) = [w for w in result.warnings if w.code == "REDACTION_DEGRADED"]
+    assert "rules only" in degraded.message and "down" in degraded.message
+    (stored,) = store.for_user("camila")
+    assert [line.description for line in stored.statement.lines] == ["[NUMBER] Transf a [PERSON] [ID]", "TEF DE [PERSON] [EMAIL]"]
+    assert "redacted=5 detector=down degraded=yes" in audit.events()[0].draft.detail
+    assert "HTTP 503" in caplog.text
+
+
+@pytest.mark.parametrize("where", ["detector", "rules"])
+def test_a_redaction_crash_rejects_the_import_and_writes_nothing(where, monkeypatch, caplog):
+    if where == "rules":
+        from neural_ledger.application.services import redaction
+
+        def crash(text):
+            raise ValueError(f"bad rule on {text!r}")
+
+        monkeypatch.setattr(redaction, "find_spans", crash)
+    store, audit, transactions = InMemoryStatementStore(), InMemoryAuditLog(), InMemoryTransactionStore()
+    detector = _BuggyDetector() if where == "detector" else None
+    use_case = _use_case(
+        _FixedReader(_statement_with_personal_data()), detector=detector, transactions=transactions, store=store, audit=audit
+    )
+    with caplog.at_level("DEBUG"):
+        result = use_case.import_statement("camila", b"%PDF-1.7")
+    assert result.status is Status.INSUFFICIENT_DATA and result.missing == ("redaction",)
+    assert "not stored" in result.message and result.data is None
+    assert store.for_user("camila") == () and transactions.for_user("camila") == () and audit.events() == ()
+    assert ("RuntimeError" if where == "detector" else "ValueError") in caplog.text
+    assert "JUAN" not in caplog.text and "Transf" not in caplog.text  # the error's type only, never its message
 
 
 def test_missing_ocr_is_insufficient_data_not_a_bad_file():
