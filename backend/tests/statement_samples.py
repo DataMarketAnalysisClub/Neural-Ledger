@@ -193,8 +193,8 @@ def santander_xlsx(
     rows: list[list[Cell]] = [
         ["Banco Santander", None, "", "", "Cartola de cuenta Corriente - Septiembre 2026"],
         ["Sr(a)", "PEREZ ANA", "", "", "Cartola N°", "12", ""],
-        ["", "", "", "", "Desde", "31/08/2026", ""],
-        ["", "", "", "", "Hasta", "30/09/2026", ""],
+        ["Rut", "11.111.111-1", "", "", "Desde", "31/08/2026", ""],
+        ["E-mail", "ana.perez@example.com", "", "", "Hasta", "30/09/2026", ""],
         ["INFORMACIÓN CUENTA CORRIENTE"],
         ["Tipo de Cuenta:", "CTA CTE", "", "", "N° Cuenta:", "0-000-00-12345-6", ""],
         ["Saldo inicial:", money(opening), "", "", "Impuestos:", "$0", ""],
@@ -288,6 +288,7 @@ class CardSample:
     section_override: dict[str, int] = field(default_factory=dict)
     drop_line: str | None = None  # a merchant whose line is printed in a way the layout cannot read
     international: bool = True
+    card_number: str = "XXXX XXX9 1111 4321"  # as the issuer prints it (masked); a test may print a full PAN
 
 
 def card_pdf(sample: CardSample | None = None) -> bytes:
@@ -321,7 +322,8 @@ def card_pdf(sample: CardSample | None = None) -> bytes:
         "1 de 2",
         "ESTADO DE CUENTA NACIONAL DE TARJETA DE CRÉDITO",
         "NOMBRE DEL TITULAR ANA PEREZ",
-        "N° DE TARJETA DE CRÉDITO XXXX XXX9 1111 4321",
+        f"N° DE TARJETA DE CRÉDITO {s.card_number}",
+        "ANA.PEREZ@EXAMPLE.COM",
         "FECHA ESTADO DE CUENTA 27/08/2026",
         "I. INFORMACIÓN GENERAL",
         "CUPO TOTAL $ 500.000 $ 300.000 $ 200.000",
@@ -363,7 +365,7 @@ def card_pdf(sample: CardSample | None = None) -> bytes:
     international = [
         "1 de 1",
         "ESTADO DE CUENTA INTERNACIONAL DE TARJETA DE CREDITO",
-        "N° DE TARJETA DE CREDITO XXXX XXX9 1111 4321",
+        f"N° DE TARJETA DE CREDITO {s.card_number}",
         "CUPO TOTAL US$ 1.000,00 US$ 18,99 US$ 981,01",
         "SALDO ANTERIOR FACTURADO US$ 22,41 PERIODO FACTURADO DESDE 30/07/2026",
         "ABONO REALIZADO US$ 22,41 PERIODO FACTURADO HASTA 27/08/2026",
