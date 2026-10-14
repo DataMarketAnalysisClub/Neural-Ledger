@@ -23,6 +23,7 @@ from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.statements.model import BankStatement, StoredStatement
+from ..domain.user.account import Session, UserAccount
 from ..domain.user.profile import UserProfile
 from .conversation import Entry, ModelRequest, ModelTurn
 
@@ -207,3 +208,47 @@ class DecisionModel(Protocol):
     name: str
 
     def judge(self, state: str, questions: Sequence[Question]) -> Mapping[str, Judgment]: ...
+
+
+@runtime_checkable
+class PasswordHasher(Protocol):
+    """Hashes and checks passwords. Only the encoded hash is ever stored, never the password."""
+
+    def hash(self, password: str) -> str: ...
+
+    def verify(self, password: str, encoded: str | None) -> bool:
+        """None (no such account) or a malformed hash does the same work as a real check and returns False."""
+        ...
+
+
+@runtime_checkable
+class TokenGenerator(Protocol):
+    """Unguessable session tokens. Only their digest is stored."""
+
+    def new_token(self) -> str: ...
+
+
+@runtime_checkable
+class UserAccountStore(Protocol):
+    def add(self, account: UserAccount) -> bool:
+        """Store unless the user_id or the (normalized) email already exists, atomically. Returns False for a duplicate."""
+        ...
+
+    def get(self, user_id: str) -> UserAccount | None: ...
+
+    def by_email(self, email: str) -> UserAccount | None: ...
+
+    def set_sample_data(self, user_id: str, enabled: bool) -> bool:
+        """Returns False if there is no account with this id."""
+        ...
+
+
+@runtime_checkable
+class SessionStore(Protocol):
+    def add(self, session: Session) -> None: ...
+
+    def by_token_hash(self, token_hash: str) -> Session | None: ...
+
+    def revoke(self, session_ref: str, at: datetime) -> bool:
+        """Atomically mark as revoked. Returns False if unknown or already revoked."""
+        ...
