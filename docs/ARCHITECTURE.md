@@ -32,6 +32,8 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A config switch | `bootstrap/config.py` + `.env.example` + `container.py` | — |
 | A new bank statement layout (cartola) | a `Bank` subclass in `adapters/outbound/statements/banks/` (recipe below) | `tests/adapters/test_banks.py` with a synthetic sample |
 | A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
+| A redaction rule (a kind of personal data the rules miss) | `domain/privacy/redaction.py` | `tests/unit/test_redaction.py`, `tests/property/test_redaction_properties.py` |
+| A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes
@@ -55,9 +57,12 @@ Statements are read in three steps, and only the middle one is per bank:
 ```
 bytes ─► ocr_tabular.read_pages ─► Page (word boxes: PDF text layer, or EasyOCR on scans/photos)
       ─► ocr_tabular.rebuild(page, bank.table) ─► Table per page          ← Bank.table (where the table is)
-      ─► bank.parse(tables) ─► BankStatement                               ← Bank.parse (what the rows mean)
+      ─► bank.parse(tables) ─► BankStatement, as read (memory only)        ← Bank.parse (what the rows mean)
+      ─► StatementRedactor ─► BankStatement with placeholders, ****3456    ← domain rules + optional detector (ADR-028)
       ─► domain reconcile() ─► stored, verified or unverified (+ warning), audited STATEMENT_IMPORTED
 ```
+
+The statement id hashes the statement as read, so the same cartola imported twice is still a duplicate. From redaction on, only the clean copy exists. A `Bank` never redacts: it returns what the bank printed.
 
 1. Get a sample and **never commit it**: real statements go in `cartolas/` (git-ignored). Look at the word boxes (`read_pages(...)[0].boxes`) to learn the header words, where amounts sit and what ends the table.
 2. Add `banks/<bank>.py` with a `Bank` subclass: a stable `code`, `recognizes(text)` (words only that bank prints), `table = TableSpec(header_required, header_tokens, stop_markers)`, and `parse(tables)`. Use `parse_clp`, `day_month` and `column_index` from `banks/base.py`; they already tolerate the OCR noise seen so far. Raise `TableError` on any cell that does not fit, never guess.
@@ -80,7 +85,7 @@ Deposits are `income` by rule; charges are `purchase` with the accepted category
 
 - **Another scikit-learn estimator:** pass another pipeline factory, e.g. `SklearnTextClassifier(my_factory, method="logreg")`, and register it under a new name in `CLASSIFIERS`. Select it with `NL_CLASSIFIER`.
 - **Another method entirely** (rules, an LLM, a remote model): implement `classify(descriptions) -> [CategoryGuess]` and a `name` in `adapters/outbound/classifier/<method>.py`, raise `ClassifierUnavailable` when it cannot answer, and register it. Nothing else changes.
-- **Better categories:** add labelled rows to `adapters/outbound/classifier/training/categories.csv` (`description,category`, labels from `CATEGORIES`). The classifier's name changes with the data, so old and new categorizations stay distinguishable. Never add rows from a real statement: the repository is public.
+- **Better categories:** add labelled rows to `adapters/outbound/classifier/training/categories.csv` (`description,category`, labels from `CATEGORIES`). The classifier's name changes with the data, so old and new categorizations stay distinguishable. Never add rows from a real statement: the repository is public. The rows go through the same redaction rules as imported lines, so the model learns `Transf a [PERSON]`, never a name; a rules change renames the model too.
 
 Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet.
 
@@ -90,6 +95,17 @@ Existing transactions keep their category on re-import; re-categorizing the ledg
 - ADR-024: new category `movement` ("Movimiento") for own transfers, card payments and investments.
 
 Open issues: O-1 (re-read treated as a duplicate) and O-2 (vocabulary, training data, re-categorization).
+
+### Add a personal-data detector
+Personal data is removed at import in two layers (ADR-028). The domain rules always run; a detector runs after them, on the raw text of every line, and its spans can only add masking. To add one, for example another service or a local model:
+
+1. Write `adapters/outbound/privacy/<name>.py` with a class that has a `name` and `detect(texts) -> [[Span, …], …]`: one list per text, in the same order, with offsets into that text and a `Placeholder` per span. Map your service's categories onto the six placeholder codes; never invent new codes without a contract change.
+2. Raise `DetectorUnavailable` on any network, HTTP or format error. The import still succeeds with the rules alone, flagged as degraded. Never put the text or a key in an error message or a log.
+3. Add an entry to `DETECTORS` in `bootstrap/container.py`. Add its settings, if any, to `config.py` and `.env.example`, with secrets empty and named `*_API_KEY`.
+4. Test it against a local fake server (see `tests/adapters/test_azure_language.py`): the request, offsets mapped back per line, the service limits, and every error.
+5. If it sends text out of the process, say so in `docs/SECURITY.md` and keep it off by default.
+
+Select it with `NL_PII_DETECTOR=<name>`; `/health` reports it as `pii_detector`. The rules themselves live in `domain/privacy/redaction.py`; extend their word lists when a real cartola (kept local in `cartolas/`) shows a new pattern.
 
 ### Switch from fixtures to the ledger (done)
 - `data/ledgers/<user>.json` is written by `backend/tests/fixtures/ledger_generator.py` (`make ledgers`).
@@ -147,8 +163,9 @@ classDiagram
 
 | Mode | Settings | Use |
 |---|---|---|
-| Offline (default) | `NL_LLM=scripted`, `NL_DECISION_CHAIN=rules` | CI, `docker compose up` without keys, demo recording, S10 |
+| Offline (default) | `NL_LLM=scripted`, `NL_DECISION_CHAIN=rules`, `NL_PII_DETECTOR=none` | CI, `docker compose up` without keys, demo recording, S10 |
 | Live | `NL_LLM=anthropic` (or another provider), `NL_DECISION_CHAIN=jev,rules` | The real demo; falls back to offline pieces on outages |
+| Azure redaction | `NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY` | Local tests with the team's key only: it sends statement text to Microsoft (`docs/SECURITY.md`) |
 | Deterministic | `NL_CLOCK=fixed`, `NL_IDS=sequential` | Reproducible recordings and evidence |
 
 `GET /health` reports the mode, so the demo never runs in the wrong one by accident.
