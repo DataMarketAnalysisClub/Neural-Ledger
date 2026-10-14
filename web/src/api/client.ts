@@ -1,6 +1,6 @@
 /**
  * Thin HTTP client for the Neural Ledger API. It moves JSON and tells the UI which state it is in;
- * it never computes money. Every request names the persona with X-User-Id (sandbox identity).
+ * it never computes money. Demo requests name a persona; accounts use same-origin cookies.
  */
 import type { Envelope as RawEnvelope, Fact, Caveat } from "@/contracts/common/envelope";
 import type { ActionOutcome, ActionTerms } from "@/contracts/actions/action_outcome";
@@ -15,6 +15,9 @@ export type Envelope<T> = Omit<RawEnvelope, "data"> & { data?: T | null };
 export const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 export type PersonaId = "camila" | "diego";
+export type ApiIdentity =
+  | { readonly kind: "demo"; readonly user_id: PersonaId }
+  | { readonly kind: "accounts"; readonly user_id: string };
 
 export class NetworkError extends Error {
   constructor(cause: unknown) {
@@ -40,13 +43,14 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  user: PersonaId;
-  method?: "GET" | "POST";
+  user?: PersonaId;
+  identity?: ApiIdentity;
+  method?: "GET" | "POST" | "PUT";
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
 }
 
-export async function request<T>(path: string, { user, method = "GET", body, query }: RequestOptions): Promise<T> {
+export async function request<T>(path: string, { user, identity, method = "GET", body, query }: RequestOptions = {}): Promise<T> {
   const qs = query
     ? "?" +
       Object.entries(query)
@@ -54,11 +58,19 @@ export async function request<T>(path: string, { user, method = "GET", body, que
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
         .join("&")
     : "";
+  if (import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true") {
+    const { mockRequest } = await import("./mockAccounts");
+    return (await mockRequest(path, { method, body, query })) as T;
+  }
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}${qs === "?" ? "" : qs}`, {
       method,
-      headers: { "X-User-Id": user, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      credentials: "same-origin",
+      headers: {
+        ...(identity?.kind === "demo" || (!identity && user) ? { "X-User-Id": identity?.user_id ?? user } : {}),
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (cause) {
