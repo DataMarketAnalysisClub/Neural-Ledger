@@ -13,6 +13,7 @@ from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.statements.model import StoredStatement
+from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import UserProfile
 
 
@@ -171,3 +172,59 @@ class InMemoryConversationStore:
             items.extend(entries)
             if len(items) > keep_last:
                 del items[: len(items) - keep_last]
+
+
+class InMemoryUserAccountStore:
+    def __init__(self) -> None:
+        self._accounts: dict[str, UserAccount] = {}
+        self._by_email: dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    def add(self, account: UserAccount) -> bool:
+        with self._lock:
+            if account.user_id in self._accounts or account.email in self._by_email:
+                return False
+            self._accounts[account.user_id] = account
+            self._by_email[account.email] = account.user_id
+            return True
+
+    def get(self, user_id: str) -> UserAccount | None:
+        return self._accounts.get(user_id)
+
+    def by_email(self, email: str) -> UserAccount | None:
+        user_id = self._by_email.get(email)
+        return self._accounts.get(user_id) if user_id is not None else None
+
+    def set_sample_data(self, user_id: str, enabled: bool) -> bool:
+        with self._lock:
+            current = self._accounts.get(user_id)
+            if current is None:
+                return False
+            self._accounts[user_id] = replace(current, sample_data=enabled)
+            return True
+
+
+class InMemorySessionStore:
+    def __init__(self) -> None:
+        self._sessions: dict[str, Session] = {}  # by token digest; the token itself is never held
+        self._digest_of: dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    def add(self, session: Session) -> None:
+        with self._lock:
+            if session.token_hash in self._sessions or session.session_ref in self._digest_of:
+                raise ValueError("duplicate session")
+            self._sessions[session.token_hash] = session
+            self._digest_of[session.session_ref] = session.token_hash
+
+    def by_token_hash(self, token_hash: str) -> Session | None:
+        return self._sessions.get(token_hash)
+
+    def revoke(self, session_ref: str, at: datetime) -> bool:
+        with self._lock:
+            digest = self._digest_of.get(session_ref)
+            current = self._sessions.get(digest) if digest is not None else None
+            if current is None or current.revoked_at is not None:
+                return False
+            self._sessions[digest] = replace(current, revoked_at=at)
+            return True

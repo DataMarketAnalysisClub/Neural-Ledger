@@ -35,6 +35,7 @@ from ....domain.statements.model import (
     StatementSummary,
     StoredStatement,
 )
+from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import QuestionnaireAnswer, UserProfile
 
 _SCHEMA = """
@@ -81,6 +82,19 @@ CREATE TABLE IF NOT EXISTS savings_rules (
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY,
     payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_accounts (
+    user_id     TEXT PRIMARY KEY,
+    email       TEXT NOT NULL UNIQUE,
+    payload     TEXT NOT NULL,
+    sample_data INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    session_ref TEXT PRIMARY KEY,
+    token_hash  TEXT NOT NULL UNIQUE,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    revoked_at  TEXT
 );
 """
 
@@ -129,6 +143,87 @@ class SqliteUserProfileStore:
                 "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
                 (profile.user_id, json.dumps(to_primitive(profile))),
             )
+
+
+def _account_from(payload: dict, sample_data: int) -> UserAccount:
+    return UserAccount(
+        user_id=payload["user_id"],
+        email=payload["email"],
+        password_hash=payload["password_hash"],
+        created_at=datetime.fromisoformat(payload["created_at"]),
+        sample_data=bool(sample_data),
+    )
+
+
+class SqliteUserAccountStore:
+    """Holds emails and password hashes: the database file stays out of the repository (var/, *.db)."""
+
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, account: UserAccount) -> bool:
+        payload = to_primitive(account)
+        payload.pop("sample_data", None)
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "INSERT OR IGNORE INTO user_accounts (user_id, email, payload, sample_data) VALUES (?, ?, ?, ?)",
+                (account.user_id, account.email, json.dumps(payload), int(account.sample_data)),
+            )
+            return cursor.rowcount == 1
+
+    def get(self, user_id: str) -> UserAccount | None:
+        row = self._db.fetchone("SELECT payload, sample_data FROM user_accounts WHERE user_id = ?", (user_id,))
+        return _account_from(json.loads(row[0]), row[1]) if row else None
+
+    def by_email(self, email: str) -> UserAccount | None:
+        row = self._db.fetchone("SELECT payload, sample_data FROM user_accounts WHERE email = ?", (email,))
+        return _account_from(json.loads(row[0]), row[1]) if row else None
+
+    def set_sample_data(self, user_id: str, enabled: bool) -> bool:
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "UPDATE user_accounts SET sample_data = ? WHERE user_id = ?", (int(enabled), user_id)
+            )
+            return cursor.rowcount == 1
+
+
+def _session_from(payload: dict, revoked_at: str | None) -> Session:
+    return Session(
+        session_ref=payload["session_ref"],
+        user_id=payload["user_id"],
+        token_hash=payload["token_hash"],
+        created_at=datetime.fromisoformat(payload["created_at"]),
+        expires_at=datetime.fromisoformat(payload["expires_at"]),
+        revoked_at=datetime.fromisoformat(revoked_at) if revoked_at else None,
+    )
+
+
+class SqliteSessionStore:
+    """Rows are keyed by the token's sha256 digest; the token itself is never written."""
+
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, session: Session) -> None:
+        payload = to_primitive(session)
+        payload.pop("revoked_at", None)
+        revoked_at = session.revoked_at.isoformat() if session.revoked_at else None
+        with self._db.lock:
+            self._db.connection.execute(
+                "INSERT INTO sessions (session_ref, token_hash, user_id, payload, revoked_at) VALUES (?, ?, ?, ?, ?)",
+                (session.session_ref, session.token_hash, session.user_id, json.dumps(payload), revoked_at),
+            )
+
+    def by_token_hash(self, token_hash: str) -> Session | None:
+        row = self._db.fetchone("SELECT payload, revoked_at FROM sessions WHERE token_hash = ?", (token_hash,))
+        return _session_from(json.loads(row[0]), row[1]) if row else None
+
+    def revoke(self, session_ref: str, at: datetime) -> bool:
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE session_ref = ? AND revoked_at IS NULL", (at.isoformat(), session_ref)
+            )
+            return cursor.rowcount == 1
 
 
 def _proposal_from(payload: dict) -> Proposal:
