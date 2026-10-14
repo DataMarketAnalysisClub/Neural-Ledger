@@ -36,8 +36,8 @@ STATEMENT = BankStatement(
 
 
 class _Reader:
-    def read(self, content: bytes) -> BankStatement:
-        return STATEMENT
+    def read(self, content: bytes) -> tuple[BankStatement, ...]:
+        return (STATEMENT,)
 
 
 class _Classifier:
@@ -79,7 +79,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
     result = statements.import_statement("camila", b"%PDF")
 
     assert classifier.seen == [line.description for line in STATEMENT.lines if line.amount < 0]  # only charges are classified
-    view = result.data.ledger
+    view = result.data.imports[0].ledger
     assert (view.posted, view.new, view.uncategorized, view.classifier) == (5, 5, 2, "keywords@test")
     (warning,) = result.warnings
     assert warning.code == "UNCATEGORIZED_SPENDING" and warning.message.startswith("2 of 4 charges")
@@ -104,7 +104,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
         "camila.spending.CLP.uncategorized": 6_000,
         "camila.income.CLP": 900_000,
     }
-    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.1"
+    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.2"
 
 
 def test_ledger_is_scoped_to_its_user():
@@ -120,14 +120,14 @@ def test_unavailable_classifier_stores_the_statement_without_posting_and_reimpor
     statements, ledger = _build(classifier)
 
     first = statements.import_statement("camila", b"%PDF")
-    assert first.status is Status.OK and first.data.statement.verified
+    assert first.status is Status.OK and first.data.imports[0].statement.verified
     (warning,) = first.warnings
     assert warning.code == "NOT_POSTED" and "model not installed" in warning.message
     assert ledger.list_transactions("camila").data.transactions == ()
 
     classifier.available = True
     again = statements.import_statement("camila", b"%PDF")
-    assert again.data.duplicate is True and (again.data.ledger.posted, again.data.ledger.new) == (5, 5)
+    assert again.data.imports[0].duplicate is True and (again.data.imports[0].ledger.posted, again.data.imports[0].ledger.new) == (5, 5)
     assert len(ledger.list_transactions("camila").data.transactions) == 5
 
 
