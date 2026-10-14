@@ -158,15 +158,16 @@ class InMemoryUserProfileStore:
 
 class InMemoryConversationStore:
     def __init__(self) -> None:
-        self._sessions: dict[str, list[Entry]] = defaultdict(list)
+        self._sessions: dict[tuple[str, str], list[Entry]] = defaultdict(list)
         self._lock = threading.Lock()
 
-    def history(self, session_id: str) -> tuple[Entry, ...]:
-        return tuple(self._sessions.get(session_id, ()))
-
-    def append(self, session_id: str, entries: Sequence[Entry], keep_last: int) -> None:
+    def history(self, user_id: str, session_id: str) -> tuple[Entry, ...]:
         with self._lock:
-            items = self._sessions[session_id]
+            return tuple(self._sessions.get((user_id, session_id), ()))
+
+    def append(self, user_id: str, session_id: str, entries: Sequence[Entry], keep_last: int) -> None:
+        with self._lock:
+            items = self._sessions[(user_id, session_id)]
             items.extend(entries)
             if len(items) > keep_last:
                 del items[: len(items) - keep_last]

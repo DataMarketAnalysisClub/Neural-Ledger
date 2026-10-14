@@ -44,7 +44,7 @@ class ProfileUseCases:
     def risk_tolerance(self, user_id: str, session_id: str) -> Envelope[ToleranceView]:
         profile = self._profiles.get(user_id)
         declared = profile.declared_tolerance if profile else None
-        recent = " ".join(e.text for e in self._conversations.history(session_id) if isinstance(e, UserEntry))[-2000:]
+        recent = " ".join(e.text for e in self._conversations.history(user_id, session_id) if isinstance(e, UserEntry))[-2000:]
         signal, confidence, source = None, None, "questionnaire"
         if recent.strip():
             outcome = self._decisions.judge(recent, (TOLERANCE_QUESTION,))
