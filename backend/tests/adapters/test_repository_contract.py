@@ -158,6 +158,42 @@ def test_statement_round_trip_and_duplicates(statement_store):
     assert statement_store.for_user("camila") == (stored,)
 
 
+def test_card_statement_round_trip_keeps_kinds_cuotas_and_obligations(statement_store):
+    from dataclasses import replace
+    from decimal import Decimal
+
+    from neural_ledger.domain.ledger.entities import AccountType
+    from neural_ledger.domain.shared.month import Month
+    from neural_ledger.domain.statements.model import (
+        CardObligations,
+        Installment,
+        LineKind,
+        ScheduledAmount,
+        SectionTotal,
+        StatementSummary,
+    )
+
+    base = _stored("stmt_card")
+    line = replace(
+        base.statement.lines[0],
+        kind=LineKind.PURCHASE,
+        section="E",
+        installment=Installment(2, 3, 30_000, Decimal("0.0345"), date(2026, 6, 15)),
+    )
+    statement = replace(
+        base.statement,
+        lines=(line, replace(base.statement.lines[1], kind=LineKind.PAYMENT, section="B")),
+        summary=StatementSummary(-100_000, None, None, -45_442),
+        account_type=AccountType.CREDIT_CARD,
+        provisional=True,
+        section_totals=(SectionTotal("B", 163_521), SectionTotal("E", -3_280)),
+        obligations=CardObligations(45_442, 5_000, date(2026, 9, 15), 500_000, 300_000, 200_000, (ScheduledAmount(Month(2026, 9), 27_633),)),
+    )
+    stored = replace(base, statement=statement)
+    assert statement_store.add(stored) is True
+    assert statement_store.get("camila", "stmt_card") == stored
+
+
 def test_statements_are_scoped_to_their_user(statement_store):
     statement_store.add(_stored())
     assert statement_store.get("diego", "stmt_1") is None
@@ -190,6 +226,26 @@ def test_transaction_round_trip_and_duplicates(transaction_store):
     assert transaction_store.add(posted) == 0  # same transactions: stored once
     assert transaction_store.add(()) == 0
     assert transaction_store.for_user("camila") == posted
+
+
+def test_card_transactions_round_trip_with_their_cuota_plan(transaction_store):
+    from dataclasses import replace
+    from decimal import Decimal
+
+    from neural_ledger.domain.ledger.categorization import post_statement
+    from neural_ledger.domain.ledger.entities import AccountType
+    from neural_ledger.domain.statements.model import Installment, LineKind
+
+    stored = replace(_stored(user_id="camila"), issues=())
+    lines = (
+        replace(stored.statement.lines[0], kind=LineKind.PURCHASE, installment=Installment(2, 3, 30_000, Decimal("0.0345"), date(2026, 6, 15))),
+        replace(stored.statement.lines[1], kind=LineKind.PAYMENT),
+    )
+    card = replace(stored, statement=replace(stored.statement, lines=lines, account_type=AccountType.CREDIT_CARD))
+    posted = post_statement(card, {}, "naive_bayes@abc")
+    assert transaction_store.add(posted) == 2
+    assert transaction_store.for_user("camila") == posted
+    assert posted[0].transaction.installment is not None
 
 
 def test_transactions_are_scoped_to_their_user_and_ordered_by_date(transaction_store):

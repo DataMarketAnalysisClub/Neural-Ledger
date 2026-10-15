@@ -29,4 +29,5 @@ class ApplicationServices:
     mode: str  # "offline" or "live": shown in /health so the demo never runs in the wrong mode
     language_model: str
     decision_chain: tuple[str, ...]
+    pii_detector: str  # after the redaction rules on imported statements; anything but "none" sends their text out (ADR-028)
     clock: Clock | None = None  # exposed as /health server_time so UI timers follow the API clock (fixed in demos)

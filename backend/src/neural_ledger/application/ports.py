@@ -22,7 +22,9 @@ from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
+from ..domain.privacy.redaction import Span
 from ..domain.statements.model import BankStatement, StoredStatement
+from ..domain.user.account import Session, UserAccount
 from ..domain.user.profile import UserProfile
 from .conversation import Entry, ModelRequest, ModelTurn
 
@@ -47,7 +49,15 @@ class ClassifierUnavailable(PortUnavailable):
     """The transaction classifier cannot run (e.g. the `ml` extra is missing). Statements are stored, not posted."""
 
 
+class DetectorUnavailable(PortUnavailable):
+    """The personal-data detector could not answer. The domain rules still redact; the import is flagged as degraded."""
+
+
 class NotFound(Exception):
+    pass
+
+
+class ReadOnlyProfile(Exception):
     pass
 
 
@@ -83,9 +93,28 @@ class FinancialModelSource(Protocol):
 
 @runtime_checkable
 class StatementReader(Protocol):
-    """Turns a statement file (PDF or image bytes) into a BankStatement. Never decides whether it adds up."""
+    """Turns a statement file (spreadsheet, PDF or image bytes) into the statements it holds, in order.
 
-    def read(self, content: bytes) -> BankStatement: ...
+    Usually one; a card statement can hold a national and an international one. Never decides
+    whether they add up."""
+
+    def read(self, content: bytes) -> tuple[BankStatement, ...]: ...
+
+
+@runtime_checkable
+class PersonalDataDetector(Protocol):
+    """Finds personal data the domain rules miss (a name outside a transfer, an address), after them (ADR-028).
+
+    Its spans can only add masking. It receives raw statement text: an adapter that sends it out of the process
+    says so in docs/SECURITY.md, and never puts that text in an error or a log. Adding a detector takes one adapter
+    class and one registry entry in bootstrap/container.py.
+    """
+
+    name: str  # reported with every import it redacts; "none" when the rules run alone
+
+    def detect(self, texts: Sequence[str]) -> Sequence[Sequence[Span]]:
+        """Spans per text, in the same order, with offsets into that text. Raise DetectorUnavailable on any error."""
+        ...
 
 
 @runtime_checkable
@@ -177,12 +206,14 @@ class SandboxBank(Protocol):
 class UserProfileStore(Protocol):
     def get(self, user_id: str) -> UserProfile | None: ...
 
+    def put(self, profile: UserProfile) -> None: ...
+
 
 @runtime_checkable
 class ConversationStore(Protocol):
-    def history(self, session_id: str) -> tuple[Entry, ...]: ...
+    def history(self, user_id: str, session_id: str) -> tuple[Entry, ...]: ...
 
-    def append(self, session_id: str, entries: Sequence[Entry], keep_last: int) -> None: ...
+    def append(self, user_id: str, session_id: str, entries: Sequence[Entry], keep_last: int) -> None: ...
 
 
 @runtime_checkable
@@ -201,3 +232,67 @@ class DecisionModel(Protocol):
     name: str
 
     def judge(self, state: str, questions: Sequence[Question]) -> Mapping[str, Judgment]: ...
+
+
+@runtime_checkable
+class PasswordHasher(Protocol):
+    """Hashes and checks passwords. Only the encoded hash is ever stored, never the password."""
+
+    def hash(self, password: str) -> str: ...
+
+    def verify(self, password: str, encoded: str | None) -> bool:
+        """None (no such account) or a malformed hash does the same work as a real check and returns False."""
+        ...
+
+
+@runtime_checkable
+class TokenGenerator(Protocol):
+    """Unguessable session tokens. Only their digest is stored."""
+
+    def new_token(self) -> str: ...
+
+
+@runtime_checkable
+class UserAccountStore(Protocol):
+    def add(self, account: UserAccount) -> bool:
+        """Store unless the user_id or the (normalized) email already exists, atomically. Returns False for a duplicate."""
+        ...
+
+    def get(self, user_id: str) -> UserAccount | None: ...
+
+    def by_email(self, email: str) -> UserAccount | None: ...
+
+    def set_sample_data(self, user_id: str, enabled: bool) -> bool:
+        """Returns False if there is no account with this id."""
+        ...
+
+
+@runtime_checkable
+class SessionStore(Protocol):
+    def add(self, session: Session) -> None: ...
+
+    def by_token_hash(self, token_hash: str) -> Session | None: ...
+
+    def revoke(self, session_ref: str, at: datetime) -> bool:
+        """Atomically mark as revoked. Returns False if unknown or already revoked."""
+        ...
+
+
+class IdCollision(Exception):
+    """A generated identifier already exists; no account mutation was committed."""
+
+
+@runtime_checkable
+class AccountWrites(Protocol):
+    """Commit account state and its audit drafts together, or leave both unchanged.
+
+    False is a failed precondition with no writes; exceptions also leave no writes.
+    """
+
+    def register(self, account: UserAccount, profile: UserProfile, session: Session, events: Sequence[AuditDraft]) -> bool: ...
+
+    def open_session(self, session: Session, events: Sequence[AuditDraft]) -> None: ...
+
+    def close_session(self, session: Session, at: datetime, events: Sequence[AuditDraft]) -> bool: ...
+
+    def set_sample_data(self, user_id: str, enabled: bool, events: Sequence[AuditDraft]) -> bool: ...

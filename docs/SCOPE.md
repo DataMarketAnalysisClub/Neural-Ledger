@@ -162,6 +162,7 @@ flowchart LR
 | `ConversationStore` | Session history | memory | SQLite |
 | `Signer` | HMAC over canonical terms | `HmacSigner` (env secret) | KMS |
 | `StatementReader` | Bank statement file → `BankStatement` | `OcrStatementReader` (ocr_tabular + one `Bank` per layout; offline) | more banks |
+| `PersonalDataDetector` | Personal data the redaction rules miss in imported statements; its spans can only add masking (ADR-028) | `NullDetector` (`none`: the domain rules alone, offline), `AzureLanguageDetector` (`azure`, off by default) | another detector: one class + one `DETECTORS` entry in `container.py` |
 | `StatementStore` | Imported statements, once per user and statement | memory, SQLite | Postgres |
 | `TransactionClassifier` | Spending category guess per statement charge (gated by the domain) | `SklearnTextClassifier` with naive Bayes (`ml` extra; offline, trained from package data) | other methods: one registry entry in `container.py` |
 | `TransactionStore` | Transaction ledger built from verified statements, once per user and transaction | memory, SQLite | Postgres |
@@ -313,8 +314,9 @@ neural-ledger/
 | S10 | Decision model or LLM down | Chain falls through; no model → read-only; LLM down → scripted fallback |
 | S11 | Duplicate execution | Atomic consume (8 concurrent attempts → exactly 1 execution) |
 | S12 | Malformed input | Typed parsing → `INVALID_INPUT`; unknown user → `INSUFFICIENT_DATA` |
+| S15 | Personal data in an imported cartola read back through the API, the audit export, the database files or the logs (S13 and S14 test Jev; see `SECURITY.md`) | Removed once at import by deterministic rules (+ an optional detector); only placeholders and a masked account are stored (ADR-028) |
 
-Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_hash` (a hash chain), so any edit is detectable (`/v1/audit/verify`). Hidden model reasoning is never logged. **Known risks for the self-assessment:** sandbox identity is a header (no real authentication); the rules decision model is keyword-based; there is no rate limiting; the HMAC secret is environment-based (not a KMS).
+Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_hash` (a hash chain), so any edit is detectable (`/v1/audit/verify`). Hidden model reasoning is never logged. **Known risks for the self-assessment:** sandbox identity is a header (no real authentication; since ADR-028 statements expose financial data only); the rules decision model is keyword-based; there is no rate limiting; the HMAC secret is environment-based (not a KMS).
 
 ## 8. Financial core (summary of Bruno's design, as implemented)
 

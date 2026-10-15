@@ -278,7 +278,7 @@ def _audit(p: Payload, cur: str) -> list[str]:
 
 
 def _profile(p: Payload, cur: str) -> list[str]:
-    return [f"Profile loaded for {p['data']['display_name']}."]
+    return [f"Profile loaded for {p['data']['display_name']['untrusted_text']}."]
 
 
 def _fact(payload: Payload, key: str) -> Any:
