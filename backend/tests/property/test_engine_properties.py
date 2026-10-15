@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from hypothesis import given
+from hypothesis import Phase, given, settings
 from hypothesis import strategies as st
 
 from neural_ledger.domain.finance.estimation import estimate_model
@@ -23,6 +23,10 @@ KNOWN_PLAN_ISSUE = pytest.mark.xfail(
     strict=False,
     reason="false in general: see the minimal counterexamples in test_plan_counterexamples.py (team decision pending)",
 )
+# The known-false properties report a counterexample as found, without shrinking it: their minimal cases are already
+# pinned in test_plan_counterexamples.py, and shrinking a generated ledger takes minutes. Whether one is found depends
+# on more than this file, because Hypothesis also draws values from the project's own constants.
+KNOWN_FALSE_SETTINGS = settings(PROPERTY_SETTINGS, phases=[Phase.explicit, Phase.reuse, Phase.generate])
 PROFILES = (RiskProfile.CONSERVATIVE, RiskProfile.MODERATE, RiskProfile.AGGRESSIVE)
 HORIZON = FC_0_1.check_horizon_months
 
@@ -76,7 +80,7 @@ def test_a_purchase_never_raises_a_trough_or_the_protected_surplus(raw, purchase
 
 
 @KNOWN_PLAN_ISSUE
-@PROPERTY_SETTINGS
+@KNOWN_FALSE_SETTINGS
 @given(raw_ledgers(), purchases, st.sampled_from(PROFILES))
 def test_a_purchase_never_raises_the_plan(raw, purchase, profile):
     model = _model(raw)
@@ -96,7 +100,7 @@ def test_no_plan_breaches_the_floor_and_rules_are_multiples_of_10k(raw, profile)
 
 
 @KNOWN_PLAN_ISSUE
-@PROPERTY_SETTINGS
+@KNOWN_FALSE_SETTINGS
 @given(raw_ledgers())
 def test_a_higher_profile_never_gives_a_smaller_rule(raw):
     model = _model(raw)
