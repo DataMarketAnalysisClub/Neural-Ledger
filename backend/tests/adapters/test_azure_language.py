@@ -311,8 +311,8 @@ def test_with_azure_on_an_import_masks_what_only_the_detector_finds(serve):
     services, _ = build(make_settings(pii_detector="azure", azure_language_endpoint=server.endpoint, azure_language_api_key=SECRET))
     assert services.pii_detector == "azure_language"
     result = services.statements.import_statement("camila", _cartola())
-    assert result.data.redaction.detector == "azure_language" and result.data.redaction.degraded is False
-    detail = services.statements.get_statement("camila", result.data.statement.statement_id).data
+    assert result.data.imports[0].redaction.detector == "azure_language" and result.data.imports[0].redaction.degraded is False
+    detail = services.statements.get_statement("camila", result.data.imports[0].statement.statement_id).data
     assert [line.description["untrusted_text"] for line in detail.lines] == ["PAGO A [PERSON]", "[NUMBER] Transf a [PERSON]"]
     sent = server.requests[0]["body"]["analysisInput"]["documents"][0]["text"]
     assert "MARIA SOTO" in sent  # the trade-off: with Azure on, the raw line leaves the process (docs/SECURITY.md)
@@ -322,7 +322,7 @@ def test_with_azure_down_the_import_is_degraded_and_the_rules_still_mask(serve):
     server = serve(fixed(503, {"error": {"code": "ServiceUnavailable", "message": "down"}}))
     services, _ = build(make_settings(pii_detector="azure", azure_language_endpoint=server.endpoint, azure_language_api_key=SECRET))
     result = services.statements.import_statement("camila", _cartola())
-    assert result.status.value == "OK" and result.data.redaction.degraded is True
+    assert result.status.value == "OK" and result.data.imports[0].redaction.degraded is True
     assert "REDACTION_DEGRADED" in [w.code for w in result.warnings]
-    detail = services.statements.get_statement("camila", result.data.statement.statement_id).data
+    detail = services.statements.get_statement("camila", result.data.imports[0].statement.statement_id).data
     assert [line.description["untrusted_text"] for line in detail.lines] == ["PAGO A MARIA SOTO", "[NUMBER] Transf a [PERSON]"]

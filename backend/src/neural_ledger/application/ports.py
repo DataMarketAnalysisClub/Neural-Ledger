@@ -88,9 +88,12 @@ class FinancialModelSource(Protocol):
 
 @runtime_checkable
 class StatementReader(Protocol):
-    """Turns a statement file (PDF or image bytes) into a BankStatement. Never decides whether it adds up."""
+    """Turns a statement file (spreadsheet, PDF or image bytes) into the statements it holds, in order.
 
-    def read(self, content: bytes) -> BankStatement: ...
+    Usually one; a card statement can hold a national and an international one. Never decides
+    whether they add up."""
+
+    def read(self, content: bytes) -> tuple[BankStatement, ...]: ...
 
 
 @runtime_checkable

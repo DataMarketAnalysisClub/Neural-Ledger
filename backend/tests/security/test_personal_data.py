@@ -79,7 +79,7 @@ def test_s15_personal_data_in_a_cartola_is_never_stored_or_returned(durable, tmp
     headers = {"X-User-Id": USER}
     with caplog.at_level("DEBUG"):
         upload = client.post("/v1/statements", content=santander_pdf(CARTOLA), headers={**headers, "Content-Type": "application/pdf"})
-        statement_id = upload.json()["data"]["statement"]["statement_id"]
+        statement_id = upload.json()["data"]["imports"][0]["statement"]["statement_id"]
         surfaces = {
             "POST /v1/statements": upload.text,
             "GET /v1/statements": client.get("/v1/statements", headers=headers).text,
@@ -96,7 +96,7 @@ def test_s15_personal_data_in_a_cartola_is_never_stored_or_returned(durable, tmp
         surfaces[path.name] = path.read_bytes().decode("utf-8", errors="ignore")
 
     # Not vacuous: the cartola was read, verified and posted, and its financial data is all there.
-    body = upload.json()["data"]
+    body = upload.json()["data"]["imports"][0]
     assert upload.status_code == 200 and body["statement"]["verified"] and body["ledger"]["posted"] == 8
     assert body["statement"]["account_ref"] == "****7654"
     assert body["redaction"]["counts"] == {"PERSON": 3, "ID": 2, "NUMBER": 3, "EMAIL": 1, "PHONE": 1}
@@ -138,8 +138,8 @@ def test_s15_a_hostile_model_finds_no_personal_data_through_its_tools(services, 
 
 def test_s15_the_synthetic_cartola_is_read_back_whole():
     """Guards S15 itself: every personal value really reaches the import, so its absence afterwards means something."""
-    from neural_ledger.adapters.outbound.statements.reader import OcrStatementReader
+    from neural_ledger.adapters.outbound.statements.reader import StatementFileReader
 
-    read = OcrStatementReader().read(santander_pdf(CARTOLA))
+    [read] = StatementFileReader().read(santander_pdf(CARTOLA))
     assert [line.description for line in read.lines] == [movement[3] for movement in CARTOLA.movements]
     assert read.account_ref == ACCOUNT

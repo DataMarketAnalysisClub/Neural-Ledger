@@ -12,13 +12,17 @@ export interface Summary {
    */
   bank: string;
   /**
-   * Masked at import: only the last 4 digits are kept, e.g. ****3456 (ADR-028).
+   * Masked at import: only the last 4 digits (or the 4 characters a bank already left visible) are kept, e.g. ****3456 (ADR-028).
    */
   account_ref: string;
+  /**
+   * From the layout that read it. A credit card statement carries obligations and its payments are never income.
+   */
+  account_type: "checking" | "savings" | "credit_card";
   currency: string;
   period_start: string;
   period_end: string;
-  source: "text" | "ocr";
+  source: "text" | "ocr" | "xlsx";
   imported_at: string;
   line_count: number;
   /**
@@ -27,13 +31,17 @@ export interface Summary {
   total_debits: number;
   total_credits: number;
   /**
-   * As printed.
+   * As printed; a card's previous billed debt, negative.
    */
   opening_balance: number | null;
   /**
-   * As printed.
+   * As printed; a card's billed debt, negative.
    */
   closing_balance: number | null;
+  /**
+   * Unbilled movements (a card export of the open period): checked and stored, never posted to the ledger.
+   */
+  provisional: boolean;
   /**
    * True only if every printed total and daily balance matched the lines.
    */
@@ -46,10 +54,49 @@ export interface Summary {
       | "DAILY_BALANCE"
       | "OUT_OF_PERIOD"
       | "NO_SUMMARY"
-      | "LOW_CONFIDENCE";
+      | "LOW_CONFIDENCE"
+      | "SECTION_TOTAL"
+      | "INSTALLMENT_SCHEDULE";
     message: string;
     expected: number | null;
     found: number | null;
     on: string | null;
+  }[];
+  /**
+   * Credit card statements only (null on a checking account, and on unbilled exports, which print no amount due).
+   */
+  obligations: null | Obligations;
+}
+/**
+ * What the card statement says the holder owes. Positive magnitudes in the statement's currency; null when not printed. amount_due is the statement's closing debt, which reconciliation checks.
+ */
+export interface Obligations {
+  amount_due: number | null;
+  minimum_due: number | null;
+  due_date: string | null;
+  credit_limit: number | null;
+  credit_used: number | null;
+  credit_available: number | null;
+  /**
+   * Cuotas still to bill after this statement, computed from its cuota lines.
+   */
+  installments_remaining: number;
+  installments: {
+    line_index: number;
+    description: {
+      untrusted_text: string;
+    };
+    number: number;
+    total: number;
+    installment_amount: number;
+    original_amount: number;
+    remaining_amount: number;
+  }[];
+  /**
+   * Cuotas due per later statement month, computed; when the bank prints its own schedule, reconciliation checks these against it (INSTALLMENT_SCHEDULE).
+   */
+  upcoming: {
+    month: string;
+    amount: number;
   }[];
 }
