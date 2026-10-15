@@ -6,7 +6,6 @@ import { ApiError } from "@/api/client";
 import { PersonaProvider } from "@/api/hooks";
 import { AppShell } from "@/app/AppShell";
 import { Loading } from "@/components/ui";
-import { features } from "@/lib/features";
 
 // Each screen is its own chunk; the chart library loads only where a chart is drawn.
 const OverviewPage = lazy(() => import("@/features/overview/OverviewPage").then((m) => ({ default: m.OverviewPage })));
@@ -44,7 +43,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/plan" element={<PlanPage />} />
               <Route path="/copilot" element={<CopilotPage />} />
               <Route path="/audit" element={<AuditPage />} />
-              <Route path="/statements" element={features.statements ? <StatementsPage /> : <StatementsPage unavailable />} />
+              <Route path="/statements" element={<StatementsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </Suspense>
