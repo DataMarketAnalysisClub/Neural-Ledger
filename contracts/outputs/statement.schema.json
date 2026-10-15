@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/statement.schema.json",
   "title": "Statement",
-  "description": "data of GET /v1/statements/{id}: one imported bank statement with its lines. Descriptions are untrusted third-party text. Money is integer minor units of `currency` (CLP: pesos; USD: cents); signs are the holder's: charges negative, money in positive, and a credit card's debt (opening and closing balance) negative.",
+  "description": "data of GET /v1/statements/{id}: one imported bank statement with its lines. Descriptions are untrusted third-party text, with personal data replaced at import by placeholders (ADR-028). Money is integer minor units of `currency` (CLP: pesos; USD: cents); signs are the holder's: charges negative, money in positive, and a credit card's debt (opening and closing balance) negative.",
   "type": "object",
   "required": ["statement", "lines", "daily_balances"],
   "properties": {
@@ -17,6 +17,7 @@
           "posted_on": {"type": "string", "format": "date"},
           "description": {
             "type": "object",
+            "description": "The line's text as the bank printed it, except personal data, replaced at import by placeholders such as [PERSON] (common/redaction.schema.json).",
             "required": ["untrusted_text"],
             "properties": {"untrusted_text": {"type": "string", "maxLength": 120}},
             "additionalProperties": false
@@ -83,7 +84,7 @@
       "properties": {
         "statement_id": {"type": "string"},
         "bank": {"type": "string", "description": "Code of the Bank layout that read it, e.g. santander_cl_cuentamatica."},
-        "account_ref": {"type": "string"},
+        "account_ref": {"type": "string", "pattern": "^\\*{4}[0-9A-Za-z]{0,4}$", "description": "Masked at import: only the last 4 digits (or the 4 characters a bank already left visible) are kept, e.g. ****3456 (ADR-028)."},
         "account_type": {
           "enum": ["checking", "savings", "credit_card"],
           "description": "From the layout that read it. A credit card statement carries obligations and its payments are never income."

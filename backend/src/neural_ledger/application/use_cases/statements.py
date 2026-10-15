@@ -1,8 +1,10 @@
 """Import bank statements (cartolas) and read them back.
 
-Import = read (adapter, may misread) → reconcile (domain, deterministic) → store → post to the
-transaction ledger (classified charges) → audit, once per statement in the file (a card statement
-PDF holds a national and an international one).
+Import = read (adapter, may misread) → redact personal data (domain rules + optional detector) →
+reconcile (domain, deterministic) → store → post to the transaction ledger (classified charges) → audit,
+once per statement in the file (a card statement PDF holds a national and an international one).
+The statements as read live only in memory during the import: from redaction on, everything works on
+the clean copies (ADR-028). If redacting any of them fails, the import is rejected and nothing is stored.
 A statement that does not add up is still stored, marked unverified, with a warning that names
 every issue: its amounts are evidence, never authority, so it is not posted. Neither is a
 provisional one (a card's unbilled movements). Re-importing the same statement stores nothing new.
@@ -12,6 +14,7 @@ still to bill. Descriptions leave this layer wrapped as untrusted text.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from ...domain.agent.untrusted import wrap_untrusted
@@ -39,6 +42,9 @@ from ..ports import (
     StatementUnreadable,
 )
 from ..services.posting import LedgerPosting, PostingResult
+from ..services.redaction import RedactionReport, StatementRedactor
+
+logger = logging.getLogger(__name__)
 
 MAX_STATEMENT_BYTES = 15 * 1024 * 1024
 # Below this, an OCR'd line gets a warning. It never marks the statement unverified: amounts and dates are
@@ -120,9 +126,18 @@ class LedgerPostingView:
 
 
 @dataclass(frozen=True, slots=True)
+class RedactionView:
+    rules: str
+    detector: str
+    degraded: bool
+    counts: dict[str, int]  # placeholder code -> how many were inserted; codes with none are left out
+
+
+@dataclass(frozen=True, slots=True)
 class ImportedStatement:
     duplicate: bool
     statement: StatementSummaryView
+    redaction: RedactionView | None  # None for a duplicate: nothing new was redacted or stored
     ledger: LedgerPostingView
 
 
@@ -169,9 +184,17 @@ class StatementDetail:
 
 class StatementUseCases:
     def __init__(
-        self, reader: StatementReader, store: StatementStore, posting: LedgerPosting, audit: AuditLog, clock: Clock, ids: IdGenerator
+        self,
+        reader: StatementReader,
+        redactor: StatementRedactor,
+        store: StatementStore,
+        posting: LedgerPosting,
+        audit: AuditLog,
+        clock: Clock,
+        ids: IdGenerator,
     ) -> None:
         self._reader = reader
+        self._redactor = redactor
         self._store = store
         self._posting = posting
         self._audit = audit
@@ -192,9 +215,26 @@ class StatementUseCases:
         if not statements:
             return Envelope.invalid("file", ALLOWED_FILES, params_version=STATEMENTS_VERSION, message="the file holds no statement")
 
+        # Redact every new statement before storing any, so a failure leaves nothing half-imported (ADR-028).
+        prepared: list[tuple[str, BankStatement | None, RedactionReport | None]] = []
+        for read in statements:
+            # The id hashes the statement as read, so a cartola imported again is a duplicate whatever the rules mask.
+            statement_id = content_id("stmt", user_id, read.bank, read.account_ref, read.currency, read.period_start, read.period_end, read.lines)
+            if self._store.get(user_id, statement_id) is not None:
+                prepared.append((statement_id, None, None))
+                continue
+            try:
+                clean, redaction = self._redactor.redact(read)
+            except Exception as exc:  # fail closed: a statement that could not be redacted is never stored
+                # The error's type only: its message could quote the statement.
+                logger.error("statement redaction failed (%s): the import was rejected and nothing was stored", type(exc).__name__)
+                message = "personal data could not be removed from the statement, so it was not stored"
+                return Envelope.insufficient(("redaction",), params_version=STATEMENTS_VERSION, message=message)
+            prepared.append((statement_id, clean, redaction))
+
         imports, facts, warnings = [], [], []
-        for statement in statements:
-            imported, own_facts, own_warnings = self._import_one(user_id, statement, session_id)
+        for statement_id, clean, redaction in prepared:
+            imported, own_facts, own_warnings = self._import_one(user_id, statement_id, clean, redaction, session_id)
             imports.append(imported)
             facts.extend(own_facts)
             warnings.extend(w for w in own_warnings if w not in warnings)
@@ -208,15 +248,17 @@ class StatementUseCases:
             warnings=tuple(warnings),
         )
 
-    def _import_one(self, user_id: str, statement: BankStatement, session_id: str) -> tuple[ImportedStatement, tuple[Fact, ...], list[Caveat]]:
-        issues = reconcile(statement).issues
-        statement_id = content_id(
-            "stmt", user_id, statement.bank, statement.account_ref, statement.currency, statement.period_start, statement.period_end, statement.lines
-        )
-        stored = StoredStatement(statement_id, user_id, self._clock.now(), statement, issues)
-        duplicate = not self._store.add(stored)
-        if duplicate:
-            stored = self._store.get(user_id, statement_id) or stored
+    def _import_one(
+        self, user_id: str, statement_id: str, clean: BankStatement | None, redaction: RedactionReport | None, session_id: str
+    ) -> tuple[ImportedStatement, tuple[Fact, ...], list[Caveat]]:
+        stored = self._store.get(user_id, statement_id)
+        if clean is not None:
+            stored = StoredStatement(statement_id, user_id, self._clock.now(), clean, reconcile(clean).issues)
+            if not self._store.add(stored):  # the same statement was imported concurrently
+                stored, redaction = self._store.get(user_id, statement_id) or stored, None
+        assert stored is not None  # a duplicate was found in the store just before
+        duplicate = redaction is None
+        statement = stored.statement
         posting = self._posting.post(stored)
 
         self._audit.append(
@@ -232,18 +274,18 @@ class StatementUseCases:
                 execution_result="DUPLICATE" if duplicate else ("VERIFIED" if stored.verified else "UNVERIFIED"),
                 detail=(
                     f"bank={statement.bank} account_type={statement.account_type.value} provisional={statement.provisional} "
-                    f"lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'} "
+                    f"lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'} {_redaction_detail(redaction)}"
                     f"posted={posting.posted} new={posting.new} uncategorized={posting.uncategorized} classifier={posting.classifier or 'none'}"
                 ),
             )
         )
 
         summary = _summary(stored)
-        warnings = [*_unverified(stored), *_low_confidence(stored), *posting.warnings]
+        warnings = [*_unverified(stored), *_low_confidence(stored), *_degraded(redaction), *posting.warnings]
         if duplicate:
             warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
-        facts = (*_facts(summary), *_posting_facts(summary.statement_id, posting))
-        return ImportedStatement(duplicate, summary, _ledger_view(posting)), facts, warnings
+        facts = (*_facts(summary), *_redaction_facts(summary.statement_id, redaction), *_posting_facts(summary.statement_id, posting))
+        return ImportedStatement(duplicate, summary, _redaction_view(redaction), _ledger_view(posting)), facts, warnings
 
     def list_statements(self, user_id: str) -> Envelope[tuple[StatementSummaryView, ...]]:
         views = tuple(_summary(s) for s in self._store.for_user(user_id))
@@ -300,6 +342,39 @@ def _low_confidence(stored: StoredStatement) -> tuple[Caveat, ...]:
             ("OCR", "misread"),
         ),
     )
+
+
+def _degraded(redaction: RedactionReport | None) -> tuple[Caveat, ...]:
+    if redaction is None or not redaction.degraded:
+        return ()
+    return (
+        Caveat(
+            "REDACTION_DEGRADED",
+            f"Personal data was removed by the built-in rules only, because the detector {redaction.detector} was unavailable; "
+            "a name outside a transfer line may remain in the descriptions.",
+            ("personal data", "rules only"),
+        ),
+    )
+
+
+def _redaction_view(redaction: RedactionReport | None) -> RedactionView | None:
+    if redaction is None:
+        return None
+    counts = {placeholder.value: count for placeholder, count in redaction.counts}
+    return RedactionView(redaction.rules, redaction.detector, redaction.degraded, counts)
+
+
+def _redaction_facts(statement_id: str, redaction: RedactionReport | None) -> tuple[Fact, ...]:
+    if redaction is None:
+        return ()
+    return (Fact(f"statement.{statement_id}.redacted", redaction.masked, "count", "personal-data items replaced by placeholders at import"),)
+
+
+def _redaction_detail(redaction: RedactionReport | None) -> str:
+    """Audit detail: how much was masked and by what, never what (ADR-028). Empty for a duplicate, which redacts nothing."""
+    if redaction is None:
+        return ""
+    return f"redacted={redaction.masked} detector={redaction.detector} {'degraded=yes ' if redaction.degraded else ''}"
 
 
 def _ledger_view(p: PostingResult) -> LedgerPostingView:
