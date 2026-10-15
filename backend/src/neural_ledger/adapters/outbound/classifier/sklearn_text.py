@@ -9,6 +9,10 @@ The model is trained at first use from training/categories.csv and never pickled
 rebuilt from versioned code and data. Its `name` carries the training data's hash: every
 posted transaction records which model and which data chose its category.
 
+The training rows go through the same redaction rules as imported lines (ADR-028), so the model
+learns from what it will see ("TRANSFERENCIA A TERCEROS [PERSON]"), never from raw names or numbers.
+The rules' version is part of the hash, so a rules change also renames the model.
+
 training/categories.csv is ocr_tabular's synthetic example set (Chilean merchants), with labels
 mapped to the ledger vocabulary (Supermercado -> groceries, ...) and the income rows dropped,
 because income is decided by the amount's sign.
@@ -26,6 +30,7 @@ from typing import Any
 
 from ....application.ports import ClassifierUnavailable
 from ....domain.ledger.categorization import CategoryGuess
+from ....domain.privacy.redaction import REDACTION_VERSION, redact_text
 
 TRAINING_DATA = Path(__file__).with_name("training") / "categories.csv"
 
@@ -73,7 +78,7 @@ class SklearnTextClassifier:
     ) -> None:
         self._make_model = make_model
         self._training_data = training_data
-        self.name = f"{method}@{hashlib.sha256(training_data.read_bytes()).hexdigest()[:12]}"
+        self.name = f"{method}@{hashlib.sha256(training_data.read_bytes() + REDACTION_VERSION.encode()).hexdigest()[:12]}"
         self._model: Any = None
         self._lock = threading.Lock()
 
@@ -102,7 +107,7 @@ class SklearnTextClassifier:
 
     def _examples(self) -> tuple[list[str], list[str]]:
         with self._training_data.open(encoding="utf-8", newline="") as f:
-            rows = [(normalize(r["description"]), r["category"].strip()) for r in csv.DictReader(f)]
+            rows = [(normalize(redact_text(r["description"])), r["category"].strip()) for r in csv.DictReader(f)]
         rows = [(text, label) for text, label in rows if text and label]
         if len({label for _, label in rows}) < 2:
             raise ClassifierUnavailable(f"{self._training_data.name} needs examples of at least two categories")

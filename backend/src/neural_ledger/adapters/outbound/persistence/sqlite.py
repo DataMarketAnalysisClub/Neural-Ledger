@@ -12,6 +12,7 @@ import threading
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 from ....application.ports import IdCollision
@@ -26,13 +27,19 @@ from ....domain.actions.terms import (
 from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
 from ....domain.finance.profile import RiskProfile
 from ....domain.ledger.categorization import PostedTransaction
-from ....domain.ledger.entities import Transaction, TransactionKind
+from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
+from ....domain.shared.month import Month
 from ....domain.shared.serialization import to_primitive
 from ....domain.statements.model import (
     BankStatement,
+    CardObligations,
     DailyBalance,
+    Installment,
     Issue,
     IssueCode,
+    LineKind,
+    ScheduledAmount,
+    SectionTotal,
     StatementLine,
     StatementSummary,
     StoredStatement,
@@ -281,6 +288,36 @@ def _date_or_none(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
+def _decimal_or_none(value: float | None) -> Decimal | None:
+    return Decimal(str(value)) if value is not None else None
+
+
+def _installment_from(payload: dict | None) -> Installment | None:
+    if not payload:
+        return None
+    return Installment(
+        number=payload["number"],
+        total=payload["total"],
+        original_amount=payload.get("original_amount"),
+        monthly_rate=_decimal_or_none(payload.get("monthly_rate")),
+        purchased_on=_date_or_none(payload.get("purchased_on")),
+    )
+
+
+def _obligations_from(payload: dict | None) -> CardObligations | None:
+    if not payload:
+        return None
+    return CardObligations(
+        amount_due=payload.get("amount_due"),
+        minimum_due=payload.get("minimum_due"),
+        due_date=_date_or_none(payload.get("due_date")),
+        credit_limit=payload.get("credit_limit"),
+        credit_used=payload.get("credit_used"),
+        credit_available=payload.get("credit_available"),
+        upcoming=tuple(ScheduledAmount(Month.parse(u["month"]), int(u["amount"])) for u in payload.get("upcoming", ())),
+    )
+
+
 def _stored_statement_from(payload: dict) -> StoredStatement:
     st = payload["statement"]
     summary = st.get("summary")
@@ -303,6 +340,9 @@ def _stored_statement_from(payload: dict) -> StoredStatement:
                     reference=line.get("reference"),
                     branch=line.get("branch"),
                     confidence=line.get("confidence"),
+                    kind=LineKind(line["kind"]) if line.get("kind") else None,
+                    section=line.get("section"),
+                    installment=_installment_from(line.get("installment")),
                 )
                 for line in st["lines"]
             ),
@@ -310,6 +350,11 @@ def _stored_statement_from(payload: dict) -> StoredStatement:
             daily_balances=tuple(DailyBalance(date.fromisoformat(b["on"]), int(b["balance"])) for b in st["daily_balances"]),
             statement_number=st.get("statement_number"),
             source=st["source"],
+            # Statements stored before st-0.2 have none of these: checking accounts, final, no sections.
+            account_type=AccountType(st.get("account_type", AccountType.CHECKING.value)),
+            provisional=bool(st.get("provisional", False)),
+            section_totals=tuple(SectionTotal(t["section"], int(t["amount"])) for t in st.get("section_totals", ())),
+            obligations=_obligations_from(st.get("obligations")),
         ),
         issues=tuple(
             Issue(IssueCode(i["code"]), i["message"], i.get("expected"), i.get("found"), _date_or_none(i.get("on"))) for i in payload["issues"]
@@ -340,6 +385,18 @@ class SqliteStatementStore:
         return tuple(_stored_statement_from(json.loads(r[0])) for r in rows)
 
 
+def _installment_info_from(payload: dict | None) -> InstallmentInfo | None:
+    if not payload:
+        return None
+    return InstallmentInfo(
+        plan_id=payload["plan_id"],
+        installment_number=payload["installment_number"],
+        installment_total=payload["installment_total"],
+        original_amount=payload["original_amount"],
+        monthly_rate=_decimal_or_none(payload.get("monthly_rate")),
+    )
+
+
 def _posted_from(payload: dict) -> PostedTransaction:
     t = payload["transaction"]
     return PostedTransaction(
@@ -353,6 +410,7 @@ def _posted_from(payload: dict) -> PostedTransaction:
             merchant_raw=t["merchant_raw"],
             category=t["category"],
             kind=TransactionKind(t["kind"]),
+            installment=_installment_info_from(t.get("installment")),
         ),
         statement_id=payload["statement_id"],
         line_index=int(payload["line_index"]),

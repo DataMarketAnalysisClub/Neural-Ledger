@@ -22,6 +22,7 @@ from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
+from ..domain.privacy.redaction import Span
 from ..domain.statements.model import BankStatement, StoredStatement
 from ..domain.user.account import Session, UserAccount
 from ..domain.user.profile import UserProfile
@@ -46,6 +47,10 @@ class StatementReaderUnavailable(PortUnavailable):
 
 class ClassifierUnavailable(PortUnavailable):
     """The transaction classifier cannot run (e.g. the `ml` extra is missing). Statements are stored, not posted."""
+
+
+class DetectorUnavailable(PortUnavailable):
+    """The personal-data detector could not answer. The domain rules still redact; the import is flagged as degraded."""
 
 
 class NotFound(Exception):
@@ -88,9 +93,28 @@ class FinancialModelSource(Protocol):
 
 @runtime_checkable
 class StatementReader(Protocol):
-    """Turns a statement file (PDF or image bytes) into a BankStatement. Never decides whether it adds up."""
+    """Turns a statement file (spreadsheet, PDF or image bytes) into the statements it holds, in order.
 
-    def read(self, content: bytes) -> BankStatement: ...
+    Usually one; a card statement can hold a national and an international one. Never decides
+    whether they add up."""
+
+    def read(self, content: bytes) -> tuple[BankStatement, ...]: ...
+
+
+@runtime_checkable
+class PersonalDataDetector(Protocol):
+    """Finds personal data the domain rules miss (a name outside a transfer, an address), after them (ADR-028).
+
+    Its spans can only add masking. It receives raw statement text: an adapter that sends it out of the process
+    says so in docs/SECURITY.md, and never puts that text in an error or a log. Adding a detector takes one adapter
+    class and one registry entry in bootstrap/container.py.
+    """
+
+    name: str  # reported with every import it redacts; "none" when the rules run alone
+
+    def detect(self, texts: Sequence[str]) -> Sequence[Sequence[Span]]:
+        """Spans per text, in the same order, with offsets into that text. Raise DetectorUnavailable on any error."""
+        ...
 
 
 @runtime_checkable
