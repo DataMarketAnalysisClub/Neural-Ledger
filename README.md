@@ -18,16 +18,19 @@ docker compose up --build          # API on http://localhost:8000  (GET /health)
 make install                       # pip install -e "backend[api,dev,pdf,ml]" (use a virtualenv)
 make test                          # fast lane: architecture, golden, security, contracts, HTTP (no property tests)
 make test-all                      # full suite incl. hypothesis property tests: required for CI and PRs
-make test-property                 # only the property tests (pytest -m property)make demo                          # the six-scene demo arc in the terminal
+make test-property                 # only the property tests (pytest -m property)
+make demo                          # the six-scene demo arc in the terminal
 make api                           # dev server on :8000
 make evidence                      # audit log + full-suite test results into evidence/
 ```
 
 Bank statements (cartolas): `neural-ledger import-statement <file.pdf>` or `POST /v1/statements` with the file as the body. Text-layer PDFs work out of the box; scanned PDFs and photos need `pip install -e "backend[ocr]"` (EasyOCR; install the CPU torch wheel first) and the weights once: `python -c "from neural_ledger.adapters.outbound.statements.ocr_tabular import prepare_models; prepare_models()"`. Real statements go in `cartolas/`, which is git-ignored: never commit one. A verified statement is also posted to the transaction ledger with a spending category per charge (naive Bayes, the `ml` extra): `neural-ledger transactions` or `GET /v1/transactions`. Use `NL_PERSISTENCE=sqlite` to keep them between CLI runs.
 
+Personal data is removed from every cartola at import, before anything is stored (ADR-028). Names, RUTs, account and card numbers, emails and phones become placeholders such as `[PERSON]`, and the account keeps only its last 4 digits (`****3456`); merchants, amounts and dates stay. **A database created before this change still holds raw statements:** delete `var/neural_ledger.db` (Docker: `docker compose down --volumes`) and import again. Importing the same cartola into the old database would count as a duplicate and keep the old, unredacted copy.
+
 On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
 
-To use a real LLM or Jev, copy `.env.example` to `.env` and set `NL_LLM`, `NL_DECISION_CHAIN` and the keys. Without them the app runs in **offline mode** (scripted model + rules decision model), which is also the fallback when a provider is down.
+To use a real LLM or Jev, copy `.env.example` to `.env` and set `NL_LLM`, `NL_DECISION_CHAIN` and the keys. Without them the app runs in **offline mode** (scripted model + rules decision model), which is also the fallback when a provider is down. `NL_PII_DETECTOR=azure` adds Azure AI Language as a second redaction layer; it is off by default because it sends statement text to Microsoft (see `docs/SECURITY.md`).
 
 ## How it is built
 
@@ -46,7 +49,7 @@ evidence/    exported audit logs and test results for the submission
 |---|---|
 | [docs/SCOPE.md](docs/SCOPE.md) | What we are building, the review findings, open decisions, the plan |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Where code goes and how to add tools, providers and adapters |
-| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permission tiers, S01–S12 and known risks |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permission tiers, S01–S15 and known risks |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision log |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow and definition of done |
 

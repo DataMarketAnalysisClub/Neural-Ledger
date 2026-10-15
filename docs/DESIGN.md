@@ -281,6 +281,7 @@ Restrained and exact; color does the work, not decoration.
 ### Chips
 - **Status badge:** pill, wash ground with its state hue as text, a bold 14px icon and a 13px medium label. Tones: positive, warning, danger, neutral (rail / ink-2), accent (cobalt wash / cobalt).
 - **Suggestion chip (copilot):** pill, 32px tall, canvas ground, hairline border, ink-2 text; hover darkens border and text.
+- **Redaction chip:** marks personal data removed from a statement at import (ADR-028). An inline pill on rail gray with ink-2 text, a bold 12px eye-slash icon and a 12px medium label that says what was hidden ("Name hidden"). It sits in the line of text it replaces, never wraps and carries no state color.
 
 ### Cards / Containers
 - **Corner Style:** 6px; the receipt alone uses 10px.

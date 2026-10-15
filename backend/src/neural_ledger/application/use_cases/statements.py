@@ -1,7 +1,9 @@
 """Import bank statements (cartolas) and read them back.
 
-Import = read (adapter, may misread) → reconcile (domain, deterministic) → store → post to the
-transaction ledger (classified charges) → audit.
+Import = read (adapter, may misread) → redact personal data (domain rules + optional detector) →
+reconcile (domain, deterministic) → store → post to the transaction ledger (classified charges) → audit.
+The statement as read lives only in memory during the import: from redaction on, everything works on
+the clean copy (ADR-028). If redaction fails, the import is rejected and nothing is stored.
 A statement that does not add up is still stored, marked unverified, with a warning that names
 every issue: its amounts are evidence, never authority, so it is not posted. Re-importing the
 same statement stores nothing new. Descriptions leave this layer wrapped as untrusted text.
@@ -9,6 +11,7 @@ same statement stores nothing new. Descriptions leave this layer wrapped as untr
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from ...domain.agent.untrusted import wrap_untrusted
@@ -26,6 +29,9 @@ from ..ports import (
     StatementUnreadable,
 )
 from ..services.posting import LedgerPosting, PostingResult
+from ..services.redaction import RedactionReport, StatementRedactor
+
+logger = logging.getLogger(__name__)
 
 MAX_STATEMENT_BYTES = 15 * 1024 * 1024
 # Below this, an OCR'd line gets a warning. It never marks the statement unverified: amounts and dates are
@@ -72,9 +78,18 @@ class LedgerPostingView:
 
 
 @dataclass(frozen=True, slots=True)
+class RedactionView:
+    rules: str
+    detector: str
+    degraded: bool
+    counts: dict[str, int]  # placeholder code -> how many were inserted; codes with none are left out
+
+
+@dataclass(frozen=True, slots=True)
 class StatementImport:
     duplicate: bool
     statement: StatementSummaryView
+    redaction: RedactionView | None  # None for a duplicate: nothing new was redacted or stored
     ledger: LedgerPostingView
 
 
@@ -104,9 +119,17 @@ class StatementDetail:
 
 class StatementUseCases:
     def __init__(
-        self, reader: StatementReader, store: StatementStore, posting: LedgerPosting, audit: AuditLog, clock: Clock, ids: IdGenerator
+        self,
+        reader: StatementReader,
+        redactor: StatementRedactor,
+        store: StatementStore,
+        posting: LedgerPosting,
+        audit: AuditLog,
+        clock: Clock,
+        ids: IdGenerator,
     ) -> None:
         self._reader = reader
+        self._redactor = redactor
         self._store = store
         self._posting = posting
         self._audit = audit
@@ -119,20 +142,28 @@ class StatementUseCases:
         if len(content) > MAX_STATEMENT_BYTES:
             return Envelope.invalid("file", ALLOWED_FILES, params_version=STATEMENTS_VERSION, message="the file is larger than 15 MB")
         try:
-            statement = self._reader.read(content)
+            read = self._reader.read(content)
         except StatementUnreadable as exc:
             return Envelope.invalid("file", ALLOWED_FILES, params_version=STATEMENTS_VERSION, message=str(exc))
         except StatementReaderUnavailable as exc:
             return Envelope.insufficient(("statement_reader",), params_version=STATEMENTS_VERSION, message=str(exc))
 
-        issues = reconcile(statement).issues
-        statement_id = content_id(
-            "stmt", user_id, statement.bank, statement.account_ref, statement.period_start, statement.period_end, statement.lines
-        )
-        stored = StoredStatement(statement_id, user_id, self._clock.now(), statement, issues)
-        duplicate = not self._store.add(stored)
-        if duplicate:
-            stored = self._store.get(user_id, statement_id) or stored
+        # The id hashes the statement as read, so a cartola imported again is a duplicate whatever the rules mask (ADR-028).
+        statement_id = content_id("stmt", user_id, read.bank, read.account_ref, read.period_start, read.period_end, read.lines)
+        stored = self._store.get(user_id, statement_id)
+        redaction: RedactionReport | None = None  # stays None for a duplicate: nothing new is redacted or stored
+        if stored is None:
+            try:
+                statement, redaction = self._redactor.redact(read)
+            except Exception as exc:  # fail closed: a statement that could not be redacted is never stored
+                # The error's type only: its message could quote the statement.
+                logger.error("statement redaction failed (%s): the import was rejected and nothing was stored", type(exc).__name__)
+                message = "personal data could not be removed from the statement, so it was not stored"
+                return Envelope.insufficient(("redaction",), params_version=STATEMENTS_VERSION, message=message)
+            stored = StoredStatement(statement_id, user_id, self._clock.now(), statement, reconcile(statement).issues)
+            if not self._store.add(stored):  # the same statement was imported concurrently
+                stored, redaction = self._store.get(user_id, statement_id) or stored, None
+        duplicate = redaction is None
         posting = self._posting.post(stored)
 
         self._audit.append(
@@ -147,22 +178,23 @@ class StatementUseCases:
                 policy_version=STATEMENTS_VERSION,
                 execution_result="DUPLICATE" if duplicate else ("VERIFIED" if stored.verified else "UNVERIFIED"),
                 detail=(
-                    f"bank={statement.bank} lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'} "
+                    f"bank={stored.statement.bank} lines={len(stored.statement.lines)} "
+                    f"issues={','.join(i.code.value for i in stored.issues) or 'none'} {_redaction_detail(redaction)}"
                     f"posted={posting.posted} new={posting.new} uncategorized={posting.uncategorized} classifier={posting.classifier or 'none'}"
                 ),
             )
         )
 
         summary = _summary(stored)
-        warnings = [*_unverified(stored), *_low_confidence(stored), *posting.warnings]
+        warnings = [*_unverified(stored), *_low_confidence(stored), *_degraded(redaction), *posting.warnings]
         if duplicate:
             warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
         return Envelope.success(
-            StatementImport(duplicate, summary, _ledger_view(posting)),
+            StatementImport(duplicate, summary, _redaction_view(redaction), _ledger_view(posting)),
             params_version=STATEMENTS_VERSION,
             snapshot_id=statement_id,
             as_of=summary.period_end,
-            facts=(*_facts(summary), *_posting_facts(summary.statement_id, posting)),
+            facts=(*_facts(summary), *_redaction_facts(summary.statement_id, redaction), *_posting_facts(summary.statement_id, posting)),
             warnings=tuple(warnings),
         )
 
@@ -224,6 +256,39 @@ def _low_confidence(stored: StoredStatement) -> tuple[Caveat, ...]:
             ("OCR", "misread"),
         ),
     )
+
+
+def _degraded(redaction: RedactionReport | None) -> tuple[Caveat, ...]:
+    if redaction is None or not redaction.degraded:
+        return ()
+    return (
+        Caveat(
+            "REDACTION_DEGRADED",
+            f"Personal data was removed by the built-in rules only, because the detector {redaction.detector} was unavailable; "
+            "a name outside a transfer line may remain in the descriptions.",
+            ("personal data", "rules only"),
+        ),
+    )
+
+
+def _redaction_view(redaction: RedactionReport | None) -> RedactionView | None:
+    if redaction is None:
+        return None
+    counts = {placeholder.value: count for placeholder, count in redaction.counts}
+    return RedactionView(redaction.rules, redaction.detector, redaction.degraded, counts)
+
+
+def _redaction_facts(statement_id: str, redaction: RedactionReport | None) -> tuple[Fact, ...]:
+    if redaction is None:
+        return ()
+    return (Fact(f"statement.{statement_id}.redacted", redaction.masked, "count", "personal-data items replaced by placeholders at import"),)
+
+
+def _redaction_detail(redaction: RedactionReport | None) -> str:
+    """Audit detail: how much was masked and by what, never what (ADR-028). Empty for a duplicate, which redacts nothing."""
+    if redaction is None:
+        return ""
+    return f"redacted={redaction.masked} detector={redaction.detector} {'degraded=yes ' if redaction.degraded else ''}"
 
 
 def _ledger_view(p: PostingResult) -> LedgerPostingView:
