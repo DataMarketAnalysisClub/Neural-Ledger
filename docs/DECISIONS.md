@@ -91,7 +91,7 @@ Numbers are global: take the next free one, and check open PRs first (ADR-016 to
 
 ## Bank statements and the transaction ledger
 
-ADR-019 to ADR-024 cover reading cartolas and posting them to the transaction ledger. Each says whether it is **built** or **decided, not built**. O-1 and O-2 are open issues for further analysis; nothing is changed for them yet.
+ADR-019 to ADR-024 cover reading cartolas and posting them to the transaction ledger, and ADR-028 removes the personal data they carry. Each says whether it is **built** or **decided, not built**. O-1 and O-2 are open issues for further analysis; nothing is changed for them yet.
 
 ### ADR-019 · Statement import pipeline: ocr_tabular + one `Bank` per layout · Built
 **Decision:** `ocr_tabular` (adapted into `adapters/outbound/statements/`) turns any PDF or image into word boxes and tables; a `Bank` subclass per layout (first: `SantanderCuentaMatica`) says where the table is and what the rows mean. Import = read → reconcile (domain) → store (once per user and statement) → audit `STATEMENT_IMPORTED`. Entry points: `neural-ledger import-statement`, `POST /v1/statements`, `GET /v1/statements[/{id}]`.
@@ -128,6 +128,40 @@ ADR-019 to ADR-024 cover reading cartolas and posting them to the transaction le
 - The user can change it either way (ADR-023).
 - A transfer to a third party stays spending (`other`) unless the user marks it as a Movimiento.
 **Consequences:** vocabulary and contract change (`CATEGORIES`, `transactions.schema.json`), `CATEGORIZATION_VERSION` bump. Role A confirms that estimators read `transfer_own` this way.
+
+### ADR-028 · Personal data is removed from a statement once, at import · Built
+**Context:** identity is only the `X-User-Id` header, so anyone could read anyone's statements, with every description intact and the full account number (risk B). The planned `get_transactions` tool would also send that text to the language model's provider (risk A). Descriptions carry names, RUTs, account and card numbers, emails and phones.
+**Decision:**
+- **Once, at import.** Redaction runs right after reading, before anything is stored, classified, audited or returned. The statement as read lives only in memory during the import call.
+- **Two layers.** Deterministic rules in `domain/privacy/redaction.py` always run and are the floor. They catch:
+  - RUTs (módulo 11 decides `[ID]`; a failing check digit is still masked, as `[NUMBER]`);
+  - runs of 7 or more digits, also split by spaces or dashes;
+  - emails and Chilean phones;
+  - names after `TRANSF` / `TRANSFERENCIA` / `TEF` / `TRASPASO` and `A` / `DE` / `DESDE` / `PARA`, with an own-account allowlist.
+
+  An optional detector behind the `PersonalDataDetector` port runs after them and can only add masking. Azure AI Language is built but off by default (`NL_PII_DETECTOR=none`); a new detector is one adapter plus one `DETECTORS` entry.
+- **Kept, as financial data:** employer and payee names (`REMUNERACION <company>`, `PAGO PROVEEDOR <company>`), merchants, `CUOTA nn/NN`, amounts, dates, short store numbers, the bank's document number and the branch code. `account_ref` keeps its last 4 digits (`****3456`).
+- **Placeholders are stable codes:** `[PERSON]`, `[ID]`, `[NUMBER]`, `[EMAIL]`, `[PHONE]` and `[ADDRESS]`, enumerated in `contracts/common/redaction.schema.json`. They contain no digits, and the backend never translates them. The web shows them as translated chips (`redaction.<CODE>`), and the agent prompt says they mark hidden data the agent must not guess.
+- **Fail closed:**
+  - If redaction raises, the import is rejected (`INSUFFICIENT_DATA`, missing `redaction`), and nothing is stored, posted or audited.
+  - If the detector is unavailable or answers something unusable, the rules alone run and the import is flagged degraded (`REDACTION_DEGRADED`, `degraded=yes` in the audit).
+- **The statement id still hashes the statement as read,** so importing the same cartola again is still a duplicate. A duplicate is not redacted again, nor sent to a detector again.
+- **Reporting:**
+  - The import output gains `redaction` (rules version, detector, degraded flag, counts per code). The audit detail gains `redacted=<n> detector=<name>`, never text.
+  - The classifier's training rows go through the same rules, and the rules version is part of its name.
+  - `STATEMENTS_VERSION` moves to `st-0.2`.
+
+**Consequences:**
+- **Only financial data is stored or returned.** S15 checks every surface: the API, the audit export, the database files and the logs. What the header still exposes (risk B) is amounts, dates, merchants, categories and a masked account.
+- **Names outside a transfer stay with the rules alone.** The rules are written for Chilean cartolas, so a name outside a transfer line (`PAGO A <name>`) is caught only by a detector. Extending the word lists needs real cartolas, checked locally in `cartolas/`, sharing counts only.
+- **Transfers to different people now read the same** (`Transf a [PERSON]`). Grouping recurring transfers by counterparty, such as rent paid by transfer, would need a stable pseudonym; none is built.
+- **ADR-024's "transfer to the holder's own RUT" rule,** when built, has to run inside the import, on the statement as read: stored text has no RUTs.
+- **Statements stored before `st-0.2` keep their raw text.** There is no migration and no `redact-stored` command: delete the local database (`var/neural_ledger.db`, or `docker compose down --volumes`) and import again. Importing the same cartola into the old database counts as a duplicate and keeps the old copy.
+- **A degraded import stays rules-only:** a statement imported while the detector was down keeps that redaction, because re-importing it is a duplicate.
+- **Two accounts with the same last 4 digits share an `account_id` label;** their statement and transaction ids still differ, since those hash the statement as read. Someone who already holds a raw cartola could confirm it was imported, by hashing it.
+- **Turning Azure on sends the raw text of every line to Microsoft.** Synchronous detection is stateless, and `loggingOptOut` is sent as true. See `SECURITY.md`.
+- **pdfminer's loggers are capped at WARNING:** S15 found that pdfminer logs page text at DEBUG.
+- **The team's "skill reverse engineering" idea,** if it turns out to be a detector, plugs in behind the same port.
 
 ### O-1 · Open: a corrected re-read of the same cartola is treated as a duplicate · For analysis
 **Observed:** the statement id hashes bank, account, period and lines, but not the printed summary or daily balances. If a scan misreads only a printed balance, the statement is stored unverified. Importing the clean PDF of the same cartola then has the same id, counts as a duplicate, and the stored unverified copy wins.

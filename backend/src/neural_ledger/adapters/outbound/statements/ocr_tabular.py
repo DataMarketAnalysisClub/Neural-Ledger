@@ -28,6 +28,7 @@ for text-layer PDFs and the `ocr` extra (pymupdf + easyocr) for scans and photos
 from __future__ import annotations
 
 import io
+import logging
 import re
 import statistics
 import unicodedata
@@ -36,6 +37,10 @@ from dataclasses import dataclass
 
 MINIMUM_TEXT_LAYER = 20  # characters for a PDF to count as having a text layer
 RASTER_DPI = 300  # what EasyOCR needs not to lose thousands separators
+
+# pdfminer (under pdfplumber) logs every PDF token at DEBUG, page text included. Until the import redacts it
+# (ADR-028), that text is personal data, so pdfminer's loggers stop at WARNING whatever the application's level.
+logging.getLogger("pdfminer").setLevel(logging.WARNING)
 
 
 class TableError(Exception):

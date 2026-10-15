@@ -2,12 +2,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/statement_import.schema.json",
   "title": "StatementImport",
-  "description": "data of POST /v1/statements. An unverified statement is still stored but not posted to the transaction ledger; a duplicate stores nothing new.",
+  "description": "data of POST /v1/statements. Personal data is removed before anything is stored (ADR-028). An unverified statement is still stored but not posted to the transaction ledger; a duplicate stores nothing new.",
   "type": "object",
-  "required": ["duplicate", "statement", "ledger"],
+  "required": ["duplicate", "statement", "redaction", "ledger"],
   "properties": {
     "duplicate": {"type": "boolean"},
     "statement": {"$ref": "statement.schema.json#/$defs/summary"},
+    "redaction": {
+      "type": ["object", "null"],
+      "description": "How personal data was removed from this import. Null for a duplicate: nothing new was redacted or stored.",
+      "required": ["rules", "detector", "degraded", "counts"],
+      "properties": {
+        "rules": {"type": "string", "description": "Version of the built-in rules, which always run, e.g. pii-0.1."},
+        "detector": {"type": "string", "description": "Optional detector run after the rules (NL_PII_DETECTOR): none or azure_language."},
+        "degraded": {"type": "boolean", "description": "True when the detector was unavailable and only the rules ran (see the REDACTION_DEGRADED warning)."},
+        "counts": {
+          "type": "object",
+          "description": "Placeholders inserted per code; codes with none are left out. Counts only, never the text they replaced.",
+          "propertyNames": {"$ref": "../common/redaction.schema.json"},
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        }
+      },
+      "additionalProperties": false
+    },
     "ledger": {
       "type": "object",
       "description": "Posting to the transaction ledger. posted = 0 and classifier = null when the statement was not posted (see the NOT_POSTED warning).",

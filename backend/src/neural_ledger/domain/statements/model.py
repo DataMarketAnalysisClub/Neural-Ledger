@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 
-STATEMENTS_VERSION = "st-0.1"  # reader + reconciliation rules; outputs carry it as params_version
+# Reader, redaction and reconciliation rules; outputs carry it as params_version. st-0.2: personal data is removed at
+# import (ADR-028), so a statement stored under st-0.1 may still hold it.
+STATEMENTS_VERSION = "st-0.2"
 
 
 @dataclass(frozen=True, slots=True)

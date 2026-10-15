@@ -16,7 +16,7 @@ Or `docker compose up --build`: API on :8000, UI on :3000 (nginx proxies `/api`)
 |---|---|
 | `npm run contracts` | Regenerates `src/contracts/` from `../contracts` (commit the result; CI checks it is current) |
 | `npm run lint` / `npm run typecheck` | ESLint and TypeScript |
-| `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, an axe accessibility check |
+| `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, redaction chips, axe accessibility checks |
 | `npm run build` | Production bundle in `dist/` |
 
 ## Rules
@@ -25,6 +25,7 @@ Or `docker compose up --build`: API on :8000, UI on :3000 (nginx proxies `/api`)
 - **Every amount shows its ISO currency code** (`CLP 1,500,000`), whatever the currency.
 - The **confirmation receipt** sends exactly the `terms` object it received to `POST /v1/actions/proposals/{proposal_id}/confirm`. Execution is a separate step that sends only the `authorization_id`. Nothing on screen changes until the API answers.
 - Untrusted text (`{"untrusted_text": …}`, model replies) is rendered as plain text, never as HTML.
+- **Personal data stays hidden.** Statement and transaction text carries placeholder codes (`[PERSON]`, `[ID]`, …) where personal data was removed at import (ADR-028). Render it with `<RedactedText>` (`src/components/redaction.tsx`): each code becomes a chip labelled from `redaction.<CODE>` in `src/i18n/en.ts`. Never show the raw codes; the backend never translates them.
 - **English first.** Every string lives in `src/i18n/en.ts`; a new language is another file with the same shape, registered in `src/i18n/index.ts`.
 - No emojis anywhere.
 
