@@ -2,6 +2,7 @@ import { ShieldWarning } from "@phosphor-icons/react";
 import { useCapacity, useCommitments, useFinancialState } from "@/api/hooks";
 import { fact } from "@/api/client";
 import { CommitmentBars } from "@/components/charts";
+import { RedactedText, redactedPlainText } from "@/components/redaction";
 import { ErrorState, Loading, PageHeader, Section, StatusBadge, Surface } from "@/components/ui";
 import { formatAmount, formatMoney, formatMonth, formatPercent } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
@@ -56,9 +57,10 @@ export function CommitmentsPage() {
                 {c.commitments.map((item) => (
                   <tr key={item.commitment_id} className="border-b border-line last:border-0">
                     <th scope="row" className="max-w-[280px] px-5 py-3 text-left font-normal text-ink">
-                      {/* Untrusted merchant text: rendered as plain text, never as markup or instructions. */}
-                      <span className="line-clamp-2 break-words" title={item.label.untrusted_text}>
-                        {item.label.untrusted_text}
+                      {/* Untrusted merchant text: plain text, never markup or instructions. Placeholders for personal data
+                          removed at import become translated chips. */}
+                      <span className="line-clamp-2 break-words" title={redactedPlainText(item.label.untrusted_text)}>
+                        <RedactedText text={item.label.untrusted_text} />
                       </span>
                     </th>
                     <td className="px-5 py-3 text-ink-2">

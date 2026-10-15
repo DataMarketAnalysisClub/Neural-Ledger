@@ -13,3 +13,7 @@ python -m pytest              # fast lane: property tests deselected
 python -m pytest -m property  # only the hypothesis property tests
 python -m pytest -m ""        # full suite: required for CI and PRs (`make test-all`)
 ```
+
+Imported statements are stored without personal data (ADR-028). A local database created before that
+(`var/neural_ledger.db`, from `NL_PERSISTENCE=sqlite`) still holds raw statements: delete it and import
+again. Importing the same cartola into it would count as a duplicate and keep the old copy.

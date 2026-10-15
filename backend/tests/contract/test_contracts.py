@@ -94,10 +94,16 @@ def test_statement_outputs_and_audit_match_contracts(services):
     pytest.importorskip("pdfplumber")
     from tests.statement_samples import Sample, santander_pdf
 
-    imported = to_primitive(services.statements.import_statement("camila", santander_pdf(Sample(daily_override={"04/12": 1}))))
+    unverified = santander_pdf(Sample(daily_override={"04/12": 1}))
+    imported = to_primitive(services.statements.import_statement("camila", unverified))
     validate(imported, "common/envelope.schema.json")
     validate(imported["data"], "outputs/statement_import.schema.json")
     assert imported["data"]["statement"]["issues"], "the unverified path must be covered too"
+    assert imported["data"]["redaction"]["counts"], "the redaction block must be covered with counts"
+
+    duplicate = to_primitive(services.statements.import_statement("camila", unverified))
+    validate(duplicate["data"], "outputs/statement_import.schema.json")
+    assert duplicate["data"]["duplicate"] and duplicate["data"]["redaction"] is None
 
     listed = to_primitive(services.statements.list_statements("camila"))
     validate(listed, "common/envelope.schema.json")
@@ -126,3 +132,36 @@ def test_transaction_categories_match_the_domain_vocabulary():
 
     schema = json.loads((CONTRACTS / "outputs/transactions.schema.json").read_text())
     assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | {INCOME, UNCATEGORIZED}
+
+
+def _part(relative: str, pointer: str):
+    """A validator for one part of a contract, e.g. a single property."""
+    return jsonschema.Draft202012Validator({"$ref": (CONTRACTS / relative).resolve().as_uri() + pointer}, registry=REGISTRY)
+
+
+def test_redaction_placeholders_match_the_domain_codes():
+    from neural_ledger.domain.privacy.redaction import PLACEHOLDER_CODES
+
+    schema = json.loads((CONTRACTS / "common/redaction.schema.json").read_text(encoding="utf-8"))
+    assert tuple(schema["enum"]) == PLACEHOLDER_CODES
+    counts = _part("outputs/statement_import.schema.json", "#/properties/redaction/properties/counts")
+    assert counts.is_valid({"PERSON": 1, "NUMBER": 3})
+    assert not counts.is_valid({"SECRET": 1})  # a code the clients do not know is a contract breach
+    assert not counts.is_valid({"PERSON": 0})  # codes with none are left out
+
+
+@pytest.mark.parametrize(
+    "relative, pointer, masked, raw",
+    [
+        ("outputs/statement.schema.json", "#/$defs/summary/properties/account_ref", "****3456", "0-000-00-12345-6"),
+        (
+            "outputs/transactions.schema.json",
+            "#/properties/transactions/items/properties/account_id",
+            "santander_cl_cuentamatica:****3456",
+            "santander_cl_cuentamatica:0-000-00-12345-6",
+        ),
+    ],
+)
+def test_account_references_must_be_masked(relative, pointer, masked, raw):
+    account = _part(relative, pointer)
+    assert account.is_valid(masked) and not account.is_valid(raw)

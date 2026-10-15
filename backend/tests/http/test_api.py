@@ -18,6 +18,7 @@ def client(services):
 def test_health(client):
     body = client.get("/health").json()
     assert body["mode"] == "offline" and body["audit_chain_ok"] and "simulate_purchase" in body["tools"]
+    assert body["pii_detector"] == "none"  # statements are redacted by the rules alone: nothing leaves the process
     assert body["server_time"].startswith("2026-10-29T12:00:00")  # the fixed demo clock, for UI countdowns
 
 
@@ -68,7 +69,8 @@ def test_statement_upload_list_and_detail(client):
     upload = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", "X-User-Id": "camila"})
     assert upload.status_code == 200, upload.text
     summary = upload.json()["data"]["statement"]
-    assert summary["verified"] and summary["line_count"] == 7
+    assert summary["verified"] and summary["line_count"] == 7 and summary["account_ref"] == "****3456"
+    assert upload.json()["data"]["redaction"] == {"rules": "pii-0.1", "detector": "none", "degraded": False, "counts": {"NUMBER": 3}}
 
     listed = client.get("/v1/statements", headers={"X-User-Id": "camila"}).json()["data"]
     assert [s["statement_id"] for s in listed] == [summary["statement_id"]]

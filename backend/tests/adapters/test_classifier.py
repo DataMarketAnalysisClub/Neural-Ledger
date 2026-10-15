@@ -79,6 +79,23 @@ def test_the_name_changes_with_the_training_data(tmp_path):
     assert SklearnTextClassifier(training_data=data).name != SklearnTextClassifier().name
 
 
+def test_training_rows_go_through_the_same_redaction_rules_as_imported_lines(tmp_path):
+    # Fictional data: the model learns 'transf a person id', exactly what an imported line looks like after redaction.
+    data = tmp_path / "categories.csv"
+    data.write_text("description,category\nTRANSF A JUAN PEREZ 11.111.111-1,other\nJUMBO 401,groceries\n", encoding="utf-8")
+    assert SklearnTextClassifier(training_data=data)._examples() == (["transf a person id", "jumbo"], ["other", "groceries"])
+    shipped, _ = SklearnTextClassifier()._examples()
+    assert "transferencia a terceros person" in shipped and not any("juan" in text for text in shipped)
+
+
+def test_the_name_changes_with_the_redaction_rules(monkeypatch):
+    from neural_ledger.adapters.outbound.classifier import sklearn_text
+
+    before = SklearnTextClassifier().name
+    monkeypatch.setattr(sklearn_text, "REDACTION_VERSION", "pii-next")
+    assert SklearnTextClassifier().name != before
+
+
 def test_training_data_with_one_category_is_unavailable(tmp_path):
     data = tmp_path / "categories.csv"
     data.write_text("description,category\nJUMBO,groceries\n", encoding="utf-8")
