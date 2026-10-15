@@ -35,7 +35,7 @@
           },
           "account_id": {
             "type": "string",
-            "pattern": "^[^:]+:\\*{4}\\d{0,4}$",
+            "pattern": "^[^:]+:\\*{4}[0-9A-Za-z]{0,4}$",
             "description": "<bank layout code>:<masked account reference>, e.g. santander_cl_cuentamatica:****3456 (ADR-028)."
           },
           "date": {

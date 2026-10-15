@@ -12,7 +12,7 @@ export interface Summary {
    */
   bank: string;
   /**
-   * Masked at import: only the last 4 digits are kept, e.g. ****3456 (ADR-028).
+   * Masked at import: only the last 4 digits (or the 4 characters a bank already left visible) are kept, e.g. ****3456 (ADR-028).
    */
   account_ref: string;
   /**

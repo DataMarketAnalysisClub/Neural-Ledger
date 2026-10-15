@@ -84,7 +84,7 @@
       "properties": {
         "statement_id": {"type": "string"},
         "bank": {"type": "string", "description": "Code of the Bank layout that read it, e.g. santander_cl_cuentamatica."},
-        "account_ref": {"type": "string", "pattern": "^\\*{4}\\d{0,4}$", "description": "Masked at import: only the last 4 digits are kept, e.g. ****3456 (ADR-028)."},
+        "account_ref": {"type": "string", "pattern": "^\\*{4}[0-9A-Za-z]{0,4}$", "description": "Masked at import: only the last 4 digits (or the 4 characters a bank already left visible) are kept, e.g. ****3456 (ADR-028)."},
         "account_type": {
           "enum": ["checking", "savings", "credit_card"],
           "description": "From the layout that read it. A credit card statement carries obligations and its payments are never income."

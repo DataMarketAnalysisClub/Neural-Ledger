@@ -142,7 +142,7 @@ def test_placeholders_are_stable_codes_without_digits():
 
 @pytest.mark.parametrize(
     ("account", "masked"),
-    [("0-000-00-12345-6", "****3456"), ("000012345678", "****5678"), ("****3456", "****3456"), ("1234", "****"), ("", "****")],
+    [("0-000-00-12345-6", "****3456"), ("000012345678", "****5678"), ("****3456", "****3456"), ("**** **** **** Ab3x", "****Ab3x"), ("1234", "****"), ("", "****")],
 )
 def test_account_reference_keeps_only_its_last_four_digits(account, masked):
     assert mask_account(account) == masked
