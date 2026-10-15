@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { accountsApi, type Me, type SigninInput, type SignupInput } from "@/api/accounts";
@@ -31,14 +31,16 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
   const mode = health.data?.auth === "accounts" ? "accounts" : "demo";
   const [session, setSession] = useState<Session>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const generation = useRef(0);
 
   useEffect(() => {
     if (mode !== "accounts" || !health.data) return;
     let active = true;
+    const started = generation.current;
     void accountsApi.me().then(
-      (me) => { if (active) setSession({ status: "authenticated", me }); },
+      (me) => { if (active && started === generation.current) setSession({ status: "authenticated", me }); },
       (error: unknown) => {
-        if (!active) return;
+        if (!active || started !== generation.current) return;
         if (error instanceof ApiError && error.httpStatus === 401) setSession({ status: "anonymous" });
         else setSession({ status: "error", error });
       },
@@ -46,32 +48,48 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     return () => { active = false; };
   }, [mode, health.data, attempt]);
 
-  const transition = useCallback(async (me: Me | null) => {
+  const transition = useCallback(async (authenticated: boolean) => {
+    const started = ++generation.current;
+    setSession({ status: "loading" });
     await client.cancelQueries();
+    if (started !== generation.current) return;
     client.removeQueries({ predicate: (query) => query.queryKey[0] !== "health" });
-    setSession(me ? { status: "authenticated", me } : { status: "anonymous" });
+    if (!authenticated) {
+      setSession({ status: "anonymous" });
+      return;
+    }
+    try {
+      const me = await accountsApi.me();
+      if (started === generation.current) setSession({ status: "authenticated", me });
+    } catch (error) {
+      if (started !== generation.current) return;
+      if (error instanceof ApiError && error.httpStatus === 401) setSession({ status: "anonymous" });
+      else setSession({ status: "error", error });
+      throw error;
+    }
   }, [client]);
 
   const signup = useCallback(async (input: SignupInput) => {
     await accountsApi.signup(input);
-    await transition(await accountsApi.me());
+    await transition(true);
   }, [transition]);
   const signin = useCallback(async (input: SigninInput) => {
     await accountsApi.signin(input);
-    await transition(await accountsApi.me());
+    await transition(true);
   }, [transition]);
   const explore = useCallback(async (persona: "camila" | "diego") => {
     await accountsApi.demoSession(persona);
-    await transition(await accountsApi.me());
+    await transition(true);
   }, [transition]);
   const signout = useCallback(async () => {
     await accountsApi.signout();
-    await transition(null);
+    await transition(false);
   }, [transition]);
   const refreshMe = useCallback(async () => {
-    await transition(await accountsApi.me());
+    await transition(true);
   }, [transition]);
   const retry = useCallback(() => {
+    generation.current += 1;
     setSession({ status: "loading" });
     if (health.isError) void health.refetch();
     else setAttempt((previous) => previous + 1);
