@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from datetime import timedelta
 from pathlib import Path
 from typing import Final
 
@@ -51,7 +50,7 @@ def app_for(monkeypatch, *, auth="accounts", llm=None, sqlite_path=None):
 
 
 def signup(client, email=EMAIL_A, password=PASSWORD):
-    response = client.post("/v1/auth/signup", json={"email": email, "password": password})
+    response = client.post("/v1/auth/signup", json={"email": email, "password": password, "display_name": "Synthetic User"})
     assert response.status_code in (200, 201), "signup must create a synthetic account"
     assert client.cookies.get("nl_session"), "signup must issue a session"
     return response
@@ -180,11 +179,11 @@ def test_s17_absolute_expiry_does_not_slide(accounts):
     client, services, _ = accounts
     signup(client)
     assert client.get("/v1/me").status_code == 200
-    services.clock.advance(timedelta(hours=11))
+    services.clock.advance(hours=11)
     assert client.get("/v1/me").status_code == 200
-    services.clock.advance(timedelta(minutes=59))
+    services.clock.advance(minutes=59)
     assert client.get("/v1/me").status_code == 200
-    services.clock.advance(timedelta(minutes=2))
+    services.clock.advance(minutes=2)
     assert client.get("/v1/me").status_code == 401
 
 
