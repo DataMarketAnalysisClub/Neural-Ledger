@@ -13,6 +13,7 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 | Authorization integrity | Stored terms edited after confirmation | HMAC-SHA256 with a server secret (not stored in the DB) | Exact canonical comparison of requested terms |
 | Agent scope | Self-escalation (confirming for the user, granting itself permissions) | No confirm tool; the confirm endpoint requires the user actor | T3 audit events |
 | Long-lived manipulation | Injected text persisted into memory | Typed user record; no free-text instructions stored | Untrusted text wrapped as `{"untrusted_text": …}` |
+| Personal data in imported statements | Read by anyone who sets `X-User-Id`, handed to the model by a tool, left in files or logs | Removed once at import, before anything is stored, by deterministic rules; only placeholders (`[PERSON]`, `[ID]`, …) and a masked account (`****3456`) remain (ADR-028) | An optional detector can only add masking; an import that cannot be redacted stores nothing; S15 checks every surface |
 
 ## Permission tiers
 
@@ -41,6 +42,7 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 | S12 | Malformed financial input | `INVALID_INPUT` / `INSUFFICIENT_DATA`; no engine runs | — | `test_s12_…` |
 | S13 | Jev is fooled: no injection flagged, confident harmless intent, gate opens | Add-beneficiary and forged-authorization attempts still blocked; no rule is created | `ACTION_BLOCKED` (`NEW_BENEFICIARY`, `AUTHORIZATION_NOT_FOUND`) | `test_s13_…` (×3) |
 | S14 | Jev down while the chain is `jev,rules` | Rules answer and still flag the attack | `INJECTION_FLAGGED` | `test_s14_…` |
+| S15 | A cartola with names, RUTs, an account, an email, a phone and a card number is imported; then it is read back through `/v1/statements`, `/v1/statements/{id}`, `/v1/transactions`, `/v1/audit`, the audit export, the database files and the logs, and a hostile model hunts for it through its tools | None of those values appears anywhere; descriptions hold placeholders and the account is `****7654`. Fails if redaction is turned off | `STATEMENT_IMPORTED` (`redacted=<n> detector=none`, never text) | `test_s15_…` (×3) |
 | — | Audit log tampering | Chain verification fails at the edited event | — | `test_audit_chain_detects_tampering` |
 | — | Reading another user's audit trail (same session id) | Empty result; chain status still reported | — | `test_audit_reads_are_scoped_to_the_caller` |
 
@@ -132,7 +134,9 @@ The routes in G02–G05 are proposals; change the test with the API design.
 
 ## Known risks (residual)
 
-- **Identity is a header** (`X-User-Id`). Acceptable for a sandbox; real deployments need authentication and per-user authorization on every endpoint (G01).
+- **Identity is a header** (`X-User-Id`). Acceptable for a sandbox; real deployments need authentication and per-user authorization on every endpoint (G01). Anyone who sets the header can still read anyone's statements and transactions; since ADR-028 that exposes financial data only: amounts, dates, merchants, categories and a masked account.
+- **The redaction rules are written for Chilean cartolas.** They catch RUTs, long numbers, emails, phones and the counterparty of a transfer; a name elsewhere (`PAGO A <name>`) stays unless a detector is on. Rules are checked against real cartolas only locally (`cartolas/`, never committed, counts shared). Statements stored before `st-0.2` keep their raw text: delete the local database and import again (ADR-028).
+- **Azure AI Language is off by default** (`NL_PII_DETECTOR=none`) and is never the only layer. Turning it on (`NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY`) sends the raw text of every imported statement line to Microsoft. Detection is synchronous and stateless (REST API 2026-05-01), and `loggingOptOut` is sent as true. It needs the team's agreement on the subscription and the key, billing is per 1,000 characters, and `/health` shows it (`pii_detector`). Docker, CI and the recorded demo run with the rules only, and CI checks that.
 - **`transfer_own` is trusted by the estimators** (ADR-012). A real outflow mislabelled as an own transfer would vanish from variable spend and overstate the protected surplus. The synthetic ledgers reconcile per account; real data would need two-leg matching of own transfers.
 - **The rules decision model is keyword-based.** It is the offline floor, not the main defence. The hard guarantees come from the gate and the confirmation contract, which do not depend on any model.
 - **The verifier checks numbers, warnings and a few phrases.** Semantic contradictions in free prose need the model-based check (Should).

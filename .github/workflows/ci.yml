@@ -77,6 +77,7 @@ jobs:
         run: |
           curl --fail --silent http://localhost:8000/health | tee health.json
           grep -q '"mode":"offline"' health.json
+          grep -q '"pii_detector":"none"' health.json
           grep -q '"audit_chain_ok":true' health.json
           curl --fail --silent -H 'X-User-Id: camila' 'http://localhost:8000/v1/forecast?scenario=conservative' > /dev/null
           curl --fail --silent http://localhost:3000/ | grep -q '<div id="root">'

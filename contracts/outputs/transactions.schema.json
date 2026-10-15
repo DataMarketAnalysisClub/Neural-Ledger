@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/transactions.schema.json",
   "title": "Transactions",
-  "description": "data of GET /v1/transactions: the user's transaction ledger built from verified, final imported statements, oldest first, with totals. Money is integer minor units of `currency`; charges are negative. Categories are a classifier's guesses, gated to the vocabulary below; merchant text is untrusted.",
+  "description": "data of GET /v1/transactions: the user's transaction ledger built from verified, final imported statements, oldest first, with totals. Money is integer minor units of `currency`; charges are negative. Categories are a classifier's guesses, gated to the vocabulary below; merchant text is untrusted, with personal data replaced at import (ADR-028).",
   "type": "object",
   "required": [
     "transactions",
@@ -35,7 +35,8 @@
           },
           "account_id": {
             "type": "string",
-            "description": "<bank layout code>:<account reference>."
+            "pattern": "^[^:]+:\\*{4}[0-9A-Za-z]{0,4}$",
+            "description": "<bank layout code>:<masked account reference>, e.g. santander_cl_cuentamatica:****3456 (ADR-028)."
           },
           "date": {
             "type": "string",
@@ -49,6 +50,7 @@
           },
           "merchant": {
             "type": "object",
+            "description": "The statement line's description, with personal data replaced at import by placeholders such as [PERSON] (common/redaction.schema.json).",
             "required": [
               "untrusted_text"
             ],

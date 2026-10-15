@@ -18,7 +18,9 @@ from enum import Enum
 from ..ledger.entities import AccountType
 from ..shared.month import Month
 
-STATEMENTS_VERSION = "st-0.2"  # reader + reconciliation rules; outputs carry it as params_version
+# Reader, redaction and reconciliation rules; outputs carry it as params_version. st-0.3 combines card statements
+# and multi-statement files (ids now include the currency) with personal data removed at import (ADR-028).
+STATEMENTS_VERSION = "st-0.3"
 
 
 class LineKind(str, Enum):

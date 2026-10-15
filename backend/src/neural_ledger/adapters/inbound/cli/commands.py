@@ -81,12 +81,18 @@ def import_statement(services: ApplicationServices, path: Path, user_id: str, as
             print(f"obligations: {amounts or 'nothing printed'} {s.currency}{f' by {o.due_date}' if o.due_date else ''}")
             if o.installments:
                 print(f"  cuotas still to bill {o.installments_remaining:,} {s.currency}: " + ", ".join(f"{u.month} {u.amount:,}" for u in o.upcoming))
+        redaction = imported.redaction
+        if redaction:
+            hidden = ", ".join(f"{count} {code}" for code, count in redaction.counts.items()) or "nothing found"
+            print(f"personal data hidden: {hidden} (rules {redaction.rules}, detector {redaction.detector})")
         ledger = imported.ledger
         if ledger.classifier:
             print(f"ledger: {ledger.posted} transactions ({ledger.new} new) · {ledger.uncategorized} charges uncategorized · {ledger.classifier}")
     for warning in result.warnings:
         if warning.code == "NOT_POSTED":
             print(f"ledger: {warning.message}")
+        elif warning.code == "REDACTION_DEGRADED":
+            print(f"personal data: {warning.message}")
     return 0
 
 
