@@ -101,6 +101,14 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
     def capacity(x_user_id: str | None = Header(default=None)):
         return _envelope_response(services.financial.capacity(user(x_user_id)))
 
+    @app.get("/v1/profile")
+    def profile(x_user_id: str | None = Header(default=None)):
+        return _envelope_response(services.profiles.user_profile(user(x_user_id)))
+
+    @app.get("/v1/profile/questionnaire")
+    def questionnaire():
+        return _envelope_response(services.profiles.questionnaire())
+
     @app.post("/v1/permitted-profile")
     def permitted(body: dict[str, Any] = Body(...), x_user_id: str | None = Header(default=None)):
         return _envelope_response(services.financial.permitted_profile(user(x_user_id), str(body.get("tolerance", ""))))

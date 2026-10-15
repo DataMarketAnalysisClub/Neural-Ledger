@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/user_profile.schema.json",
+  "title": "UserProfile",
+  "description": "data of GET /v1/profile and of get_user_profile. The display name is user-typed and therefore untrusted text. The account email is never part of this record. The risk tolerance is derived from the questionnaire by the domain only.",
+  "type": "object",
+  "required": ["user_id", "display_name", "language", "declared_tolerance", "questionnaire_version", "questionnaire"],
+  "properties": {
+    "user_id": {"type": "string", "minLength": 1},
+    "display_name": {
+      "type": "object",
+      "description": "Validated by the domain: 1-40 code points of Unicode letters, spaces and . ' - only; no newlines or control characters.",
+      "required": ["untrusted_text"],
+      "properties": {"untrusted_text": {"type": "string", "minLength": 1, "maxLength": 40}},
+      "additionalProperties": false
+    },
+    "language": {"type": "string", "pattern": "^[a-z]{2}$", "examples": ["en"]},
+    "declared_tolerance": {"type": ["string", "null"], "enum": [null, "conservative", "moderate", "aggressive"], "description": "null is read as conservative."},
+    "questionnaire_version": {"type": ["string", "null"], "pattern": "^pq-\\d+\\.\\d+$", "description": "Version the stored answers were given against. Any version known to the domain registry, not only the current one. null when the questionnaire was never answered."},
+    "questionnaire": {"type": "array", "items": {"$ref": "#/$defs/answer"}}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {"if": {"properties": {"questionnaire_version": {"type": "null"}}}, "then": {"properties": {"questionnaire": {"maxItems": 0}}}}
+  ],
+  "$defs": {
+    "answer": {
+      "type": "object",
+      "required": ["question_id", "option_id"],
+      "properties": {
+        "question_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "option_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "user_id": "camila",
+      "display_name": {"untrusted_text": "Camila"},
+      "language": "en",
+      "declared_tolerance": "aggressive",
+      "questionnaire_version": null,
+      "questionnaire": []
+    },
+    {
+      "user_id": "usr_7f3a9c21",
+      "display_name": {"untrusted_text": "Ana María"},
+      "language": "en",
+      "declared_tolerance": "moderate",
+      "questionnaire_version": "pq-0.1",
+      "questionnaire": [
+        {"question_id": "set_aside", "option_id": "about_half"},
+        {"question_id": "tight_month", "option_id": "keep_cut_elsewhere"},
+        {"question_id": "goal_vs_room", "option_id": "balance"},
+        {"question_id": "surprise", "option_id": "uneasy_but_ok"},
+        {"question_id": "habit", "option_id": "sometimes"}
+      ]
+    }
+  ]
+}

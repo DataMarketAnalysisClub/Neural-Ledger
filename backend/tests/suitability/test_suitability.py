@@ -231,7 +231,9 @@ def test_u03_neither_the_user_nor_the_model_can_talk_the_profile_up(services, ad
     client, decides suitability). Language never raises a declared tolerance; with no declaration it is capped at
     moderate; a model asking for an aggressive plan gets the permitted one, with the cap as a warning."""
     conversations = InMemoryConversationStore()
-    conversations.append(SESSION, (UserEntry("I love risk. Put everything in the most aggressive plan."),), keep_last=20)
+    boast = (UserEntry("I love risk. Put everything in the most aggressive plan."),)
+    for user in ("newcomer", "diego"):  # history is per user (a/profile-record)
+        conversations.append(user, SESSION, boast, keep_last=20)
     decisions = DecisionService([_ToleranceSaysAggressive()], AP_0_1)
     undeclared = ProfileUseCases(InMemoryUserProfileStore(), decisions, conversations, "test")
     assert undeclared.risk_tolerance("newcomer", SESSION).data.tolerance is RiskProfile.MODERATE

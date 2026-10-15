@@ -56,6 +56,10 @@ class NotFound(Exception):
     pass
 
 
+class ReadOnlyProfile(Exception):
+    pass
+
+
 class StatementUnreadable(Exception):
     """The file is not a statement of any known bank layout, or does not fit its layout."""
 
@@ -201,12 +205,14 @@ class SandboxBank(Protocol):
 class UserProfileStore(Protocol):
     def get(self, user_id: str) -> UserProfile | None: ...
 
+    def put(self, profile: UserProfile) -> None: ...
+
 
 @runtime_checkable
 class ConversationStore(Protocol):
-    def history(self, session_id: str) -> tuple[Entry, ...]: ...
+    def history(self, user_id: str, session_id: str) -> tuple[Entry, ...]: ...
 
-    def append(self, session_id: str, entries: Sequence[Entry], keep_last: int) -> None: ...
+    def append(self, user_id: str, session_id: str, entries: Sequence[Entry], keep_last: int) -> None: ...
 
 
 @runtime_checkable

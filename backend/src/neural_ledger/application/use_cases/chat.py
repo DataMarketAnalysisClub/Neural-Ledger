@@ -104,8 +104,8 @@ class ChatUseCase:
             )
         )
 
-    def _short_reply(self, session_id: str, user_text: str, reply: str, cls: Classification, *, blocked: str | None = None) -> ChatReply:
-        self._conversations.append(session_id, (UserEntry(user_text), AssistantEntry(reply)), self._policy.history_limit)
+    def _short_reply(self, session_id: str, user_id: str, user_text: str, reply: str, cls: Classification, *, blocked: str | None = None) -> ChatReply:
+        self._conversations.append(user_id, session_id, (UserEntry(user_text), AssistantEntry(reply)), self._policy.history_limit)
         return ChatReply(
             session_id, reply, cls.intent.value, cls.confidence, cls.gate.value, cls.answered_by, None,
             (), (), (), None, False, None, (), blocked,
@@ -118,13 +118,13 @@ class ChatUseCase:
 
         if cls.injection_flagged:
             self._record(session_id, user_id, AuditKind.INJECTION_FLAGGED, cls, blocked_reason=BlockReason.INJECTION_SUSPECTED.value)
-            return self._short_reply(session_id, text, narration.REFUSAL_INJECTION, cls, blocked=BlockReason.INJECTION_SUSPECTED.value)
+            return self._short_reply(session_id, user_id, text, narration.REFUSAL_INJECTION, cls, blocked=BlockReason.INJECTION_SUSPECTED.value)
         if cls.intent is Intent.OUT_OF_SCOPE and cls.gate is Gate.PROCEED:
             self._record(session_id, user_id, AuditKind.OUT_OF_SCOPE, cls)
-            return self._short_reply(session_id, text, narration.REFUSAL_SCOPE, cls)
+            return self._short_reply(session_id, user_id, text, narration.REFUSAL_SCOPE, cls)
         if cls.gate is Gate.CLARIFY:
             self._record(session_id, user_id, AuditKind.CLARIFICATION_REQUESTED, cls)
-            return self._short_reply(session_id, text, narration.CLARIFY, cls)
+            return self._short_reply(session_id, user_id, text, narration.CLARIFY, cls)
 
         max_tier = max_tier_for(cls.gate)
         allow_stateful = cls.gate is Gate.PROCEED
@@ -134,7 +134,7 @@ class ChatUseCase:
         system = SYSTEM_PROMPT + context_block(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         tools = self._registry.specs(max_tier, allow_stateful)
 
-        history = self._conversations.history(session_id)
+        history = self._conversations.history(user_id, session_id)
         entries: list[Entry] = [*history, UserEntry(text)]
         outcomes: list[ToolOutcome] = []
         final_text: str | None = None
@@ -206,7 +206,7 @@ class ChatUseCase:
             turn_entries[-1] = AssistantEntry(final_text)
         else:
             turn_entries.append(AssistantEntry(final_text))
-        self._conversations.append(session_id, turn_entries, self._policy.history_limit)
+        self._conversations.append(user_id, session_id, turn_entries, self._policy.history_limit)
 
         proposals = [o.proposal for o in outcomes if o.proposal is not None]
         blocked = next((o.blocked_reason for o in outcomes if o.blocked_reason), None)

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/profile/questionnaire_submission.schema.json",
+  "title": "QuestionnaireSubmission",
+  "description": "Request body of POST /v1/profile/questionnaire. Only the current version is accepted, with every question answered exactly once by a known option. The domain enforces the same rules and answers INVALID_INPUT (field 'version' or 'answers'); the tolerance is never taken from the client.",
+  "type": "object",
+  "required": ["version", "answers"],
+  "properties": {
+    "version": {"const": "pq-0.1"},
+    "answers": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/answer"},
+      "allOf": [
+        {"contains": {"properties": {"question_id": {"const": "set_aside"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"question_id": {"const": "tight_month"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"question_id": {"const": "goal_vs_room"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"question_id": {"const": "surprise"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"question_id": {"const": "habit"}}}, "minContains": 1, "maxContains": 1}
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "answer": {
+      "type": "object",
+      "required": ["question_id", "option_id"],
+      "properties": {
+        "question_id": {"type": "string"},
+        "option_id": {"type": "string"}
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {"properties": {"question_id": {"const": "set_aside"}, "option_id": {"enum": ["small_part", "about_half", "most"]}}},
+        {"properties": {"question_id": {"const": "tight_month"}, "option_id": {"enum": ["pause", "keep_cut_elsewhere", "keep_as_intended"]}}},
+        {"properties": {"question_id": {"const": "goal_vs_room"}, "option_id": {"enum": ["spending_room", "balance", "goal_on_time"]}}},
+        {"properties": {"question_id": {"const": "surprise"}, "option_id": {"enum": ["very_stressed", "uneasy_but_ok", "calm"]}}},
+        {"properties": {"question_id": {"const": "habit"}, "option_id": {"enum": ["never_or_stopped", "sometimes", "regularly"]}}}
+      ]
+    }
+  },
+  "examples": [
+    {
+      "version": "pq-0.1",
+      "answers": [
+        {"question_id": "set_aside", "option_id": "about_half"},
+        {"question_id": "tight_month", "option_id": "keep_cut_elsewhere"},
+        {"question_id": "goal_vs_room", "option_id": "balance"},
+        {"question_id": "surprise", "option_id": "uneasy_but_ok"},
+        {"question_id": "habit", "option_id": "sometimes"}
+      ]
+    }
+  ]
+}
