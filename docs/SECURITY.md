@@ -8,7 +8,7 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 |---|---|---|---|
 | Money in the sandbox wallet | The model (or injected text) moves money | Only T2 can execute, and only with a user-confirmed, signed, single-use, unexpired authorization whose terms are re-read from storage | Fixed tool registry; T3 names blocked; destination allowlist checked by the gate and again by the bank |
 | Truthfulness of advice | The model invents or bends numbers | Deterministic verifier: every number must match a fact; warnings must be mentioned | Reply replaced by deterministic narration; `VERIFICATION_FAILED` audited |
-| Suitability | Over-aggressive savings despite low capacity | Permitted profile = min(tolerance, capacity), recomputed server-side | Hard rules H1–H5 as tests |
+| Suitability | Over-aggressive savings despite low capacity | Permitted profile = min(tolerance, capacity), recomputed server-side | Hard rules H1–H5 and U checks as tests (see "Suitability") |
 | Integrity of evidence | Audit log edited after the fact | Hash chain (`prev_hash`, `event_hash`) | `GET /v1/audit/verify`; execution fails closed if audit writes fail |
 | Authorization integrity | Stored terms edited after confirmation | HMAC-SHA256 with a server secret (not stored in the DB) | Exact canonical comparison of requested terms |
 | Agent scope | Self-escalation (confirming for the user, granting itself permissions) | No confirm tool; the confirm endpoint requires the user actor | T3 audit events |
@@ -102,6 +102,35 @@ The routes in G02–G05 are proposals; change the test with the API design.
 - **Children's data (art. 16 quáter).** There is no age check. Personas and uploads are assumed to be adults.
 
 **Development tooling.** `npx ecc-agentshield scan` on the repository (2026-10-14) graded the agent configuration B (79/100). All 13 findings were about `CLAUDE.md` (missing prompt-defense wording, file group-writable). After a "Working safely" section in `CLAUDE.md` and a local `chmod 600` (file modes other than the executable bit are not tracked by git, so each checkout needs its own), the re-scan graded A (100/100) with no findings.
+
+## Suitability (hard rules H1–H5 and U checks)
+
+`backend/tests/suitability/test_suitability.py` (`make test-suitability`) checks that savings and purchase advice fits the user's financial situation and declared tolerance, and that neither the user's nor the model's say-so can change that. H1–H5 are the Financial Core's hard rules (`docs/FINANCIAL_CORE.md` 4.8). The U checks cover the rest of the suitability process. Gaps (UG) are strict xfails, as in the compliance map. `test_every_suitability_test_is_in_the_results_table` fails if a test is missing from this page.
+
+**Norms.** **Ley 19.496** art. 3 b) (truthful, timely information) is binding. The suitability benchmark is international good practice: **MiFID II** art. 25(2), **Delegated Regulation (EU) 2017/565** art. 54, and **ESMA's suitability guidelines** ([ESMA35-43-3172, 2022](https://prod.finanssivalvonta.fi/globalassets/en/publications/supervision-releases/2023/esma35-43-3172_guidelines_on_certain_aspects_of_the_mifid_ii_suitability_requirements.pdf)): GL1 informing the client, GL3 necessary information, GL4 reliable information without undue self-assessment, GL5 keeping it up to date, GL8 ability to bear losses, GL9 alternatives, GL12 records. In Chile, **Ley 21.521** (Fintec) regulates investment advice through CMF registration (NCG 502; NCG 503 accredits the advisor's own *idoneidad*). A savings and budgeting copilot is not investment advice today; review this if the product starts recommending financial instruments.
+
+**Results** (`make test-suitability`, 2026-10-14, offline): 18 passed (the 17 checks below and the table check), 3 xfailed (the gaps), 0 failed.
+
+| ID | Check | Norm | Result | Evidence |
+|---|---|---|---|---|
+| `H1` | Reserve below its minimum: the whole rule goes to the reserve, no goal is funded, H1 is reported (plan, permitted profile, facts) | ESMA GL8 | Pass | Camila with no reserve, all three profiles |
+| `H2` | No start month keeps the conservative path above the floor: no rule, H2 reported, and a zero plan cannot be proposed | ESMA GL8 | Pass | Diego, all profiles; proposal refused with `INVALID_INPUT` |
+| `H3` | Near-term goals are funded before the reserve top-up, earliest deadline first; goals beyond the window get nothing | ESMA GL8 | Pass | Three goals at 2, 4 and 18 months |
+| `H4` | Unknown state (no income, no spend history, under 6 months) gives no advice: every advice tool answers `INSUFFICIENT_DATA` with no facts | ESMA GL3; Del. Reg. art. 54 | Pass | 3 broken models × 6 tools |
+| `H5` | No sized rule pushes the conservative path below the floor, with or without a purchase in cuotas | ESMA GL8 | Pass | 26 models, 156 plans, 69 with a rule (87 H2, 6 H1) |
+| `U01` | Permitted profile = the lower of tolerance and capacity, for every tolerance × capacity pair, with the three facts | ESMA GL8; Del. Reg. art. 54(2) | Pass | 3 capacity bands × 3 tolerances |
+| `U02` | A plan is never sized above the permitted profile; a cap is a `PROFILE_CAPPED` warning naming the permitted profile; unknown profiles are refused | ESMA GL8; Ley 19.496 art. 3 b) | Pass | 3 bands × 3 requested profiles |
+| `U03` | Language never raises a declared tolerance; undeclared, it is capped at moderate; a model asking for an aggressive plan gets the permitted one | ESMA GL4, GL1 para. 14 | Pass | Fooled decision model; scripted model through chat |
+| `U04` | `FITS_ALL` only when the conservative path holds; every alternative offered fits when re-simulated and is no larger; alternatives come only with a no | ESMA GL8, GL9; Ley 19.496 art. 3 b) | Pass | 40 purchases (3 fit all, 14 typical only, 3 breach all, 20 baseline breach), 33 alternatives re-checked |
+| `U05` | The same state gives the same plan and snapshot id, and the proposal's audit event points at that snapshot | ESMA GL12; ADR-013 | Pass | Camila |
+| `U06` | A rule is at most what goals and reserve need and the profile's share of the lowest month, sums to its allocation, is rounded down to 10,000, and is zero only with H2 | ESMA GL8; Ley 19.496 art. 3 b) | Pass | 26 models × 3 profiles |
+| `UG01` | A plan states the tolerance, capacity and binding factor behind it (a suitability report) | Del. Reg. art. 54(12); ESMA GL1; Ley 19.496 art. 3 b) | Gap (xfail) | Plan facts carry neither tolerance, capacity nor binding factor |
+| `UG02` | A proposal from a superseded financial state is refused | ESMA GL5 | Gap (xfail) | A plan computed before a new statement is still `PROPOSED` |
+| `UG03` | An off-track near-term goal is a warning the agent must mention (H3 as an emitted rule) | ESMA GL8; Ley 19.496 art. 3 b) | Gap (xfail) | `goal_status.on_track` is false with no warning |
+
+**Related evidence elsewhere:** S09 (an aggressive request despite low capacity is capped) and S08 (the verifier rejects "safe money" and contradictions) in `tests/security`. The two strict xfails in `tests/property/test_plan_counterexamples.py` show that `size_plan` is not monotone in profile or purchases (ADR-014, team decision pending). That is a known suitability caveat: a higher profile can give a smaller rule.
+
+**Suggested fixes.** UG01: add `profile.tolerance`, `profile.capacity` and `capacity.binding_factor` to `plan_facts`. UG02: put the model's `source_version` in the stored plan and refuse a proposal when it differs from the current one. UG03: emit an `H3` hard rule and a `GOAL_OFF_TRACK` caveat whose `must_mention` names the goal. All three change the financial engine's outputs, so they need Role A's approval and a `params_version` decision.
 
 ## Known risks (residual)
 

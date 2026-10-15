@@ -1,4 +1,4 @@
-.PHONY: install test test-all test-property test-golden test-security demo demo-ledger ledgers backtest evidence api up
+.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest evidence api up
 
 PY ?= python3
 
@@ -19,6 +19,9 @@ test-golden:
 
 test-security:
 	cd backend && $(PY) -m pytest -m security -v
+
+test-suitability:   ## hard rules H1-H5 and the suitability checks (docs/SECURITY.md, "Suitability")
+	cd backend && $(PY) -m pytest -m suitability -v
 
 demo:               ## run the six-scene demo arc offline in the terminal
 	cd backend && NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo
