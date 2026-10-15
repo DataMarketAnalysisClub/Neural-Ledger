@@ -14,6 +14,7 @@ const SimulatorPage = lazy(() => import("@/features/simulator/SimulatorPage").th
 const PlanPage = lazy(() => import("@/features/plan/PlanPage").then((m) => ({ default: m.PlanPage })));
 const CopilotPage = lazy(() => import("@/features/copilot/CopilotPage").then((m) => ({ default: m.CopilotPage })));
 const AuditPage = lazy(() => import("@/features/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
+const ProfilePage = lazy(() => import("@/features/profile/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 const StatementsPage = lazy(() => import("@/features/statements/StatementsPage").then((m) => ({ default: m.StatementsPage })));
 import "./index.css";
 
@@ -44,6 +45,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/copilot" element={<CopilotPage />} />
               <Route path="/audit" element={<AuditPage />} />
               <Route path="/statements" element={<StatementsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </Suspense>
