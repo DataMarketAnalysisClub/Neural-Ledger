@@ -28,7 +28,8 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A new LLM provider | `adapters/outbound/llm/<provider>.py` implementing `LanguageModel` | a fake-server test, plus manual |
 | The Jev integration | `adapters/outbound/decision/jev.py` | `tests/security` (S10) |
 | A new database | `adapters/outbound/persistence/<db>.py` | add it to the `stores` fixture in `tests/adapters` |
-| An HTTP endpoint | `adapters/inbound/http/app.py` (thin: parse → use case → `to_primitive`) | `tests/http` |
+| An HTTP endpoint | `adapters/inbound/http/app.py` (thin: parse → use case → `to_primitive`); take the user from `user(request)`: session identity in accounts mode, header/default persona in demo mode. In accounts mode every route needs a session unless it is listed in `PUBLIC_ROUTES` (`adapters/inbound/http/identity.py`) | `tests/http` (the route inventory in `test_auth_api.py` fails if a new route is public by accident) |
+| A write that must be audited (account, session or profile state) | a method on the writes adapters (`InMemoryAccountWrites`, `SqliteAccountWrites`) behind a narrow port (`AccountWrites`, `ProfileWrites`) that commits the state and its audit drafts together; SQLite code inside `_account_transaction` uses the raw connection only (the store and audit methods take `db.lock`, which is not reentrant) | failure injection in `tests/application/test_*_integrity.py`, memory and SQLite |
 | A config switch | `bootstrap/config.py` + `.env.example` + `container.py` | — |
 | A new bank statement layout (cartola) | a `Bank` subclass in `adapters/outbound/statements/banks/` (recipe below) | `tests/adapters/test_banks.py` with a synthetic sample |
 | A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
@@ -158,6 +159,8 @@ classDiagram
 | User or agent | Execute a confirmed action | T2 | `POST /v1/actions/execute`, tool `execute_sandbox_action` |
 | Agent | Anything in T3 | T3 | always blocked and audited |
 | Judge or user | Inspect the audit log and verify the chain | T0 | `GET /v1/audit`, `/v1/audit/verify` |
+| Visitor (accounts mode) | Sign up, sign in, sign out, open a demo persona | — | `POST /v1/auth/signup`, `/signin`, `/signout`, `/demo-session`; `GET /v1/me` (HTTP only, no agent tool) |
+| User (accounts mode, own account) | Edit name and language; answer the risk questionnaire | — | `PUT /v1/profile`, `POST /v1/profile/questionnaire` (each atomic with its `PROFILE_UPDATED` event; personas are read-only) |
 
 ## Runtime modes
 
@@ -167,5 +170,9 @@ classDiagram
 | Live | `NL_LLM=anthropic` (or another provider), `NL_DECISION_CHAIN=jev,rules` | The real demo; falls back to offline pieces on outages |
 | Azure redaction | `NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY` | Local tests with the team's key only: it sends statement text to Microsoft (`docs/SECURITY.md`) |
 | Deterministic | `NL_CLOCK=fixed`, `NL_IDS=sequential` | Reproducible recordings and evidence |
+| Demo identity (default) | `NL_AUTH=demo` | Local runs, tests, the recorded demo: `X-User-Id` header (or `NL_PERSONA`), read-only profiles, no auth routes. Never expose it publicly |
+| Accounts | `NL_AUTH=accounts`, `NL_APP_ORIGINS`, `NL_COOKIE_SECURE`, `NL_DEMO_PERSONAS` | `docker compose up` and any deployment: cookie sessions, header rejected, Origin checked, profile writes for account users |
 
-`GET /health` reports the mode, so the demo never runs in the wrong one by accident.
+`GET /health` reports the mode and the identity mode (`auth`, `demo_personas`), so the demo never runs in the wrong one by accident.
+
+**Wiring accounts mode** (`bootstrap/container.py`): personas always sit in a read-only `PersonaOverlayProfileStore` in front of the writable store (`InMemoryUserProfileStore` or `SqliteUserProfileStore`). In accounts mode the container builds exactly one writes object per store set (`InMemoryAccountWrites` over the same account, session, profile and audit objects every use case uses, or `SqliteAccountWrites` over the same `SqliteDatabase`), before any request, and hands it to both `AccountUseCases` and `ProfileEditing`. Never build a second `InMemoryAccountWrites` over the same stores: it re-points their locks.
