@@ -14,6 +14,7 @@ import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
 import type { PurchaseSimulation } from "@/contracts/outputs/purchase_simulation";
 import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
+import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
 export type Scenario = "typical" | "conservative" | "stress";
@@ -115,6 +116,11 @@ export function useCommitments() {
 export function useCapacity() {
   const { identity } = usePersona();
   return useQuery({ queryKey: [identity.user_id, "capacity"], queryFn: () => requestEnvelope<CapacityAssessment>("/v1/capacity", { identity }) });
+}
+
+export function useUserProfile() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "profile"], queryFn: () => requestEnvelope<ProfileTolerance>("/v1/profile", { identity }) });
 }
 
 export function useSavingsPlan(permittedProfile?: string) {
