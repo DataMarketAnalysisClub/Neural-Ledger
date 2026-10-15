@@ -1,8 +1,8 @@
 """Statement → transaction ledger: classify the charges (port), gate the guesses (domain), store.
 
 The classifier is whatever adapter bootstrap registered; this service only needs one guess per
-charge. A statement is posted only when it reconciles and the classifier answered; otherwise
-nothing reaches the ledger and a warning says why. Re-importing posts again, idempotently, so a
+charge. A statement is posted only when it reconciles, is final (not an unbilled-movements export) and the
+classifier answered; otherwise nothing reaches the ledger and a warning says why. Re-importing posts again, idempotently, so a
 statement stored while the classifier was unavailable is posted once it is back.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...domain.ledger.categorization import post_statement
+from ...domain.ledger.categorization import classifiable, post_statement
 from ...domain.shared.envelope import Caveat
 from ...domain.statements.model import StoredStatement
 from ..ports import ClassifierUnavailable, TransactionClassifier, TransactionStore
@@ -20,7 +20,7 @@ from ..ports import ClassifierUnavailable, TransactionClassifier, TransactionSto
 class PostingResult:
     posted: int  # transactions this statement contributes to the ledger
     new: int  # of those, stored by this call (0 on a re-import)
-    uncategorized: int  # charges whose category was not accepted
+    uncategorized: int  # charges (classified lines) whose category was not accepted
     classifier: str | None  # None when nothing was posted
     warnings: tuple[Caveat, ...]
 
@@ -38,7 +38,9 @@ class LedgerPosting:
     def post(self, stored: StoredStatement) -> PostingResult:
         if not stored.verified:
             return _not_posted("it does not reconcile, so its amounts are unverified")
-        charges = [line for line in stored.statement.lines if line.amount < 0]
+        if stored.statement.provisional:
+            return _not_posted("it lists unbilled card movements, which the billed statement will add")
+        charges = classifiable(stored)
         try:
             guesses = list(self._classifier.classify([line.description for line in charges]))
         except ClassifierUnavailable as exc:

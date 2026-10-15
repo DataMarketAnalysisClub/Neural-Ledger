@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from ...domain.agent.untrusted import wrap_untrusted
 from ...domain.ledger.categorization import CATEGORIZATION_VERSION, PostedTransaction
-from ...domain.ledger.entities import TransactionKind
+from ...domain.ledger.entities import InstallmentInfo, TransactionKind
 from ...domain.shared.envelope import Envelope, Fact
 from ...domain.shared.hashing import content_id
 from ..ports import TransactionStore
@@ -31,13 +31,23 @@ class TransactionView:
     confidence: float | None
     statement_id: str
     line_index: int
+    installment: InstallmentView | None
+
+
+@dataclass(frozen=True, slots=True)
+class InstallmentView:
+    plan_id: str
+    installment_number: int
+    installment_total: int
+    original_amount: int
+    monthly_rate: float | None
 
 
 @dataclass(frozen=True, slots=True)
 class CategoryTotalView:
     category: str
     currency: str
-    spent: int  # positive magnitude of the charges in this category
+    spent: int  # spending: charges and fees less refunds, positive when money went out; income: deposits
     count: int
 
 
@@ -54,8 +64,9 @@ class LedgerUseCases:
 
     def list_transactions(self, user_id: str) -> Envelope[TransactionList]:
         posted = self._transactions.for_user(user_id)
-        spending = _totals(p for p in posted if p.transaction.kind is TransactionKind.PURCHASE)
-        income = _totals(p for p in posted if p.transaction.kind is TransactionKind.INCOME)
+        # Card payments are the holder's own money moving (category "movement"): neither spending nor income.
+        spending = _totals((p for p in posted if p.transaction.kind in SPENDING_KINDS), sign=-1)
+        income = _totals((p for p in posted if p.transaction.kind is TransactionKind.INCOME), sign=1)
         facts = [Fact(f"{user_id}.transactions", len(posted), "count", "transactions in the ledger from imported statements")]
         for t in spending:
             facts.append(Fact(f"{user_id}.spending.{t.currency}.{t.category}", t.spent, t.currency, f"sum of {t.count} charges"))
@@ -70,11 +81,14 @@ class LedgerUseCases:
         )
 
 
-def _totals(posted) -> tuple[CategoryTotalView, ...]:
+SPENDING_KINDS = frozenset({TransactionKind.PURCHASE, TransactionKind.FEE, TransactionKind.REFUND})
+
+
+def _totals(posted, sign: int) -> tuple[CategoryTotalView, ...]:
     sums: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
     for p in posted:
         entry = sums[(p.currency, p.transaction.category)]
-        entry[0] += abs(p.transaction.amount)
+        entry[0] += sign * p.transaction.amount
         entry[1] += 1
     rows = [CategoryTotalView(category, currency, spent, count) for (currency, category), (spent, count) in sums.items()]
     return tuple(sorted(rows, key=lambda r: (r.currency, -r.spent, r.category)))
@@ -95,4 +109,12 @@ def _view(p: PostedTransaction) -> TransactionView:
         confidence=p.confidence,
         statement_id=p.statement_id,
         line_index=p.line_index,
+        installment=_installment(t.installment),
     )
+
+
+def _installment(info: InstallmentInfo | None) -> InstallmentView | None:
+    if info is None:
+        return None
+    rate = float(info.monthly_rate) if info.monthly_rate is not None else None
+    return InstallmentView(info.plan_id, info.installment_number, info.installment_total, info.original_amount, rate)

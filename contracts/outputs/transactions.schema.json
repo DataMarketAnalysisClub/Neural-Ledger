@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/transactions.schema.json",
   "title": "Transactions",
-  "description": "data of GET /v1/transactions: the user's transaction ledger built from verified imported statements, oldest first, with totals. Money is integer minor units of `currency`; charges are negative. Categories are a classifier's guesses, gated to the vocabulary below; merchant text is untrusted.",
+  "description": "data of GET /v1/transactions: the user's transaction ledger built from verified, final imported statements, oldest first, with totals. Money is integer minor units of `currency`; charges are negative. Categories are a classifier's guesses, gated to the vocabulary below; merchant text is untrusted, with personal data replaced at import (ADR-028).",
   "type": "object",
   "required": [
     "transactions",
@@ -26,7 +26,8 @@
           "classifier",
           "confidence",
           "statement_id",
-          "line_index"
+          "line_index",
+          "installment"
         ],
         "properties": {
           "txn_id": {
@@ -34,7 +35,8 @@
           },
           "account_id": {
             "type": "string",
-            "description": "<bank layout code>:<account reference>."
+            "pattern": "^[^:]+:\\*{4}[0-9A-Za-z]{0,4}$",
+            "description": "<bank layout code>:<masked account reference>, e.g. santander_cl_cuentamatica:****3456 (ADR-028)."
           },
           "date": {
             "type": "string",
@@ -48,6 +50,7 @@
           },
           "merchant": {
             "type": "object",
+            "description": "The statement line's description, with personal data replaced at import by placeholders such as [PERSON] (common/redaction.schema.json).",
             "required": [
               "untrusted_text"
             ],
@@ -62,16 +65,19 @@
           "kind": {
             "enum": [
               "purchase",
-              "income"
+              "income",
+              "card_payment",
+              "refund",
+              "fee"
             ],
-            "description": "From the amount's sign; never from a model."
+            "description": "From the statement, never from a model: on a checking account the amount's sign (income or purchase); on a credit card the line's kind as the layout reads it. A card_payment is the holder's own money (category movement) and counts as neither spending nor income."
           },
           "category": {
             "$ref": "#/$defs/category"
           },
           "classifier": {
             "type": "string",
-            "description": "What chose the category: a classifier name with its training-data hash, or \"rule\" for income."
+            "description": "What chose the category: a classifier name with its training-data hash, or \"rule\" for income and card payments."
           },
           "confidence": {
             "type": [
@@ -88,6 +94,45 @@
           "line_index": {
             "type": "integer",
             "minimum": 0
+          },
+          "installment": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Present when the line bills one cuota of a purchase in cuotas.",
+            "required": [
+              "plan_id",
+              "installment_number",
+              "installment_total",
+              "original_amount",
+              "monthly_rate"
+            ],
+            "properties": {
+              "plan_id": {
+                "type": "string"
+              },
+              "installment_number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "installment_total": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "original_amount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "monthly_rate": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "0.0345 = 3,45 % a month, as printed."
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -95,7 +140,7 @@
     },
     "spending": {
       "type": "array",
-      "description": "Charges per currency and category, largest first.",
+      "description": "Purchases and fees less refunds, per currency and category, largest first. Card payments are excluded.",
       "items": {
         "$ref": "#/$defs/total"
       }
@@ -121,6 +166,7 @@
         "entertainment",
         "other",
         "income",
+        "movement",
         "uncategorized"
       ]
     },
@@ -141,8 +187,7 @@
         },
         "spent": {
           "type": "integer",
-          "minimum": 0,
-          "description": "Positive magnitude."
+          "description": "Spending: charges and fees less refunds (negative only if refunds exceed charges). Income: deposits."
         },
         "count": {
           "type": "integer",
