@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { request } from "./client";
+import { ApiError, request } from "./client";
 import { accountsApi } from "./accounts";
 
 beforeEach(() => vi.stubEnv("VITE_ACCOUNTS_MOCK", "true"));
@@ -42,15 +42,107 @@ describe("local accounts mock", () => {
     });
   });
 
-  it("returns an INVALID_INPUT envelope with a field for a rejected profile edit", async () => {
+  it("returns a strict INVALID_INPUT body with a field for a rejected profile edit", async () => {
     await accountsApi.signup({ email: "invalid-name@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester" });
 
-    const update = accountsApi.updateProfile({ display_name: "123", language: "en" });
+    const failure = await accountsApi.updateProfile({ display_name: "123", language: "en" }).then(() => null, (error: unknown) => error);
 
-    await expect(update).rejects.toMatchObject({
-      httpStatus: 422,
-      body: { status: "INVALID_INPUT", params_version: expect.stringMatching(/^mock-/), field: "display_name", facts: [], warnings: [] },
-    });
+    expect(failure).toBeInstanceOf(ApiError);
+    if (failure instanceof ApiError) {
+      expect(failure.httpStatus).toBe(422);
+      expect(failure.body).toEqual({ status: "INVALID_INPUT", field: "display_name", message: expect.any(String) });
+    }
+  });
+
+  it("returns only the contracted session and me fields, with one absolute expiry", async () => {
+    const session = await accountsApi.signup({ email: "shape@example.invalid", password: "synthetic-password", display_name: "Shape Tester", language: "es" });
+
+    const me = await accountsApi.me();
+    const profile = await accountsApi.profile();
+
+    expect(session).toEqual({ user_id: me.user_id, expires_at: expect.any(String) });
+    expect(me).toEqual({ user_id: session.user_id, data_source: "empty", expires_at: session.expires_at });
+    expect(Date.parse(session.expires_at)).toBeGreaterThan(Date.now());
+    expect(profile.data?.language).toBe("es");
+  });
+
+  it.each([
+    { flow: "signup", issue: () => accountsApi.signup({ email: "ttl-signup@example.invalid", password: "synthetic-password", display_name: "TTL Tester" }) },
+    { flow: "signin", issue: async () => {
+      await accountsApi.signup({ email: "ttl-signin@example.invalid", password: "synthetic-password", display_name: "Returning Tester" });
+      await accountsApi.signout();
+      vi.setSystemTime(new Date("2026-10-14T14:00:00Z"));
+      return accountsApi.signin({ email: "ttl-signin@example.invalid", password: "synthetic-password" });
+    } },
+    { flow: "demo-session", issue: () => accountsApi.demoSession("camila") },
+  ])("keeps $flow valid until 12 hours after issuance without sliding on me reads", async ({ issue }) => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+      const session = await issue();
+      const issuedAt = Date.now();
+
+      expect(session.expires_at).toBe(new Date(issuedAt + 12 * 60 * 60 * 1000).toISOString());
+      vi.setSystemTime(new Date(issuedAt + 6 * 60 * 60 * 1000));
+      expect(await accountsApi.me()).toMatchObject({ user_id: session.user_id, expires_at: session.expires_at });
+      vi.setSystemTime(new Date(issuedAt + (11 * 60 + 59) * 60 * 1000));
+      expect(await accountsApi.me()).toMatchObject({ user_id: session.user_id, expires_at: session.expires_at });
+      expect(await accountsApi.me()).toMatchObject({ expires_at: session.expires_at });
+      vi.setSystemTime(new Date(issuedAt + 12 * 60 * 60 * 1000));
+      await expect(accountsApi.me()).rejects.toMatchObject({ httpStatus: 401, body: { status: "UNAUTHENTICATED" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps authentication failures generic and uses the strict error statuses", async () => {
+    await accountsApi.signup({ email: "duplicate@example.invalid", password: "synthetic-password", display_name: "Duplicate Tester" });
+
+    const duplicate = await accountsApi.signup({ email: "duplicate@example.invalid", password: "synthetic-password", display_name: "Duplicate Tester" }).then(() => null, (error: unknown) => error);
+    const missing = await accountsApi.signin({ email: "missing@example.invalid", password: "wrong-password" }).then(() => null, (error: unknown) => error);
+    const malformed = await accountsApi.signin({ email: "malformed", password: "wrong-password" }).then(() => null, (error: unknown) => error);
+
+    expect(duplicate).toBeInstanceOf(ApiError);
+    expect(missing).toBeInstanceOf(ApiError);
+    expect(malformed).toBeInstanceOf(ApiError);
+    if (duplicate instanceof ApiError && missing instanceof ApiError && malformed instanceof ApiError) {
+      expect(duplicate.httpStatus).toBe(409);
+      expect(duplicate.body).toEqual({ status: "EMAIL_TAKEN", message: expect.any(String), field: "email" });
+      expect(missing.httpStatus).toBe(401);
+      expect(missing.body).toEqual({ status: "INVALID_CREDENTIALS", message: expect.any(String) });
+      expect(malformed.body).toEqual(missing.body);
+      expect(JSON.stringify([duplicate.body, missing.body])).not.toContain("@example.invalid");
+    }
+  });
+
+  it("reissues only a session receipt on signin", async () => {
+    const created = await accountsApi.signup({ email: "returning@example.invalid", password: "synthetic-password", display_name: "Returning Tester" });
+    await accountsApi.signout();
+
+    const returned = await accountsApi.signin({ email: "returning@example.invalid", password: "synthetic-password" });
+    const me = await accountsApi.me();
+
+    expect(returned).toEqual({ user_id: created.user_id, expires_at: expect.any(String) });
+    expect(me.expires_at).toBe(returned.expires_at);
+  });
+
+  it("returns no signout body and revokes the mock session", async () => {
+    await accountsApi.signup({ email: "signout@example.invalid", password: "synthetic-password", display_name: "Signout Tester" });
+
+    const signedOut = await accountsApi.signout();
+
+    expect(signedOut).toBeNull();
+    await expect(accountsApi.me()).rejects.toMatchObject({ httpStatus: 401 });
+  });
+
+  it("accepts a single profile-update field without changing the other", async () => {
+    await accountsApi.signup({ email: "partial@example.invalid", password: "synthetic-password", display_name: "First Name" });
+
+    await accountsApi.updateProfile({ language: "es" });
+
+    const profile = await accountsApi.profile();
+    expect(profile.data?.display_name.untrusted_text).toBe("First Name");
+    expect(profile.data?.language).toBe("es");
   });
 
   it("reports missing financial data without manufacturing a successful state", async () => {
@@ -97,11 +189,42 @@ describe("local accounts mock", () => {
     expect(profile.data?.questionnaire).toHaveLength(5);
   });
 
-  it("rejects a write to a demo persona profile", async () => {
+  it("renders persona metadata and permitted capacity without treating it as sample data", async () => {
+    const session = await accountsApi.demoSession("camila");
+
+    const me = await accountsApi.me();
+    const permitted = await accountsApi.permitted("aggressive");
+
+    expect(session).toEqual({ user_id: "camila", expires_at: expect.any(String) });
+    expect(me).toEqual({ user_id: "camila", data_source: "persona", expires_at: session.expires_at });
+    expect(permitted.data).toEqual({ tolerance: "aggressive", capacity: "conservative", permitted: "conservative", hard_rules_triggered: [] });
+  });
+
+  it("rejects a write to a read-only persona profile with a strict auth error", async () => {
     await accountsApi.demoSession("diego");
 
     await expect(accountsApi.updateProfile({ display_name: "Altered", language: "en" })).rejects.toMatchObject({
-      httpStatus: 403, body: { status: "PROFILE_READ_ONLY" },
+      httpStatus: 403, body: { status: "PROFILE_READ_ONLY", message: expect.any(String) },
     });
+    const error = await accountsApi.useSampleData().then(() => null, (failure: unknown) => failure);
+    expect(error).toBeInstanceOf(ApiError);
+    if (error instanceof ApiError) expect(error.body).toEqual({ status: "PROFILE_READ_ONLY", message: expect.any(String) });
+  });
+
+  it("rejects an expired persona session without returning a prior profile", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-14T12:00:00Z"));
+      const session = await accountsApi.demoSession("diego");
+
+      vi.setSystemTime(new Date(session.expires_at));
+
+      await expect(accountsApi.me()).rejects.toMatchObject({
+        httpStatus: 401, body: { status: "UNAUTHENTICATED", message: expect.any(String) },
+      });
+      await expect(accountsApi.profile()).rejects.toMatchObject({ httpStatus: 401 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
