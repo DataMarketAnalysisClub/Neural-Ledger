@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from ....application.ports import IdCollision
 from ....domain.actions.terms import (
     ActionTerms,
     Authorization,
@@ -42,6 +44,7 @@ from ....domain.statements.model import (
     StatementSummary,
     StoredStatement,
 )
+from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import QuestionnaireAnswer, UserProfile
 
 _SCHEMA = """
@@ -88,6 +91,19 @@ CREATE TABLE IF NOT EXISTS savings_rules (
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY,
     payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_accounts (
+    user_id     TEXT PRIMARY KEY,
+    email       TEXT NOT NULL UNIQUE,
+    payload     TEXT NOT NULL,
+    sample_data INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    session_ref TEXT PRIMARY KEY,
+    token_hash  TEXT NOT NULL UNIQUE,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    revoked_at  TEXT
 );
 """
 
@@ -136,6 +152,95 @@ class SqliteUserProfileStore:
                 "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
                 (profile.user_id, json.dumps(to_primitive(profile))),
             )
+
+
+def _account_from(payload: dict, sample_data: int) -> UserAccount:
+    return UserAccount(
+        user_id=payload["user_id"],
+        email=payload["email"],
+        password_hash=payload["password_hash"],
+        created_at=datetime.fromisoformat(payload["created_at"]),
+        sample_data=bool(sample_data),
+    )
+
+
+def _account_row(account: UserAccount) -> tuple[str, str, str, int]:
+    payload = to_primitive(account)
+    payload.pop("sample_data", None)
+    return account.user_id, account.email, json.dumps(payload), int(account.sample_data)
+
+
+class SqliteUserAccountStore:
+    """Holds emails and password hashes: the database file stays out of the repository (var/, *.db)."""
+
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, account: UserAccount) -> bool:
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "INSERT OR IGNORE INTO user_accounts (user_id, email, payload, sample_data) VALUES (?, ?, ?, ?)",
+                _account_row(account),
+            )
+            return cursor.rowcount == 1
+
+    def get(self, user_id: str) -> UserAccount | None:
+        row = self._db.fetchone("SELECT payload, sample_data FROM user_accounts WHERE user_id = ?", (user_id,))
+        return _account_from(json.loads(row[0]), row[1]) if row else None
+
+    def by_email(self, email: str) -> UserAccount | None:
+        row = self._db.fetchone("SELECT payload, sample_data FROM user_accounts WHERE email = ?", (email,))
+        return _account_from(json.loads(row[0]), row[1]) if row else None
+
+    def set_sample_data(self, user_id: str, enabled: bool) -> bool:
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "UPDATE user_accounts SET sample_data = ? WHERE user_id = ?", (int(enabled), user_id)
+            )
+            return cursor.rowcount == 1
+
+
+def _session_from(payload: dict, revoked_at: str | None) -> Session:
+    return Session(
+        session_ref=payload["session_ref"],
+        user_id=payload["user_id"],
+        token_hash=payload["token_hash"],
+        created_at=datetime.fromisoformat(payload["created_at"]),
+        expires_at=datetime.fromisoformat(payload["expires_at"]),
+        revoked_at=datetime.fromisoformat(revoked_at) if revoked_at else None,
+    )
+
+
+def _session_row(session: Session) -> tuple[str, str, str, str, str | None]:
+    payload = to_primitive(session)
+    payload.pop("revoked_at", None)
+    revoked_at = session.revoked_at.isoformat() if session.revoked_at else None
+    return session.session_ref, session.token_hash, session.user_id, json.dumps(payload), revoked_at
+
+
+class SqliteSessionStore:
+    """Rows are keyed by the token's sha256 digest; the token itself is never written."""
+
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def add(self, session: Session) -> None:
+        with self._db.lock:
+            self._db.connection.execute(
+                "INSERT INTO sessions (session_ref, token_hash, user_id, payload, revoked_at) VALUES (?, ?, ?, ?, ?)",
+                _session_row(session),
+            )
+
+    def by_token_hash(self, token_hash: str) -> Session | None:
+        row = self._db.fetchone("SELECT payload, revoked_at FROM sessions WHERE token_hash = ?", (token_hash,))
+        return _session_from(json.loads(row[0]), row[1]) if row else None
+
+    def revoke(self, session_ref: str, at: datetime) -> bool:
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE session_ref = ? AND revoked_at IS NULL", (at.isoformat(), session_ref)
+            )
+            return cursor.rowcount == 1
 
 
 def _proposal_from(payload: dict) -> Proposal:
@@ -414,6 +519,117 @@ class SqliteActionRepository:
         )
 
 
+def _append_audit(conn: sqlite3.Connection, draft: AuditDraft) -> AuditEvent:
+    row = conn.execute("SELECT sequence, event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+    sequence, prev = (row[0] + 1, row[1]) if row else (1, GENESIS_HASH)
+    event = seal(draft, sequence, prev)
+    conn.execute(
+        "INSERT INTO audit_events (sequence, event_id, session_id, prev_hash, event_hash, record) VALUES (?, ?, ?, ?, ?, ?)",
+        (sequence, draft.event_id, draft.session_id, prev, event.event_hash, json.dumps(event.to_record())),
+    )
+    return event
+
+
+@contextmanager
+def _account_transaction(db: SqliteDatabase) -> Iterator[sqlite3.Connection]:
+    with db.lock:
+        conn = db.connection
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+            conn.execute("COMMIT")
+        except BaseException:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+            raise
+
+
+class SqliteAccountWrites:
+    def __init__(self, db: SqliteDatabase) -> None:
+        self._db = db
+
+    def register(self, account: UserAccount, profile: UserProfile, session: Session, events: Sequence[AuditDraft]) -> bool:
+        if profile.user_id != account.user_id or session.user_id != account.user_id or any(
+            event.user_id != account.user_id for event in events
+        ):
+            raise ValueError("account ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            if conn.execute("SELECT 1 FROM user_accounts WHERE email = ?", (account.email,)).fetchone():
+                return False
+            if (
+                conn.execute("SELECT 1 FROM user_accounts WHERE user_id = ?", (account.user_id,)).fetchone()
+                or conn.execute("SELECT 1 FROM user_profiles WHERE user_id = ?", (account.user_id,)).fetchone()
+            ):
+                raise IdCollision("generated identifier collision")
+            self._check_session_and_events(conn, session, events)
+            conn.execute(
+                "INSERT INTO user_accounts (user_id, email, payload, sample_data) VALUES (?, ?, ?, ?)", _account_row(account)
+            )
+            conn.execute(
+                "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?)",
+                (profile.user_id, json.dumps(to_primitive(profile))),
+            )
+            conn.execute(
+                "INSERT INTO sessions (session_ref, token_hash, user_id, payload, revoked_at) VALUES (?, ?, ?, ?, ?)",
+                _session_row(session),
+            )
+            for event in events:
+                _append_audit(conn, event)
+            return True
+
+    def open_session(self, session: Session, events: Sequence[AuditDraft]) -> None:
+        with _account_transaction(self._db) as conn:
+            self._check_session_and_events(conn, session, events)
+            conn.execute(
+                "INSERT INTO sessions (session_ref, token_hash, user_id, payload, revoked_at) VALUES (?, ?, ?, ?, ?)",
+                _session_row(session),
+            )
+            for event in events:
+                _append_audit(conn, event)
+
+    def close_session(self, session: Session, at: datetime, events: Sequence[AuditDraft]) -> bool:
+        with _account_transaction(self._db) as conn:
+            cursor = conn.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE session_ref = ? AND token_hash = ? AND revoked_at IS NULL",
+                (at.isoformat(), session.session_ref, session.token_hash),
+            )
+            if cursor.rowcount == 0:
+                return False
+            self._check_events(conn, events)
+            for event in events:
+                _append_audit(conn, event)
+            return True
+
+    def set_sample_data(self, user_id: str, enabled: bool, events: Sequence[AuditDraft]) -> bool:
+        with _account_transaction(self._db) as conn:
+            cursor = conn.execute(
+                "UPDATE user_accounts SET sample_data = ? WHERE user_id = ?", (int(enabled), user_id)
+            )
+            if cursor.rowcount == 0:
+                return False
+            self._check_events(conn, events)
+            for event in events:
+                _append_audit(conn, event)
+            return True
+
+    @staticmethod
+    def _check_events(conn: sqlite3.Connection, events: Sequence[AuditDraft]) -> None:
+        ids = [event.event_id for event in events]
+        if len(ids) != len(set(ids)) or any(
+            conn.execute("SELECT 1 FROM audit_events WHERE event_id = ?", (event_id,)).fetchone()
+            for event_id in ids
+        ):
+            raise IdCollision("generated identifier collision")
+
+    @classmethod
+    def _check_session_and_events(cls, conn: sqlite3.Connection, session: Session, events: Sequence[AuditDraft]) -> None:
+        if (
+            conn.execute("SELECT 1 FROM sessions WHERE session_ref = ? OR token_hash = ?", (session.session_ref, session.token_hash)).fetchone()
+        ):
+            raise IdCollision("generated identifier collision")
+        cls._check_events(conn, events)
+
+
 class SqliteAuditLog:
     def __init__(self, db: SqliteDatabase) -> None:
         self._db = db
@@ -423,13 +639,7 @@ class SqliteAuditLog:
         with self._db.lock:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                row = conn.execute("SELECT sequence, event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
-                sequence, prev = (row[0] + 1, row[1]) if row else (1, GENESIS_HASH)
-                event = seal(draft, sequence, prev)
-                conn.execute(
-                    "INSERT INTO audit_events (sequence, event_id, session_id, prev_hash, event_hash, record) VALUES (?, ?, ?, ?, ?, ?)",
-                    (sequence, draft.event_id, draft.session_id, prev, event.event_hash, json.dumps(event.to_record())),
-                )
+                event = _append_audit(conn, draft)
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
