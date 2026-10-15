@@ -114,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const signout = useMutation({ mutationFn: auth.signout });
   const isAccount = auth.mode === "accounts";
   const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
-  const showData = !isAccount || (auth.me?.data_source === "sample" && !isMock);
+  const showData = !isAccount || (!isMock && (auth.me?.data_source === "sample" || auth.me?.data_source === "persona"));
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr]">
       <a

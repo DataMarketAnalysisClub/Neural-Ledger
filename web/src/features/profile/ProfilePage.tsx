@@ -39,12 +39,12 @@ function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
 export function ProfilePage() {
   const auth = useAuth();
   const { identity } = usePersona();
-  const readOnly = auth.me?.user_id === "camila" || auth.me?.user_id === "diego";
+  const readOnly = auth.me?.data_source === "persona";
   const profile = useQuery({ queryKey: [identity.user_id, "profile"], queryFn: accountsApi.profile });
   const permitted = useQuery({
     queryKey: [identity.user_id, "profile-permitted", profile.data?.data?.declared_tolerance ?? "conservative", auth.me?.data_source],
     queryFn: () => accountsApi.permitted(profile.data?.data?.declared_tolerance ?? "conservative"),
-    enabled: auth.me?.data_source === "sample" && Boolean(profile.data?.data),
+    enabled: (auth.me?.data_source === "sample" || auth.me?.data_source === "persona") && Boolean(profile.data?.data),
   });
   const sample = useMutation({ mutationFn: accountsApi.useSampleData, onSuccess: () => { void auth.refreshMe(); } });
 
