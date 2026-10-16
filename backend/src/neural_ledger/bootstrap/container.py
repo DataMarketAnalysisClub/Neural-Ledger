@@ -175,6 +175,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         decision_chain=decisions.chain,
         pii_detector=redactor.detector,
         clock=clock,
+        persistence=s.persistence,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source)
 
