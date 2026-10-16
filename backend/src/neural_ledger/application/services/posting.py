@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...domain.ledger.categorization import classifiable, post_statement
+from ...domain.ledger.categorization import RULE, classifiable, post_statement
 from ...domain.shared.envelope import Caveat
 from ...domain.statements.model import StoredStatement
 from ..ports import ClassifierUnavailable, TransactionClassifier, TransactionStore
@@ -55,4 +55,6 @@ class LedgerPosting:
         if uncategorized:
             message = f"{uncategorized} of {len(charges)} charges have no category: the classifier was not confident enough."
             warnings = (Caveat("UNCATEGORIZED_SPENDING", message, ("no category", "uncategorized")),)
-        return PostingResult(len(posted), new, uncategorized, self._classifier.name, warnings)
+        # The classifiers that actually answered (a fallback chain names only the one that did), else the configured one.
+        answered = "+".join(sorted({p.classifier for p in posted if p.classifier != RULE})) or self._classifier.name
+        return PostingResult(len(posted), new, uncategorized, answered, warnings)

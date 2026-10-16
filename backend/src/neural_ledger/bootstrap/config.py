@@ -46,7 +46,7 @@ class Settings:
     cors_origins: tuple[str, ...] = ("*",)
     rate_limit: bool = True  # G07: 429 over the per-caller and per-IP budgets in adapters/inbound/http/rate_limit.py
     ocr_model_dir: str | None = None  # EasyOCR weights; None = ~/.EasyOCR/model (scans and photos only)
-    classifier: str = "naive_bayes"  # spending categories for imported statements; see CLASSIFIERS in container.py
+    classifiers: tuple[str, ...] = ("naive_bayes",)  # spending categories, tried in order, e.g. ("jev", "naive_bayes"); see CLASSIFIERS
     pii_detector: str = "none"  # none | azure: a second layer after the redaction rules; see DETECTORS in container.py
     azure_language_endpoint: str | None = None  # e.g. https://<resource>.cognitiveservices.azure.com
     azure_language_api_key: str | None = None
@@ -69,7 +69,7 @@ class Settings:
 
     @property
     def mode(self) -> str:
-        offline = self.llm == "scripted" and all(m == "rules" for m in self.decision_chain)
+        offline = self.llm == "scripted" and all(m == "rules" for m in self.decision_chain) and "jev" not in self.classifiers
         return "offline" if offline else "live"
 
     @classmethod
@@ -81,6 +81,7 @@ class Settings:
             return value if value not in (None, "") else default
 
         chain = tuple(part.strip() for part in get("NL_DECISION_CHAIN", "rules").split(",") if part.strip())
+        classifiers = tuple(part.strip() for part in get("NL_CLASSIFIER", "naive_bayes").split(",") if part.strip())
         return cls(
             persona=get("NL_PERSONA", cls.persona),
             model_source=get("NL_MODEL_SOURCE", cls.model_source),
@@ -103,7 +104,7 @@ class Settings:
             cors_origins=tuple(o.strip() for o in get("NL_CORS_ORIGINS", "*").split(",")),
             rate_limit=get("NL_RATE_LIMIT", "on").lower() not in ("off", "false", "0"),
             ocr_model_dir=e.get("NL_OCR_MODEL_DIR") or None,
-            classifier=get("NL_CLASSIFIER", cls.classifier),
+            classifiers=classifiers or cls.classifiers,
             pii_detector=get("NL_PII_DETECTOR", cls.pii_detector),
             azure_language_endpoint=e.get("AZURE_LANGUAGE_ENDPOINT") or None,
             azure_language_api_key=e.get("AZURE_LANGUAGE_API_KEY") or None,

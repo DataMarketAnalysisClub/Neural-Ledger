@@ -16,10 +16,12 @@ import type { Statements } from "@/contracts/outputs/statements";
 import type { Statement } from "@/contracts/outputs/statement";
 import type { StatementImport } from "@/contracts/outputs/statement_import";
 import type { Transactions } from "@/contracts/outputs/transactions";
+import type { UserProfile } from "@/contracts/outputs/user_profile";
+import type { Questionnaire } from "@/contracts/profile/questionnaire";
 import { request, requestEnvelope, type ActionOutcome, type AuditEvent, type ChatReply, type PersonaId } from "./client";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
-export type { Statements, Statement, StatementImport, Transactions };
+export type { Statements, Statement, StatementImport, Transactions, UserProfile, Questionnaire };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -29,33 +31,39 @@ interface PersonaContextValue {
   persona: PersonaId;
   setPersona: (p: PersonaId) => void;
   sessionId: string;
+  /** Starts a new copilot conversation: a new session_id for chat, pending actions and the audit filter. */
+  newSession: () => void;
 }
 const PersonaContext = createContext<PersonaContextValue | null>(null);
 
-function sessionFor(persona: PersonaId): string {
+/** The persona's session for this tab, or a new one when `fresh`. */
+function sessionFor(persona: PersonaId, fresh = false): string {
   const key = `nl.session.${persona}`;
+  const created = `ui-${persona}-${Math.random().toString(36).slice(2, 8)}`;
   try {
-    const existing = sessionStorage.getItem(key);
+    const existing = fresh ? null : sessionStorage.getItem(key);
     if (existing) return existing;
-    const created = `ui-${persona}-${Math.random().toString(36).slice(2, 8)}`;
     sessionStorage.setItem(key, created);
     return created;
   } catch {
-    return `ui-${persona}`;
+    return fresh ? created : `ui-${persona}`;
   }
 }
 
 export function PersonaProvider({ children, initial = "camila" }: { children: ReactNode; initial?: PersonaId }) {
   const client = useQueryClient();
   const [persona, setPersonaState] = useState<PersonaId>(initial);
+  const [sessionId, setSessionId] = useState(() => sessionFor(initial));
   const setPersona = useCallback(
     (p: PersonaId) => {
       setPersonaState(p);
+      setSessionId(sessionFor(p));
       client.removeQueries(); // nothing from one persona may leak into the other's screens
     },
     [client],
   );
-  const value = useMemo(() => ({ persona, setPersona, sessionId: sessionFor(persona) }), [persona, setPersona]);
+  const newSession = useCallback(() => setSessionId(sessionFor(persona, true)), [persona]);
+  const value = useMemo(() => ({ persona, setPersona, sessionId, newSession }), [persona, setPersona, sessionId, newSession]);
   return createElement(PersonaContext.Provider, { value }, children);
 }
 
@@ -159,6 +167,8 @@ export function useAudit(sessionId?: string) {
   return useQuery({
     queryKey: [persona, "audit", sessionId ?? "all"],
     queryFn: () => request<AuditPage>("/v1/audit", { user: persona, query: { session_id: sessionId, limit: 500 } }),
+    // Switching the conversation filter keeps the table on screen while it loads; never across personas.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[0] === persona ? previous : undefined),
   });
 }
 
@@ -179,6 +189,20 @@ export function useStatement(statementId: string | null) {
 export function useTransactions() {
   const { persona } = usePersona();
   return useQuery({ queryKey: [persona, "transactions"], queryFn: () => requestEnvelope<Transactions>("/v1/transactions", { user: persona }) });
+}
+
+export function useProfile() {
+  const { persona } = usePersona();
+  return useQuery({ queryKey: [persona, "profile"], queryFn: () => requestEnvelope<UserProfile>("/v1/profile", { user: persona }) });
+}
+
+export function useQuestionnaire() {
+  const { persona } = usePersona();
+  return useQuery({
+    queryKey: [persona, "questionnaire"],
+    queryFn: () => requestEnvelope<Questionnaire>("/v1/profile/questionnaire", { user: persona }),
+    staleTime: Infinity, // versioned and fixed per version
+  });
 }
 
 export interface ChainCheck {
