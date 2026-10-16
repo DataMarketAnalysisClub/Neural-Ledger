@@ -366,7 +366,6 @@ def test_g07_bursts_are_rate_limited(services):
     assert 429 in codes
 
 
-@gap("CORS allows any origin by default (NL_CORS_ORIGINS=*). OWASP API8:2023")
 def test_g08_cors_is_not_open_by_default():
     assert "*" not in Settings().cors_origins
 

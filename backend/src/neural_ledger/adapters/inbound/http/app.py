@@ -35,7 +35,7 @@ def _action_response(outcome: Any) -> JSONResponse:
     return JSONResponse(payload, status_code=_ACTION_CODES.get(outcome.status, 200))
 
 
-def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ("*",)) -> FastAPI:
+def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ()) -> FastAPI:
     app = FastAPI(title="Neural Ledger API", version="0.1.0", description="Contracts: see /contracts in the repository.")
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_methods=["*"], allow_headers=["*"])
 
