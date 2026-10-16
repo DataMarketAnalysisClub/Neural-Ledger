@@ -54,6 +54,7 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
             "language_model": services.language_model,
             "decision_chain": list(services.decision_chain),
             "pii_detector": services.pii_detector,
+            "classifier": services.classifier,
             "params_version": services.financial.params.version,
             "audit_chain_ok": check.ok,
             "tools": list(services.registry.names),

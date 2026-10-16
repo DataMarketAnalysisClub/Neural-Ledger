@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..adapters.outbound.bank.simulated import SimulatedSandboxBank
+from ..adapters.outbound.classifier.jev import JevTransactionClassifier
 from ..adapters.outbound.classifier.sklearn_text import SklearnTextClassifier, naive_bayes
 from ..adapters.outbound.decision.jev import OPENROUTER_BASE_URL, JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
@@ -42,6 +43,7 @@ from ..adapters.outbound.system.signer import HmacSigner
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices
 from ..application.ports import PersonalDataDetector, TransactionClassifier
+from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
@@ -59,10 +61,12 @@ from ..domain.permissions.policy import PP_0_1
 from .config import DEV_SECRET, Settings
 from .contracts import load_tool_definitions
 
-# Spending classifiers for imported statements, by NL_CLASSIFIER. To change the method, add an entry
-# (any TransactionClassifier) and select it; to change the estimator, pass another pipeline factory.
-CLASSIFIERS: dict[str, Callable[[], TransactionClassifier]] = {
-    "naive_bayes": lambda: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
+# Spending classifiers for imported statements, by NL_CLASSIFIER (comma-separated, tried in order: jev,naive_bayes).
+# To change the method, add an entry (any TransactionClassifier) and select it; to change the estimator, pass
+# another pipeline factory. jev sends each distinct line text, already redacted, to Jev (ADR-032).
+CLASSIFIERS: dict[str, Callable[[Settings], TransactionClassifier]] = {
+    "naive_bayes": lambda s: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
+    "jev": lambda s: JevTransactionClassifier(_jev(s)),
 }
 
 # Personal-data detectors, by NL_PII_DETECTOR: a second layer after the domain rules on every imported statement
@@ -147,9 +151,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
-    if s.classifier not in CLASSIFIERS:
-        raise ValueError(f"unknown NL_CLASSIFIER {s.classifier!r} (known: {', '.join(CLASSIFIERS)})")
-    posting = LedgerPosting(CLASSIFIERS[s.classifier](), transaction_store)
+    unknown = [name for name in s.classifiers if name not in CLASSIFIERS]
+    if unknown:
+        raise ValueError(f"unknown NL_CLASSIFIER {', '.join(unknown)!r} (known: {', '.join(CLASSIFIERS)})")
+    chain = [CLASSIFIERS[name](s) for name in s.classifiers]
+    classifier = chain[0] if len(chain) == 1 else FallbackClassifier(chain)
+    posting = LedgerPosting(classifier, transaction_store)
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
@@ -174,6 +181,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         language_model=llm.name,
         decision_chain=decisions.chain,
         pii_detector=redactor.detector,
+        classifier=classifier.name,
         clock=clock,
         persistence=s.persistence,
     )
