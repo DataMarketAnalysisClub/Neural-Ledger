@@ -73,6 +73,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C11` | Chat input is cut at 4,000 characters before any model sees it | LLM10; API4:2023 | `test_c11_…` |
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
 | `G07` | Bursts are rate limited: per caller and per client IP, one-minute windows, stricter on uploads (10), chat (20) and sign-in (10 per IP); over budget is 429 with `Retry-After` and reaches no use case (ADR-033) | API4:2023; LLM10 | `test_g07_…`, `tests/http/test_rate_limit.py` |
+| `G11` | Statement and transaction payloads in SQLite are sealed with AES-256-GCM, bound to their table, user and row; the key comes from `NL_DATA_KEY` (required in live mode) or, offline, a file next to the database, never from the database itself (ADR-033) | Ley 21.719 art. 14 quinquies; ASVS V14 | `test_g11_…`, `tests/adapters/test_field_cipher.py` |
 
 ### Gaps (strict xfail until built)
 
@@ -87,7 +88,6 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G08` | CORS open to any origin by default | API8:2023 | Default to the web app's origin; `*` only when set explicitly |
 | `G09` | Security headers on responses | ASVS V3; API8:2023 | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on financial data |
 | `G10` | Live mode starts with the development HMAC secret (it only warns) | ASVS V13; Ley 21.719 art. 14 quinquies | Raise instead of warn in `bootstrap/container.py` |
-| `G11` | Statements and transactions stored in plaintext SQLite | Ley 21.719 art. 14 quinquies; ASVS V14 | Encrypted volume or SQLCipher; key outside the database |
 | `G12` | Published privacy policy and breach response runbook | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `docs/PRIVACY.md`, `docs/runbooks/INCIDENT_RESPONSE.md` |
 
 The routes in G02–G05 are proposals; change the test with the API design. The plan to close G01–G07 and G11, step by step, is ADR-033.
@@ -135,6 +135,7 @@ The routes in G02–G05 are proposals; change the test with the API design. The 
 ## Known risks (residual)
 
 - **Identity is a header** (`X-User-Id`). Acceptable for a sandbox; real deployments need authentication and per-user authorization on every endpoint (G01). Anyone who sets the header can still read anyone's statements and transactions; since ADR-028 that exposes financial data only: amounts, dates, merchants, categories and a masked account.
+- **Encryption at rest covers statement and transaction payloads only** (G11). Ids, user ids and posting dates stay in clear, and so do the audit chain (no holder identifiers, C10), profiles, proposals and savings rules. Offline, the key file sits next to the database: a copied database alone reads nothing, but a copied volume does; set `NL_DATA_KEY` from a secret store anywhere that matters. Losing the key loses the statements. There is no key rotation yet. Payloads written before G11 stay readable and in clear until the statement is imported again; free pages may still hold old plaintext until the database is vacuumed.
 - **Rate limits are per process and per IP as uvicorn sees it** (G07). Counters live in memory: a restart resets them and each worker counts on its own. In demo mode the caller is the `X-User-Id` header, which a client can rotate, so the per-IP budget is the one that holds. Behind nginx the IP comes from `X-Forwarded-For`, trusted only from private ranges (`FORWARDED_ALLOW_IPS` in docker compose); port 8000 is published for development and a caller on it can set that header, so a deployment should publish only the web port. Several users behind one NAT share the per-IP budget.
 - **The redaction rules are written for Chilean cartolas.** They catch RUTs, long numbers, emails, phones and the counterparty of a transfer; a name elsewhere (`PAGO A <name>`) stays unless a detector is on. Rules are checked against real cartolas only locally (`cartolas/`, never committed, counts shared). Statements stored before `st-0.2` keep their raw text: delete the local database and import again (ADR-028).
 - **Azure AI Language is off by default** (`NL_PII_DETECTOR=none`) and is never the only layer. Turning it on (`NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY`) sends the raw text of every imported statement line to Microsoft. Detection is synchronous and stateless (REST API 2026-05-01), and `loggingOptOut` is sent as true. It needs the team's agreement on the subscription and the key, billing is per 1,000 characters, and `/health` shows it (`pii_detector`). Docker, CI and the recorded demo run with the rules only, and CI checks that.

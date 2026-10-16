@@ -36,6 +36,7 @@ class Settings:
     jev_model: str = "jev-1.13.0"  # pinned: the jev-latest alias moves when TypeSafe ships a release
     persistence: str = "memory"  # memory | sqlite
     sqlite_path: str = "./var/neural_ledger.db"
+    data_key: str | None = None  # G11: 64 hex chars sealing SQLite payloads; offline without it, a key file next to the database
     clock: str = "system"  # system | fixed (tests and recorded demos)
     fixed_now: str = "2026-10-29T12:00:00-03:00"
     ids: str = "uuid"  # uuid | sequential
@@ -92,6 +93,7 @@ class Settings:
             jev_model=get("NL_JEV_MODEL", cls.jev_model),
             persistence=get("NL_PERSISTENCE", cls.persistence),
             sqlite_path=get("NL_SQLITE_PATH", cls.sqlite_path),
+            data_key=e.get("NL_DATA_KEY") or None,
             clock=get("NL_CLOCK", cls.clock),
             fixed_now=get("NL_FIXED_NOW", cls.fixed_now),
             ids=get("NL_IDS", cls.ids),

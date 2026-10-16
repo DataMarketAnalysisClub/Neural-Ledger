@@ -234,12 +234,14 @@ def test_c08_sql_is_always_parameterized(tmp_path):
     ]
     assert built == [], f"SQL built from strings at lines {built}"
 
+    from neural_ledger.adapters.outbound.persistence.field_cipher import FieldCipher
     from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, SqliteStatementStore, SqliteTransactionStore
 
     db = SqliteDatabase(tmp_path / "inj.db")
     hostile = "x' OR '1'='1"
-    assert SqliteStatementStore(db).for_user(hostile) == ()
-    assert SqliteTransactionStore(db).for_user(hostile) == ()
+    cipher = FieldCipher(bytes(32))
+    assert SqliteStatementStore(db, cipher).for_user(hostile) == ()
+    assert SqliteTransactionStore(db, cipher).for_user(hostile) == ()
 
 
 def test_c09_the_language_model_never_receives_secrets(services, adapters):
@@ -350,13 +352,17 @@ def test_g10_live_mode_refuses_the_development_secret():
 
 
 @needs_pdf
-@gap("statements are stored in plaintext SQLite. Ley 21.719 art. 14 quinquies (security measures), ASVS 5.0 V14")
 def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
+    """Ley 21.719 art. 14 quinquies (security measures), ASVS 5.0 V14. Built (ADR-033): payloads are sealed
+    with AES-GCM and the key lives outside the database."""
     from tests.statement_samples import santander_xlsx
 
     services, _, path = sqlite_system
     services.statements.import_statement(USER, santander_xlsx())
-    assert "Compra Nacional VD SHOP ONE" not in _stored_bytes(path)
+    assert services.ledger.list_transactions(USER).data.transactions  # imported and readable through the API
+    stored = _stored_bytes(path)
+    assert "Compra Nacional VD SHOP ONE" not in stored and "SHOP ONE" not in stored
+    assert "nlenc1:" in stored
 
 
 @gap("no published privacy policy nor breach response runbook. Ley 21.719 arts. 14 ter and 14 sexies; Ley 21.663")
