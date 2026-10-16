@@ -12,11 +12,16 @@ import type { CapacityAssessment } from "@/contracts/outputs/capacity";
 import type { SavingsPlan } from "@/contracts/outputs/savings_plan";
 import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
 import type { PurchaseSimulation } from "@/contracts/outputs/purchase_simulation";
+import type { Statements } from "@/contracts/outputs/statements";
+import type { Statement } from "@/contracts/outputs/statement";
+import type { StatementImport } from "@/contracts/outputs/statement_import";
+import type { Transactions } from "@/contracts/outputs/transactions";
 import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
+export type { Statements, Statement, StatementImport, Transactions };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -170,6 +175,25 @@ export function useAudit(sessionId?: string) {
   });
 }
 
+export function useStatements() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "statements"], queryFn: () => requestEnvelope<Statements>("/v1/statements", { identity }) });
+}
+
+export function useStatement(statementId: string | null) {
+  const { identity } = usePersona();
+  return useQuery({
+    queryKey: [identity.user_id, "statements", statementId],
+    queryFn: () => requestEnvelope<Statement>(`/v1/statements/${encodeURIComponent(statementId!)}`, { identity }),
+    enabled: statementId !== null,
+  });
+}
+
+export function useTransactions() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "transactions"], queryFn: () => requestEnvelope<Transactions>("/v1/transactions", { identity }) });
+}
+
 export interface ChainCheck {
   ok: boolean;
   checked: number;
@@ -197,6 +221,23 @@ export function useSimulatePurchase() {
   return useMutation({
     mutationFn: (input: PurchaseInput) =>
       requestEnvelope<PurchaseSimulation>("/v1/simulate-purchase", { identity, method: "POST", body: input }),
+  });
+}
+
+/**
+ * Imports a statement file. Imports feed the transaction ledger only (ADR-029): demo projections still use the demo
+ * scenario, and an account without financial data gets no projection from them.
+ */
+export function useImportStatement() {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (file: Blob) => requestEnvelope<StatementImport>("/v1/statements", { identity, method: "POST", body: file }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: [identity.user_id, "statements"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+    },
   });
 }
 

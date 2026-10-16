@@ -6,7 +6,6 @@ import { ApiError } from "@/api/client";
 import { PersonaProvider } from "@/api/hooks";
 import { AppShell } from "@/app/AppShell";
 import { Button, EmptyState, ErrorState, Loading, PageHeader } from "@/components/ui";
-import { features } from "@/lib/features";
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
 import { t } from "@/i18n";
 
@@ -53,6 +52,22 @@ function FinancialRoute({ children }: { readonly children: React.ReactNode }) {
   return children;
 }
 
+/**
+ * Statements are the signed-in account's own ledger, open to every account (an empty one included) through its own
+ * session cookie. Importing one adds no projection and changes no profile. The local mock stores no statements.
+ */
+function StatementsRoute({ children }: { readonly children: React.ReactNode }) {
+  const auth = useAuth();
+  const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
+  if (auth.mode === "accounts" && isMock) {
+    return <>
+      <PageHeader title={t("statements.title")} />
+      <EmptyState title={t("auth.mock")}>{t("statements.mockUnavailable")}</EmptyState>
+    </>;
+  }
+  return children;
+}
+
 function AppRoutes() {
   const auth = useAuth();
   if (auth.pending) return <main className="mx-auto max-w-3xl px-6 py-16"><Loading /></main>;
@@ -74,7 +89,7 @@ function AppRoutes() {
           <Route path="/plan" element={<FinancialRoute><PlanPage /></FinancialRoute>} />
           <Route path="/copilot" element={<FinancialRoute><CopilotPage /></FinancialRoute>} />
           <Route path="/audit" element={<FinancialRoute><AuditPage /></FinancialRoute>} />
-          <Route path="/statements" element={<FinancialRoute><StatementsPage unavailable={!features.statements} /></FinancialRoute>} />
+          <Route path="/statements" element={<StatementsRoute><StatementsPage /></StatementsRoute>} />
           <Route path="/profile" element={auth.mode === "accounts" ? <ProfilePage /> : <Navigate to="/" replace />} />
           <Route path="/onboarding" element={auth.mode === "accounts" ? <OnboardingPage /> : <Navigate to="/" replace />} />
           <Route path="/signin" element={<Navigate to="/" replace />} />

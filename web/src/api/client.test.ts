@@ -37,6 +37,25 @@ describe("request", () => {
     expect((error as ApiError).detail.reason).toBe("AUTHORIZATION_REPLAYED");
   });
 
+  it("uploads a statement file as raw bytes with the demo persona header", async () => {
+    const spy = respond(200, { status: "OK", facts: [], warnings: [], data: { imports: [] } });
+    const file = new Blob(["%PDF-1.4"]);
+    await request("/v1/statements", { identity: { kind: "demo", user_id: "diego" }, method: "POST", body: file });
+    const init = spy.mock.calls[0]![1] as RequestInit;
+    expect(init.body).toBe(file);
+    expect(init.headers).toEqual({ "X-User-Id": "diego", "Content-Type": "application/octet-stream" });
+  });
+
+  it("uploads an account's statement file with the session cookie and no identity header", async () => {
+    const spy = respond(200, { status: "OK", facts: [], warnings: [], data: { imports: [] } });
+    const file = new Blob(["%PDF-1.4"]);
+    await request("/v1/statements", { identity: { kind: "accounts", user_id: "usr_1" }, method: "POST", body: file });
+    const init = spy.mock.calls[0]![1] as RequestInit;
+    expect(init.body).toBe(file);
+    expect(init.credentials).toBe("same-origin");
+    expect(init.headers).toEqual({ "Content-Type": "application/octet-stream" });
+  });
+
   it("reports an unreachable API as a network error", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
     const error = await request("/health", { user: "camila" }).catch((e) => e);

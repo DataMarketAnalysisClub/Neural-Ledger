@@ -17,14 +17,12 @@ import type { PersonaId } from "@/api/client";
 import { t, type MessageKey } from "@/i18n";
 import { formatDate } from "@/lib/format";
 import { Button, ErrorState, StatusBadge, cn } from "@/components/ui";
-import { features } from "@/lib/features";
 import { useAuth } from "@/features/auth/AuthProvider";
 
 interface NavItem {
   to: string;
   label: MessageKey;
   icon: Icon;
-  hidden?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -34,7 +32,7 @@ const NAV: NavItem[] = [
   { to: "/plan", label: "nav.plan", icon: PiggyBank },
   { to: "/copilot", label: "nav.copilot", icon: ChatText },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
-  { to: "/statements", label: "nav.statements", icon: Files, hidden: !features.statements },
+  { to: "/statements", label: "nav.statements", icon: Files },
   { to: "/profile", label: "auth.account", icon: UserCircle },
 ];
 
@@ -132,8 +130,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         {!isAccount && <div className="px-4 pb-4"><PersonaSwitcher /></div>}
         <nav aria-label={t("nav.label")} className="px-3 pb-3 lg:flex-1 lg:overflow-y-auto">
           {/* Below lg every item stays visible in a grid; nothing hides off-screen. */}
-          <ul className={cn("grid grid-cols-3 gap-1 lg:flex lg:flex-col", isAccount ? "sm:grid-cols-4" : "sm:grid-cols-6")}>
-            {NAV.filter((item) => !item.hidden && (isAccount || item.to !== "/profile")).map(({ to, label, icon: IconCmp }) => (
+          <ul className={cn("grid grid-cols-3 gap-1 lg:flex lg:flex-col", isAccount ? "sm:grid-cols-4" : "sm:grid-cols-7")}>
+            {NAV.filter((item) => isAccount || item.to !== "/profile").map(({ to, label, icon: IconCmp }) => (
               <li key={to}>
                 <NavLink
                   to={to}

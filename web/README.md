@@ -23,14 +23,14 @@ cd web && npm run dev
 
 `NL_APP_ORIGINS` (default `http://localhost:3000,http://localhost:5173`) must list the UI's origin for writes, `NL_COOKIE_SECURE=auto` sets `Secure` only over https, and `NL_DEMO_PERSONAS=true` (default) offers the Camila and Diego demo sessions on the sign-in screen. See `.env.example` and `docs/ARCHITECTURE.md`.
 
-**Docker compose (accounts and cookie Web, paired).** `docker compose up --build` runs the API with `NL_AUTH=accounts` fixed in `docker-compose.yml` on :8000 and the built UI on :3000; nginx proxies `/api` on the same origin, so the session cookie never needs CORS.
+**Docker compose (accounts and cookie Web, paired).** `docker compose up --build` runs the API with `NL_AUTH=accounts` fixed in `docker-compose.yml` on :8000 and the built UI on :3000; nginx proxies `/api` on the same origin, so the session cookie never needs CORS. The accounts API (PR3) and this cookie Web are merged and deployed together, never one without the other; the backend default stays `NL_AUTH=demo`, and neither is a production service.
 
 | Script | Does |
 |---|---|
 | `npm run contracts` | Regenerates `src/contracts/` from `../contracts` (commit the result; CI checks it is current) |
 | `npm run lint` / `npm run typecheck` | ESLint and TypeScript |
-| `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, redaction chips, accounts sessions and profile, axe accessibility checks |
-| `npm run e2e` | Playwright against a running stack; the accounts specs skip unless `/health` reports `auth: "accounts"` |
+| `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, redaction chips, statement import and identity-scoped statement queries, accounts sessions and profile, axe accessibility checks |
+| `npm run e2e` | Playwright against a running stack. The demo specs (`demo-arc`, `overview`, `statements`) need a demo-mode API; the accounts specs (`signup`, `statements-accounts`) skip unless `/health` reports `auth: "accounts"`, so run each set against its own stack |
 | `npm run build` | Production bundle in `dist/` |
 
 ## Rules
@@ -54,10 +54,19 @@ cd web && npm run dev
 | `/plan` Savings plan | 4 | `/v1/capacity`, `/v1/profile`, `/v1/permitted-profile`, `/v1/savings-plan` |
 | `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` |
 | `/audit` Audit trail | 6 | `/v1/audit`, `/v1/audit/verify` |
-| `/statements` | — | hidden by the current statements feature flag; no upload or list UI is implemented, and enabling the flag does not add one |
+| `/statements` | — | `/v1/statements`, `/v1/statements/{id}`, `POST /v1/statements`, `/v1/transactions` (imports feed the ledger only, ADR-029; see below) |
 | `/signin`, `/signup` | accounts | `/v1/auth/signin`, `/v1/auth/signup`, `/v1/auth/demo-session` |
 | `/onboarding` | accounts | `GET` and `POST /v1/profile/questionnaire` |
 | `/profile` | accounts | `/v1/me`, `GET` and `PUT /v1/profile`, `/v1/permitted-profile` (demo personas only), `/v1/auth/signout` |
+
+## Statements
+
+`/statements` imports a bank statement file (an `.xlsx` export, a PDF or an image, up to 15 MB, checked before upload and again by the API), lists the statements read back, opens one with its movements and card obligations, and shows the transaction ledger with spend per category. It is always in the navigation; there is no feature flag.
+
+- **The upload is the raw file.** `useImportStatement` sends the `Blob` itself as the `POST /v1/statements` body with `Content-Type: application/octet-stream`; the server decides the format from the bytes.
+- **One file can yield several statements.** The response follows `contracts/outputs/statement_import.schema.json`: `data.imports[]`, one entry per statement found. The result card lists every entry with its `duplicate` flag (neutral "Already imported"), verification and provisional badges, the `redaction` counts per placeholder code (or that the rules found none, and a warning when only the built-in rules ran), and the `ledger` counts (`posted`, `new`, `uncategorized`), or that an unverified statement was stored but not posted. Envelope warnings are listed with their codes.
+- **Amounts are the API's.** Balances, totals and obligations are formatted, never computed; descriptions and merchants are untrusted text rendered through `<RedactedText>`.
+- **Ledger storage is not a projection.** Imports build the transaction ledger only (ADR-029). In demo mode and for demo personas, projections, the purchase check and the savings plan still use the demo scenario. A new account's statements are stored and listed for that account, but they unlock no projection, purchase check, savings plan or advice, and change neither `data_source` nor the stored tolerance; the screen says so.
 
 ## Known API gaps (for contract PRs)
 
@@ -66,9 +75,11 @@ cd web && npm run dev
 
 ## Accounts mode
 
-When `/health` reports `auth: "accounts"`, the UI asks for a same-origin cookie session, guards every financial route, and sends account requests without `X-User-Id`. Session authority is the server's HttpOnly `nl_session` cookie, never a JS-visible token or `localStorage` value. Account queries are keyed by `user_id`; the cache and active queries are cleared at signup, signin, demo-session and signout, and a late `/v1/me` answer from an older session transition cannot restore a previous identity.
+When `/health` reports `auth: "accounts"`, the UI asks for a same-origin cookie session, guards every financial route, and sends every account request, the statement upload included, without `X-User-Id`. Session authority is the server's HttpOnly `nl_session` cookie (`credentials: "same-origin"`), never a JS-visible token or `localStorage` value. The API accepts writes only from an origin listed in `NL_APP_ORIGINS`; the browser sends `Origin` itself, and the Vite proxy and nginx keep the UI and `/api` on one origin. Account queries, statements, statement details and transactions included, are keyed by `user_id`; the cache and active queries are cleared at signup, signin, demo-session and signout, the statements screen is keyed by the identity so an import result or an open statement never carries over, and a late `/v1/me` answer from an older session transition cannot restore a previous identity.
 
 - **New accounts stay empty.** `GET /v1/me` reports `data_source: "empty"`; the financial screens show an empty state, and Profile shows no capacity or permitted profile and inherits no persona's balances, projections or advice. Signup, the questionnaire and display-name edits work on an empty account.
+- **Statements are each account's own.** `/statements` is not behind the financial guard: any signed-in account, an empty one included, imports and reads its own statements and ledger with its own cookie, and the backend scopes them to the owner. Importing does not make the account non-empty (see Statements above).
+- **Demo persona statements are shared.** Everyone who explores Camila or Diego signs in as the same synthetic persona, so statements imported there are visible to every such session; the screen warns about it. This is a known, disclosed risk of the shared demo personas, not account isolation.
 - **Demo personas are read only.** Camila and Diego open `persona` sessions from the sign-in screen; their profiles cannot be edited (`PROFILE_READ_ONLY`), and their capacity and permitted profile come from `/v1/permitted-profile`, never from a client label.
 - **The plan reads each account's stored tolerance** (`GET /v1/profile`, the PR1b change). PR1b ships inside this Web PR, not as a separate PR; its branch is kept, not deleted.
 - **No sample data.** The sample-data follow-up (PR4) is cut: there is no sample-data endpoint, and the UI has no sample control and sends no such request. `sample` stays a reserved `data_source` value in `contracts/auth/me.schema.json`; the UI treats any non-persona account as empty.
@@ -80,4 +91,4 @@ Bodies follow the generated contracts. Signup (201), signin (200) and demo-sessi
 
 ### Development mock
 
-`VITE_ACCOUNTS_MOCK=true npm run dev` replaces the API with an in-memory, **development-only** transport for UI walkthroughs without a backend. It accepts only synthetic `.invalid` email addresses, resets on reload, sets no cookie and is not authentication: it proves nothing about cookie security, which only the real accounts backend provides. It never supplies financial figures: financial reads answer `INSUFFICIENT_DATA`, demo personas get a fixed conservative capacity for the Profile illustration only, and any route it does not serve answers 404. Its `OK` envelopes carry request-time `as_of` and `mock:accounts:` snapshot ids, which are synthetic markers, not forecast hashes or audit provenance. It mirrors the two error shapes above and scores the five `pq-0.1` questions only to stand in for the server; the UI never calculates tolerance or money.
+`VITE_ACCOUNTS_MOCK=true npm run dev` replaces the API with an in-memory, **development-only** transport for UI walkthroughs without a backend. It accepts only synthetic `.invalid` email addresses, resets on reload, sets no cookie and is not authentication: it proves nothing about cookie security, which only the real accounts backend provides. It never supplies financial figures: financial reads answer `INSUFFICIENT_DATA`, demo personas get a fixed conservative capacity for the Profile illustration only, and any route it does not serve answers 404. It stores no statements, so with the mock `/statements` shows a notice instead of the import screen. Its `OK` envelopes carry request-time `as_of` and `mock:accounts:` snapshot ids, which are synthetic markers, not forecast hashes or audit provenance. It mirrors the two error shapes above and scores the five `pq-0.1` questions only to stand in for the server; the UI never calculates tolerance or money.

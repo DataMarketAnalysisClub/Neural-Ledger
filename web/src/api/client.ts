@@ -62,6 +62,8 @@ export async function request<T>(path: string, { user, identity, method = "GET",
     const { mockRequest } = await import("./mockAccounts");
     return (await mockRequest(path, { method, body, query })) as T;
   }
+  // A file (statement import) travels as the raw body; the server reads the bytes, not the Content-Type.
+  const raw = body instanceof Blob;
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}${qs === "?" ? "" : qs}`, {
@@ -69,9 +71,9 @@ export async function request<T>(path: string, { user, identity, method = "GET",
       credentials: "same-origin",
       headers: {
         ...(identity?.kind === "demo" || (!identity && user) ? { "X-User-Id": identity?.user_id ?? user } : {}),
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(body !== undefined ? { "Content-Type": raw ? "application/octet-stream" : "application/json" } : {}),
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: raw ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (cause) {
     throw new NetworkError(cause);
