@@ -28,9 +28,10 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A new LLM provider | `adapters/outbound/llm/<provider>.py` implementing `LanguageModel` | a fake-server test, plus manual |
 | The Jev integration | `adapters/outbound/decision/jev.py` | `tests/security` (S10) |
 | A new database | `adapters/outbound/persistence/<db>.py` | add it to the `stores` fixture in `tests/adapters` |
-| An HTTP endpoint | `adapters/inbound/http/app.py` (thin: parse → use case → `to_primitive`) | `tests/http` |
+| An HTTP endpoint | `adapters/inbound/http/app.py` (thin: parse → use case → `to_primitive`); take the user from `user(request)`: session identity in accounts mode, header/default persona in demo mode. In accounts mode every route needs a session unless it is listed in `PUBLIC_ROUTES` (`adapters/inbound/http/identity.py`) | `tests/http` (the route inventory in `test_auth_api.py` fails if a new route is public by accident) |
+| A write that must be audited (account, session or profile state) | a method on the writes adapters (`InMemoryAccountWrites`, `SqliteAccountWrites`) behind a narrow port (`AccountWrites`, `ProfileWrites`) that commits the state and its audit drafts together; SQLite code inside `_account_transaction` uses the raw connection only (the store and audit methods take `db.lock`, which is not reentrant) | failure injection in `tests/application/test_*_integrity.py`, memory and SQLite |
 | A config switch | `bootstrap/config.py` + `.env.example` + `container.py` | — |
-| A new bank statement layout (cartola) | a `Bank` subclass in `adapters/outbound/statements/banks/` (recipe below) | `tests/adapters/test_banks.py` with a synthetic sample |
+| A new bank statement layout (cartola) | a `SheetBank` (Excel export) or `Bank` (PDF/image) subclass in `adapters/outbound/statements/banks/` (recipe below) | `tests/adapters/test_statement_formats.py` / `test_banks.py` with a synthetic sample |
 | A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
 | A redaction rule (a kind of personal data the rules miss) | `domain/privacy/redaction.py` | `tests/unit/test_redaction.py`, `tests/property/test_redaction_properties.py` |
 | A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
@@ -52,25 +53,33 @@ Implement `respond(request: ModelRequest) -> ModelTurn` and map `UserEntry` / `A
 Map `ChoiceQuestion → Choice`, `ScoreQuestion → Score`, `YesNoQuestion → Noul`, and return `Judgment(label, probabilities, confidence, source)`. Confirm field names in the TypeSafe docs first. Raise `DecisionModelUnavailable` on errors. Then set `NL_DECISION_CHAIN=jev,rules`.
 
 ### Read a new bank's statements
-Statements are read in three steps, and only the middle one is per bank:
+The reader routes each file by its bytes, then a layout gives it meaning. Only the layout is per bank:
 
 ```
-bytes ─► ocr_tabular.read_pages ─► Page (word boxes: PDF text layer, or EasyOCR on scans/photos)
-      ─► ocr_tabular.rebuild(page, bank.table) ─► Table per page          ← Bank.table (where the table is)
-      ─► bank.parse(tables) ─► BankStatement, as read (memory only)        ← Bank.parse (what the rows mean)
+bytes ─┬─ .xlsx ─► spreadsheet.read_workbook ─► Sheet (rows of cell text)      standard library; no PDF, no OCR
+       │            ─► SheetBank.parse(sheets) ─► BankStatement
+       └─ PDF / image ─► ocr_tabular.read_pages ─► Page (word boxes: text layer, or EasyOCR on scans/photos only)
+                     ─► Bank.read(pages) ─► BankStatement per statement in the file
+                          default: rebuild(page, bank.table) ─► Table per page ─► bank.parse(tables)
+                          or: parse the page lines (card statements, whose rows are regular text)
       ─► StatementRedactor ─► BankStatement with placeholders, ****3456    ← domain rules + optional detector (ADR-028)
       ─► domain reconcile() ─► stored, verified or unverified (+ warning), audited STATEMENT_IMPORTED
 ```
 
-The statement id hashes the statement as read, so the same cartola imported twice is still a duplicate. From redaction on, only the clean copy exists. A `Bank` never redacts: it returns what the bank printed.
+The statement id hashes the statement as read, so the same cartola imported twice is still a duplicate. From redaction on, only the clean copy exists, and if any statement in a file cannot be redacted, nothing from that file is stored. A `Bank` never redacts: it returns what the bank printed.
 
-1. Get a sample and **never commit it**: real statements go in `cartolas/` (git-ignored). Look at the word boxes (`read_pages(...)[0].boxes`) to learn the header words, where amounts sit and what ends the table.
-2. Add `banks/<bank>.py` with a `Bank` subclass: a stable `code`, `recognizes(text)` (words only that bank prints), `table = TableSpec(header_required, header_tokens, stop_markers)`, and `parse(tables)`. Use `parse_clp`, `day_month` and `column_index` from `banks/base.py`; they already tolerate the OCR noise seen so far. Raise `TableError` on any cell that does not fit, never guess.
-3. Return the printed totals and daily balances in the `BankStatement`: reconciliation can only verify what the bank printed.
-4. Register it in `banks/__init__.py` (`BANKS`).
-5. Add a synthetic sample next to `tests/statement_samples.py` that draws the layout with fictional data, and tests for the happy path and for a misprinted total. `test_local_real_cartolas_reconcile` also runs on whatever is in your local `cartolas/`.
+1. Get a sample and **never commit it**: real statements go in `cartolas/` (git-ignored). For a spreadsheet, look at `read_workbook(...)[0].rows`; for a PDF, at `read_pages(...)[0].text` or `.boxes`. Find the labels, where the amounts sit and what ends the table.
+2. Add `banks/<bank>.py`. Every layout has a stable `code`, `recognizes(text)` (words only that layout prints, already `norm_text`-ed) and an `account_type` (`CHECKING`, or `CREDIT_CARD`, which detects a card).
+   - **Excel export:** subclass `SheetBank` and implement `parse(sheets)`. `Sheet.right_of(label)` / `below(label)` read label/value cells; amounts in number cells go through `cell_money(text, decimals)`, printed amounts ('$100.000', '-12,50 US$') through `parse_money(text, decimals)`.
+   - **PDF with a column table:** subclass `Bank` with `table = TableSpec(header_required, header_tokens, stop_markers)` and `parse(tables)`. Use `parse_clp`, `day_month` and `column_index`; they already tolerate the OCR noise seen so far.
+   - **PDF whose lines are regular text** (e.g. card statements): subclass `Bank` and override `read(pages)`. Return several statements if the file holds several (national CLP + international USD).
+   Raise `TableError` on any cell that does not fit, never guess.
+3. Return everything the bank printed, because reconciliation can only verify what was printed: the summary (`StatementSummary`, any field may be None), daily balances, `section_totals` for printed subtotals (each line names its `section`), and, for a card, `CardObligations` (amount due, minimum, due date, limits, and the printed cuota schedule if there is one). Signs are the holder's: charges negative, and a card's debt negative.
+4. On a card, set each line's `kind` (`purchase`, `payment`, `refund`, `fee`) and its `Installment` (n of N, purchase amount, rate). Posting depends on it: a payment is a `movement`, never income. An export of **unbilled** movements is `provisional=True`, so it is checked and stored but never posted.
+5. Register it in `banks/__init__.py` (`BANKS` for documents, `SHEET_BANKS` for spreadsheets).
+6. Add a synthetic sample to `tests/statement_samples.py` (`xlsx(rows)` writes a workbook with the standard library; `card_pdf` draws a card statement), and tests for the happy path and for a misprinted total. `test_local_real_cartolas_reconcile` also runs on every PDF and `.xlsx` in your local `cartolas/`.
 
-Amounts are evidence, not authority (ADR-020): a statement that does not reconcile is stored as **unverified** with a `STATEMENT_UNVERIFIED` warning (ADR-021 adds manual review), and low OCR confidence only warns (`OCR_LOW_CONFIDENCE`), because reconciliation already checks every amount and date.
+Amounts are evidence, not authority (ADR-020): a statement that does not reconcile is stored as **unverified** with a `STATEMENT_UNVERIFIED` warning (ADR-021 adds manual review), and low OCR confidence only warns (`OCR_LOW_CONFIDENCE`), because reconciliation already checks every amount and date. Card statements and the Excel pipeline: ADR-031. Feeding card obligations into the forecast: ADR-029 (plan).
 
 ### Categorize statement lines (change the classifier)
 A verified statement is posted to the transaction ledger on import:
@@ -81,7 +90,7 @@ StoredStatement (verified) ─► charges' descriptions ─► TransactionClassi
       ─► TransactionStore (once per user and txn_id) ─► GET /v1/transactions, `neural-ledger transactions`
 ```
 
-Deposits are `income` by rule; charges are `purchase` with the accepted category or `uncategorized`. Every transaction records which classifier (name + training-data hash) chose its category, and its confidence. An unverified statement, or an unavailable classifier, posts nothing and warns `NOT_POSTED`; importing the file again backfills.
+On a checking account deposits are `income` by rule and charges are `purchase`, with the accepted category or `uncategorized`. On a credit card the line's kind decides: a payment is `card_payment` with category `movement` by rule, and purchases, refunds and fees are classified. Provisional statements (unbilled movements) are never posted. Every transaction records which classifier (name + training-data hash) chose its category, and its confidence. An unverified statement, or an unavailable classifier, posts nothing and warns `NOT_POSTED`; importing the file again backfills.
 
 - **Another scikit-learn estimator:** pass another pipeline factory, e.g. `SklearnTextClassifier(my_factory, method="logreg")`, and register it under a new name in `CLASSIFIERS`. Select it with `NL_CLASSIFIER`.
 - **Another method entirely** (rules, an LLM, a remote model): implement `classify(descriptions) -> [CategoryGuess]` and a `name` in `adapters/outbound/classifier/<method>.py`, raise `ClassifierUnavailable` when it cannot answer, and register it. Nothing else changes.
@@ -158,6 +167,8 @@ classDiagram
 | User or agent | Execute a confirmed action | T2 | `POST /v1/actions/execute`, tool `execute_sandbox_action` |
 | Agent | Anything in T3 | T3 | always blocked and audited |
 | Judge or user | Inspect the audit log and verify the chain | T0 | `GET /v1/audit`, `/v1/audit/verify` |
+| Visitor (accounts mode) | Sign up, sign in, sign out, open a demo persona | — | `POST /v1/auth/signup`, `/signin`, `/signout`, `/demo-session`; `GET /v1/me` (HTTP only, no agent tool) |
+| User (accounts mode, own account) | Edit name and language; answer the risk questionnaire | — | `PUT /v1/profile`, `POST /v1/profile/questionnaire` (each atomic with its `PROFILE_UPDATED` event; personas are read-only) |
 
 ## Runtime modes
 
@@ -167,5 +178,9 @@ classDiagram
 | Live | `NL_LLM=anthropic` (or another provider), `NL_DECISION_CHAIN=jev,rules` | The real demo; falls back to offline pieces on outages |
 | Azure redaction | `NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY` | Local tests with the team's key only: it sends statement text to Microsoft (`docs/SECURITY.md`) |
 | Deterministic | `NL_CLOCK=fixed`, `NL_IDS=sequential` | Reproducible recordings and evidence |
+| Demo identity (default) | `NL_AUTH=demo` | Local runs, tests, the recorded demo: `X-User-Id` header (or `NL_PERSONA`), read-only profiles, no auth routes. Never expose it publicly |
+| Accounts | `NL_AUTH=accounts`, `NL_APP_ORIGINS`, `NL_COOKIE_SECURE`, `NL_DEMO_PERSONAS` | `docker compose up` and any deployment: cookie sessions, header rejected, Origin checked, profile writes for account users |
 
-`GET /health` reports the mode, so the demo never runs in the wrong one by accident.
+`GET /health` reports the mode and the identity mode (`auth`, `demo_personas`), so the demo never runs in the wrong one by accident.
+
+**Wiring accounts mode** (`bootstrap/container.py`): personas always sit in a read-only `PersonaOverlayProfileStore` in front of the writable store (`InMemoryUserProfileStore` or `SqliteUserProfileStore`). In accounts mode the container builds exactly one writes object per store set (`InMemoryAccountWrites` over the same account, session, profile and audit objects every use case uses, or `SqliteAccountWrites` over the same `SqliteDatabase`), before any request, and hands it to both `AccountUseCases` and `ProfileEditing`. Never build a second `InMemoryAccountWrites` over the same stores: it re-points their locks.

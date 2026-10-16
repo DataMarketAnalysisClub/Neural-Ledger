@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/profile/questionnaire.schema.json",
+  "title": "Questionnaire",
+  "description": "data of GET /v1/profile/questionnaire: the current risk-tolerance questionnaire. The UI renders the copy keys; it asks nothing about income or wealth. Scores are shown for transparency only: the domain alone sums them and derives the tolerance (0-3 conservative, 4-7 moderate, 8-10 aggressive; a tight_month score of 0 caps the result at moderate). Answers stored against an older version stay interpretable through the domain registry. examples[0] is the exact current version.",
+  "type": "object",
+  "required": ["version", "questions"],
+  "properties": {
+    "version": {"type": "string", "pattern": "^pq-\\d+\\.\\d+$"},
+    "questions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/question"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+    "question": {
+      "type": "object",
+      "required": ["question_id", "copy_key", "options"],
+      "properties": {
+        "question_id": {"$ref": "#/$defs/id"},
+        "copy_key": {"type": "string", "pattern": "^questionnaire\\.[a-z][a-z0-9_]{0,31}\\.prompt$"},
+        "options": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/option"}}
+      },
+      "additionalProperties": false
+    },
+    "option": {
+      "type": "object",
+      "required": ["option_id", "copy_key", "score"],
+      "properties": {
+        "option_id": {"$ref": "#/$defs/id"},
+        "copy_key": {"type": "string", "pattern": "^questionnaire\\.[a-z][a-z0-9_]{0,31}\\.options\\.[a-z][a-z0-9_]{0,31}$"},
+        "score": {"type": "integer", "minimum": 0, "maximum": 2}
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "version": "pq-0.1",
+      "questions": [
+        {
+          "question_id": "set_aside",
+          "copy_key": "questionnaire.set_aside.prompt",
+          "options": [
+            {"option_id": "small_part", "copy_key": "questionnaire.set_aside.options.small_part", "score": 0},
+            {"option_id": "about_half", "copy_key": "questionnaire.set_aside.options.about_half", "score": 1},
+            {"option_id": "most", "copy_key": "questionnaire.set_aside.options.most", "score": 2}
+          ]
+        },
+        {
+          "question_id": "tight_month",
+          "copy_key": "questionnaire.tight_month.prompt",
+          "options": [
+            {"option_id": "pause", "copy_key": "questionnaire.tight_month.options.pause", "score": 0},
+            {"option_id": "keep_cut_elsewhere", "copy_key": "questionnaire.tight_month.options.keep_cut_elsewhere", "score": 1},
+            {"option_id": "keep_as_intended", "copy_key": "questionnaire.tight_month.options.keep_as_intended", "score": 2}
+          ]
+        },
+        {
+          "question_id": "goal_vs_room",
+          "copy_key": "questionnaire.goal_vs_room.prompt",
+          "options": [
+            {"option_id": "spending_room", "copy_key": "questionnaire.goal_vs_room.options.spending_room", "score": 0},
+            {"option_id": "balance", "copy_key": "questionnaire.goal_vs_room.options.balance", "score": 1},
+            {"option_id": "goal_on_time", "copy_key": "questionnaire.goal_vs_room.options.goal_on_time", "score": 2}
+          ]
+        },
+        {
+          "question_id": "surprise",
+          "copy_key": "questionnaire.surprise.prompt",
+          "options": [
+            {"option_id": "very_stressed", "copy_key": "questionnaire.surprise.options.very_stressed", "score": 0},
+            {"option_id": "uneasy_but_ok", "copy_key": "questionnaire.surprise.options.uneasy_but_ok", "score": 1},
+            {"option_id": "calm", "copy_key": "questionnaire.surprise.options.calm", "score": 2}
+          ]
+        },
+        {
+          "question_id": "habit",
+          "copy_key": "questionnaire.habit.prompt",
+          "options": [
+            {"option_id": "never_or_stopped", "copy_key": "questionnaire.habit.options.never_or_stopped", "score": 0},
+            {"option_id": "sometimes", "copy_key": "questionnaire.habit.options.sometimes", "score": 1},
+            {"option_id": "regularly", "copy_key": "questionnaire.habit.options.regularly", "score": 2}
+          ]
+        }
+      ]
+    }
+  ]
+}

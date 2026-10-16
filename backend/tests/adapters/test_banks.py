@@ -11,6 +11,7 @@ from neural_ledger.adapters.outbound.statements.banks import BANKS, detect
 from neural_ledger.adapters.outbound.statements.banks.base import day_month, parse_clp
 from neural_ledger.adapters.outbound.statements.banks.santander import SantanderCuentaMatica
 from neural_ledger.adapters.outbound.statements.ocr_tabular import Table, TableError, read_pages, rebuild
+from neural_ledger.adapters.outbound.statements.reader import StatementFileReader
 from neural_ledger.domain.statements.model import IssueCode, reconcile
 from tests.statement_samples import DEFAULT_MOVEMENTS, Sample, santander_pdf
 
@@ -116,13 +117,17 @@ def test_amount_and_date_helpers():
 
 
 @needs_pdf
-@pytest.mark.skipif(not any(REAL_CARTOLAS.glob("*.pdf")), reason="no local cartolas/ (never committed)")
+@pytest.mark.skipif(not any(REAL_CARTOLAS.glob("*.*")), reason="no local cartolas/ (never committed)")
 def test_local_real_cartolas_reconcile():
-    """Runs only on a developer machine. Asserts nothing about the contents (personal data)."""
-    for path in sorted(REAL_CARTOLAS.glob("*.pdf")):
-        statement = _read(path.read_bytes())
-        assert statement.lines, path.name
-        assert reconcile(statement).ok, path.name
+    """Runs only on a developer machine, over every PDF and Excel export in cartolas/. Asserts nothing
+    about the contents (personal data), only that each statement is read and adds up."""
+    reader = StatementFileReader()
+    paths = sorted(p for p in REAL_CARTOLAS.iterdir() if p.suffix.lower() in {".pdf", ".xlsx"})
+    for path in paths:
+        statements = reader.read(path.read_bytes())
+        for statement in statements:
+            assert statement.lines, path.name
+            assert reconcile(statement).ok, (path.name, reconcile(statement).issues)
 
 
 @pytest.mark.parametrize(

@@ -55,5 +55,6 @@ xfail_strict = true
 markers = [
     "golden: expected answers from the Financial Core calibration (E01-E14)",
     "security: security suite S01-S12",
+    "suitability: suitability suite H1-H5 and U checks (tests/suitability)",
     "property: hypothesis property tests (slow); excluded by default, run with make test-all",
 ]

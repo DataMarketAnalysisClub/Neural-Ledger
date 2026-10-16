@@ -61,6 +61,11 @@ PROHIBITED_CAPABILITIES: dict[str, BlockReason] = {
     "override_policy": BlockReason.POLICY_OVERRIDE,
     "grant_permission": BlockReason.SELF_ESCALATION,
     "confirm_action": BlockReason.SELF_ESCALATION,
+    # The profile and its declared tolerance are written by the user over HTTP only, never by the agent (D9, S19).
+    "update_user_profile": BlockReason.SELF_ESCALATION,
+    "set_risk_tolerance": BlockReason.SELF_ESCALATION,
+    "submit_questionnaire": BlockReason.SELF_ESCALATION,
+    "update_profile": BlockReason.SELF_ESCALATION,
 }
 
 
