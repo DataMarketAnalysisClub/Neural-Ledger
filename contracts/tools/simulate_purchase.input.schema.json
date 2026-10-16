@@ -7,7 +7,7 @@
   "required": ["amount", "installments"],
   "properties": {
     "amount": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "Price in minor units of the user's currency."},
-    "installments": {"enum": [3, 6, 12, 18, 24]},
+    "installments": {"type": "integer", "minimum": 1, "maximum": 48, "description": "Number of cuotas; 1 means paid in one charge (no cuotas)."},
     "first_installment_month": {"type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"},
     "monthly_rate": {"type": "number", "minimum": 0, "maximum": 0.2, "description": "Monthly interest rate as a fraction, e.g. 0.025."},
     "include_plan": {"enum": ["none", "recommended", "active"], "default": "none"}

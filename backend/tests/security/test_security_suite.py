@@ -159,7 +159,7 @@ def test_s11_duplicate_execution_runs_once(services, adapters):
 
 def test_s12_malformed_financial_input(services):
     assert services.financial.simulate_purchase(USER, -5, 12).field == "amount"
-    assert services.financial.simulate_purchase(USER, 400_000, 7).field == "installments"
+    assert services.financial.simulate_purchase(USER, 400_000, 49).field == "installments"
     assert services.financial.simulate_purchase(USER, 400_000, 12, "2020-01").field == "first_installment_month"
     assert services.financial.simulate_purchase(USER, 400_000, 12, "next year").status.value == "INVALID_INPUT"
     assert services.financial.forecast(USER, 99).field == "horizon_months"

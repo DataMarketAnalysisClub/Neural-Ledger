@@ -27,7 +27,7 @@ def test_forecast_and_simulation(client):
     assert forecast["status"] == "OK" and forecast["snapshot_id"].startswith("forecast_")
     sim = client.post("/v1/simulate-purchase", json={"amount": 400000, "installments": 12, "first_installment_month": "2026-12"})
     assert sim.status_code == 200 and sim.json()["data"]["verdict"] == "FITS_TYPICAL_ONLY"
-    bad = client.post("/v1/simulate-purchase", json={"amount": 400000, "installments": 7})
+    bad = client.post("/v1/simulate-purchase", json={"amount": 400000, "installments": 49})
     assert bad.status_code == 422 and bad.json()["field"] == "installments"
 
 

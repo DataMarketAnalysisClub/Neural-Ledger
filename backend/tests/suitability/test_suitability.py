@@ -258,7 +258,7 @@ def test_u04_a_purchase_fits_only_if_the_conservative_path_holds_and_every_alter
     for model in (camila, diego):
         first = model.first_cycle.plus(1)
         for amount in (150_000, 600_000, 1_500_000, 4_000_000):
-            for n in params.allowed_installments:
+            for n in params.suggested_installments:
                 sim = simulate_purchase(model, params, amount, n, first)
                 checked += 1
                 if sim.verdict is Verdict.FITS_ALL:
