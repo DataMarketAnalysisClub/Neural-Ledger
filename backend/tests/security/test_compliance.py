@@ -376,7 +376,6 @@ def test_g09_responses_carry_security_headers(services):
     assert "no-store" in headers.get("cache-control", "")
 
 
-@gap("live mode only warns about the development HMAC secret. ASVS 5.0 V13, Ley 21.719 art. 14 quinquies")
 def test_g10_live_mode_refuses_the_development_secret():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

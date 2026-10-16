@@ -76,6 +76,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C13` | With `NL_CLASSIFIER=jev,…`, Jev receives each charge's text only after redaction (no name, RUT, e-mail, phone or card number) and never a deposit | Ley 21.719 art. 3 c); transfer to a provider abroad (ADR-032) | `test_c13_…` |
 | `G08` | CORS is closed by default: only the web app's origin (`http://localhost:3000`) unless `NL_CORS_ORIGINS` is set; `*` only when set explicitly | API8:2023 | `test_g08_…` |
 | `G09` | Every API response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` | ASVS V3; API8:2023 | `test_g09_…` |
+| `G10` | Live mode refuses to start with the development HMAC secret (`NL_HMAC_SECRET` must be set) | ASVS V13; Ley 21.719 art. 14 quinquies | `test_g10_…` |
 
 ### Gaps (strict xfail until built)
 
@@ -88,7 +89,6 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G05` | Opposition to and blocking of processing | Ley 21.719 arts. 8, 8 ter | `PUT /v1/me/processing` |
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
 | `G07` | Rate limiting | API4:2023; LLM10 | Per-user and per-IP limits, stricter on uploads and chat |
-| `G10` | Live mode starts with the development HMAC secret (it only warns) | ASVS V13; Ley 21.719 art. 14 quinquies | Raise instead of warn in `bootstrap/container.py` |
 | `G11` | Statements and transactions stored in plaintext SQLite | Ley 21.719 art. 14 quinquies; ASVS V14 | Encrypted volume or SQLCipher; key outside the database |
 | `G12` | Published privacy policy and breach response runbook | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `docs/PRIVACY.md`, `docs/runbooks/INCIDENT_RESPONSE.md` |
 
@@ -144,7 +144,7 @@ The routes in G02–G05 are proposals; change the test with the API design.
 - **The rules decision model is keyword-based.** It is the offline floor, not the main defence. The hard guarantees come from the gate and the confirmation contract, which do not depend on any model.
 - **The verifier checks numbers, warnings and a few phrases.** Semantic contradictions in free prose need the model-based check (Should).
 - **No rate limiting** and no abuse detection on the API (G07).
-- **The secret comes from the environment** (`NL_HMAC_SECRET`); a KMS is out of scope. The development default must never be used in a recorded demo.
+- **The secret comes from the environment** (`NL_HMAC_SECRET`); a KMS is out of scope. Live mode refuses the development default (G10); offline mode accepts it, so never use it in a recorded demo.
 - **Real statements are processed locally.** A developer's own cartolas in the git-ignored `cartolas/` are read on their machine; the repository and the test suite hold synthetic data only (C01, C02, C07). The repository is public: never commit keys or personal documents.
 - **Estimator warnings are not forwarded.** `LedgerModelSource.load` discards the stage-1 `Envelope` warnings and facts, and estimation caveats have empty `must_mention`. Chat verification cannot enforce caveats it never receives; B must decide forwarding semantics before the ledger-default switch. See `docs/EXPLANATION_HANDOFF.md`.
 - **The rolling-origin backtest is synthetic-only implementation validation.** Grid A December coverage is adverse without a prior December; this is not evidence of real-world predictive accuracy or a security mitigation. See `docs/BACKTEST.md`.

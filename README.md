@@ -34,7 +34,7 @@ Personal data is removed from every cartola at import, before anything is stored
 
 On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
 
-To use a real LLM or Jev, copy `.env.example` to `.env` and set `NL_LLM`, `NL_DECISION_CHAIN` and the keys. Without them the app runs in **offline mode** (scripted model + rules decision model), which is also the fallback when a provider is down. `NL_CLASSIFIER=jev,naive_bayes` categorizes statement lines with Jev and falls back to the offline naive Bayes; it sends each charge's redacted text to Jev (ADR-032). `NL_PII_DETECTOR=azure` adds Azure AI Language as a second redaction layer; it is off by default because it sends statement text to Microsoft (see `docs/SECURITY.md`).
+To use a real LLM or Jev, copy `.env.example` to `.env` and set `NL_LLM`, `NL_DECISION_CHAIN` and the keys. Without them the app runs in **offline mode** (scripted model + rules decision model), which is also the fallback when a provider is down. Live mode also needs `NL_HMAC_SECRET` set: it refuses to start with the development default. `NL_CLASSIFIER=jev,naive_bayes` categorizes statement lines with Jev and falls back to the offline naive Bayes; it sends each charge's redacted text to Jev (ADR-032). `NL_PII_DETECTOR=azure` adds Azure AI Language as a second redaction layer; it is off by default because it sends statement text to Microsoft (see `docs/SECURITY.md`).
 
 ## How it is built
 
