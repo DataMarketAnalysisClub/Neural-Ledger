@@ -172,6 +172,22 @@ export function Surface({ children, className }: { children: ReactNode; classNam
   return <div className={cn("rounded-control border border-line bg-surface", className)}>{children}</div>;
 }
 
+/**
+ * A white box of fixed height that scrolls on its own, for long tables. `relative` keeps absolutely positioned
+ * descendants (sr-only text) inside it; without it they escape the box and stretch the page. Focusable, so the
+ * keyboard can scroll it too.
+ */
+export function ScrollBox({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div role="region" aria-label={label} tabIndex={0} className="relative max-h-[min(70vh,640px)] overflow-auto rounded-control border border-line bg-surface">
+      {children}
+    </div>
+  );
+}
+
+/** The header row of a table inside a ScrollBox: stays visible while the rows scroll. */
+export const stickyHead = "sticky top-0 z-10 bg-surface shadow-[0_1px_0_var(--color-line)]";
+
 // ---- Money with provenance -------------------------------------------------------------------------
 
 export interface ProvenanceInfo {

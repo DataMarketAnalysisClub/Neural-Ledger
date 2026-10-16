@@ -13,7 +13,7 @@ import {
 } from "@/api/hooks";
 import { ApiError, type Envelope } from "@/api/client";
 import { RedactedText, redactedPlainText } from "@/components/redaction";
-import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, StatusBadge, Surface, cn, describeError } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, ScrollBox, Section, StatusBadge, Surface, cn, describeError, stickyHead } from "@/components/ui";
 import { formatDate, formatMoney, formatMonth } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
 
@@ -401,10 +401,10 @@ function TransactionsView() {
   return (
     <div className="grid gap-12 xl:grid-cols-[1fr_300px]">
       <div className="min-w-0">
-        <Surface className="overflow-x-auto">
+        <ScrollBox label={t("statements.transactions.caption")}>
           <table className="w-full min-w-[720px] text-sm">
             <caption className="sr-only">{t("statements.transactions.caption")}</caption>
-            <thead>
+            <thead className={stickyHead}>
               <tr className="border-b border-line text-left text-xs text-ink-3">
                 <th scope="col" className={th}>{t("statements.transactions.date")}</th>
                 <th scope="col" className={th}>{t("statements.transactions.merchant")}</th>
@@ -434,7 +434,7 @@ function TransactionsView() {
               ))}
             </tbody>
           </table>
-        </Surface>
+        </ScrollBox>
         <UntrustedNote />
       </div>
       <div className="space-y-10 xl:border-l xl:border-line xl:pl-10">

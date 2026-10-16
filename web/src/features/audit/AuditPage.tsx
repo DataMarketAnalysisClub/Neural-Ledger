@@ -3,7 +3,7 @@ import { CheckCircle, LinkSimple, LinkBreak, Prohibit } from "@phosphor-icons/re
 import { useAudit, useFinancialState, usePersona, useVerifyChain } from "@/api/hooks";
 import type { AuditEvent } from "@/api/client";
 import { VerdictBanner } from "@/components/actions";
-import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, cn } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, ScrollBox, Section, cn, stickyHead } from "@/components/ui";
 import { formatDate, shortHash } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
 
@@ -123,16 +123,10 @@ export function AuditPage() {
         {shown.length === 0 ? (
           <EmptyState title={t("audit.empty")} />
         ) : (
-          // A fixed-height box that scrolls on its own; focusable so the keyboard can scroll it too.
-          <div
-            role="region"
-            aria-label={t("audit.scrollBox")}
-            tabIndex={0}
-            className="max-h-[min(70vh,640px)] overflow-auto rounded-control border border-line bg-surface"
-          >
+          <ScrollBox label={t("audit.scrollBox")}>
             <table className="w-full min-w-[760px] text-sm">
               <caption className="sr-only">{t("nav.audit")}</caption>
-              <thead className="sticky top-0 z-10 bg-surface shadow-[0_1px_0_var(--color-line)]">
+              <thead className={stickyHead}>
                 <tr className="border-b border-line text-left text-xs text-ink-3">
                   <th scope="col" className="w-16 px-5 py-3 font-medium">
                     {t("audit.columns.sequence")}
@@ -198,7 +192,7 @@ export function AuditPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollBox>
         )}
       </Section>
     </>

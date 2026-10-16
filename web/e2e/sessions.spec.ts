@@ -39,3 +39,13 @@ test("the profile is read only and shows the declared tolerance", async ({ page 
   await page.getByRole("radio", { name: /Diego/ }).check({ force: true });
   await expect(page.getByText("Moderate")).toBeVisible();
 });
+
+test("long tables scroll inside their box: the page never grows past the app", async ({ page }) => {
+  for (const path of ["/audit", "/statements"]) {
+    await page.goto(path);
+    if (path === "/statements") await page.getByRole("radio", { name: "Transactions" }).check({ force: true });
+    await expect(page.locator("main")).not.toContainText("Loading");
+    const [doc, app] = await page.evaluate(() => [document.documentElement.scrollHeight, document.getElementById("root")!.scrollHeight]);
+    expect(doc).toBeLessThanOrEqual(app);
+  }
+});
