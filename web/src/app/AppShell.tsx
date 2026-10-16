@@ -15,13 +15,11 @@ import type { PersonaId } from "@/api/client";
 import { t, type MessageKey } from "@/i18n";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/components/ui";
-import { features } from "@/lib/features";
 
 interface NavItem {
   to: string;
   label: MessageKey;
   icon: Icon;
-  hidden?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -31,7 +29,7 @@ const NAV: NavItem[] = [
   { to: "/plan", label: "nav.plan", icon: PiggyBank },
   { to: "/copilot", label: "nav.copilot", icon: ChatText },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
-  { to: "/statements", label: "nav.statements", icon: Files, hidden: !features.statements },
+  { to: "/statements", label: "nav.statements", icon: Files },
 ];
 
 /** The product mark: a balance stepping down to a protected floor, the product's own mechanism. */
@@ -121,8 +119,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <nav aria-label={t("nav.label")} className="px-3 pb-3 lg:flex-1 lg:overflow-y-auto">
           {/* Below lg every item stays visible in a grid; nothing hides off-screen. */}
-          <ul className="grid grid-cols-3 gap-1 sm:grid-cols-6 lg:flex lg:flex-col">
-            {NAV.filter((n) => !n.hidden).map(({ to, label, icon: IconCmp }) => (
+          <ul className="grid grid-cols-3 gap-1 sm:grid-cols-7 lg:flex lg:flex-col">
+            {NAV.map(({ to, label, icon: IconCmp }) => (
               <li key={to}>
                 <NavLink
                   to={to}

@@ -4,8 +4,6 @@ WORKDIR /web
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG VITE_FEATURE_STATEMENTS=false
-ENV VITE_FEATURE_STATEMENTS=$VITE_FEATURE_STATEMENTS
 RUN npm run build
 
 FROM nginx:1.27-alpine
