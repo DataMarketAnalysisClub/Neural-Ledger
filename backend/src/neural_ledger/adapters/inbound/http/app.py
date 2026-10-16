@@ -35,9 +35,31 @@ def _action_response(outcome: Any) -> JSONResponse:
     return JSONResponse(payload, status_code=_ACTION_CODES.get(outcome.status, 200))
 
 
+class SecurityHeadersMiddleware:
+    """G09: every response says nosniff and no-store (the API serves financial data). Pure ASGI so streaming bodies are untouched."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() not in (b"x-content-type-options", b"cache-control")]
+                headers += [(b"x-content-type-options", b"nosniff"), (b"cache-control", b"no-store")]
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ()) -> FastAPI:
     app = FastAPI(title="Neural Ledger API", version="0.1.0", description="Contracts: see /contracts in the repository.")
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(SecurityHeadersMiddleware)  # added last, so it wraps CORS and every response
 
     def user(x_user_id: str | None) -> str:
         return x_user_id or services.default_user

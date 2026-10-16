@@ -370,7 +370,6 @@ def test_g08_cors_is_not_open_by_default():
     assert "*" not in Settings().cors_origins
 
 
-@gap("no security headers on API responses. ASVS 5.0 V3 (web frontend security), OWASP API8:2023")
 def test_g09_responses_carry_security_headers(services):
     headers = TestClient(create_app(services)).get("/v1/transactions").headers
     assert headers.get("x-content-type-options") == "nosniff"

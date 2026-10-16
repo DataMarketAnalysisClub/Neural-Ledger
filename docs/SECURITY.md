@@ -75,6 +75,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
 | `C13` | With `NL_CLASSIFIER=jev,…`, Jev receives each charge's text only after redaction (no name, RUT, e-mail, phone or card number) and never a deposit | Ley 21.719 art. 3 c); transfer to a provider abroad (ADR-032) | `test_c13_…` |
 | `G08` | CORS is closed by default: only the web app's origin (`http://localhost:3000`) unless `NL_CORS_ORIGINS` is set; `*` only when set explicitly | API8:2023 | `test_g08_…` |
+| `G09` | Every API response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` | ASVS V3; API8:2023 | `test_g09_…` |
 
 ### Gaps (strict xfail until built)
 
@@ -87,7 +88,6 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G05` | Opposition to and blocking of processing | Ley 21.719 arts. 8, 8 ter | `PUT /v1/me/processing` |
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
 | `G07` | Rate limiting | API4:2023; LLM10 | Per-user and per-IP limits, stricter on uploads and chat |
-| `G09` | Security headers on responses | ASVS V3; API8:2023 | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on financial data |
 | `G10` | Live mode starts with the development HMAC secret (it only warns) | ASVS V13; Ley 21.719 art. 14 quinquies | Raise instead of warn in `bootstrap/container.py` |
 | `G11` | Statements and transactions stored in plaintext SQLite | Ley 21.719 art. 14 quinquies; ASVS V14 | Encrypted volume or SQLCipher; key outside the database |
 | `G12` | Published privacy policy and breach response runbook | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `docs/PRIVACY.md`, `docs/runbooks/INCIDENT_RESPONSE.md` |
