@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Protocol
@@ -142,6 +142,16 @@ class StatementSamples(Protocol):
     def card(self, seed: int, start: date, end: date) -> SampleFile: ...
 
 
+class DatabaseReset(Protocol):
+    """The local SQLite database, emptied in place (the adapter lives in the outbound layer; bootstrap passes it in)."""
+
+    path: str
+
+    def counts(self) -> Mapping[str, int]: ...
+
+    def reset(self) -> Mapping[str, int]: ...
+
+
 def _today(services: ApplicationServices) -> date:
     return services.clock.now().date() if services.clock else date.today()
 
@@ -207,7 +217,40 @@ def seed_database(services: ApplicationServices, samples: StatementSamples, args
     return 0
 
 
-def main(services: ApplicationServices, argv: list[str] | None = None, samples: StatementSamples | None = None) -> int:
+def reset_database(services: ApplicationServices, database: DatabaseReset, args: argparse.Namespace) -> int:
+    if services.persistence != "sqlite":
+        print("reset empties the SQLite database, but NL_PERSISTENCE is 'memory': there is nothing stored to reset.")
+        print("Run it with NL_PERSISTENCE=sqlite (make reset does), against the same NL_SQLITE_PATH as the API.")
+        return 2
+    present = {table: rows for table, rows in database.counts().items() if rows}
+    total = sum(present.values())
+    print(f"database {database.path}")
+    for table, rows in present.items():
+        print(f"  {table:<28} {rows:>8,} rows")
+    if not total:
+        print("already empty: nothing to delete.")
+        return 0
+    print(f"  {'total':<28} {total:>8,} rows")
+    if not args.yes:
+        try:
+            answer = input(f"Delete all {total:,} rows from {database.path}? [y/N] ")
+        except EOFError:
+            answer = ""
+        if answer.strip().lower() not in ("y", "yes"):
+            print("aborted: nothing was deleted.")
+            return 1
+    deleted = database.reset()
+    print(f"deleted {sum(deleted.values()):,} rows from {sum(1 for rows in deleted.values() if rows)} table(s); the schema and the file are kept.")
+    print("Restart the API: chat history, profiles and snapshots live in its memory. Then `make seed` to load synthetic data again.")
+    return 0
+
+
+def main(
+    services: ApplicationServices,
+    argv: list[str] | None = None,
+    samples: StatementSamples | None = None,
+    database: DatabaseReset | None = None,
+) -> int:
     parser = argparse.ArgumentParser(prog="neural-ledger")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("demo", help="run the demo arc offline")
@@ -238,7 +281,15 @@ def main(services: ApplicationServices, argv: list[str] | None = None, samples: 
         seed.add_argument("--opening", type=int, default=None, help="opening balance of the first month, CLP (default: one salary)")
         seed.add_argument("--salary", type=int, default=None, help="monthly salary, CLP (default: random)")
         seed.add_argument("--no-card", action="store_true", help="skip the credit card export for the current month")
+    if database is not None:
+        reset = sub.add_parser(
+            "reset",
+            help="developer command: empty the local SQLite database in place (not the user-facing deletion of personal data, gap G03)",
+        )
+        reset.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     args = parser.parse_args(argv)
+    if args.command == "reset":
+        return reset_database(services, database, args)
     if args.command == "cartola":
         return write_cartolas(services, samples, args)
     if args.command == "seed":
