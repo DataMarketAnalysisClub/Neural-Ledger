@@ -287,7 +287,9 @@ def mask_account(account_ref: str) -> str:
 
     A reference of 4 digits or fewer would show whole, so it is masked entirely. A masked one stays as it is.
     """
+    if account_ref.startswith(ACCOUNT_MASK):  # masked by the bank already; some print a letter-and-digit suffix ('Ab3x')
+        return ACCOUNT_MASK + re.sub(r"[^0-9A-Za-z]", "", account_ref)[-4:]
     digits = re.sub(r"\D", "", account_ref)
-    if len(digits) > 4 or account_ref.startswith(ACCOUNT_MASK):
+    if len(digits) > 4:
         return ACCOUNT_MASK + digits[-4:]
     return ACCOUNT_MASK

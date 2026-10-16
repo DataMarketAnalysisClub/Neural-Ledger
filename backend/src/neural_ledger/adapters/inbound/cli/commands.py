@@ -67,19 +67,27 @@ def import_statement(services: ApplicationServices, path: Path, user_id: str, as
     if not result.ok:
         print(f"{result.status.value}: {result.message}")
         return 2
-    s = result.data.statement
-    print(f"{s.bank}  account {s.account_ref}  {s.period_start} → {s.period_end}  ({s.source})")
-    print(f"{s.line_count} movements · charges {s.total_debits:,} · deposits {s.total_credits:,} {s.currency}")
-    print(f"statement_id {s.statement_id}  {'VERIFIED' if s.verified else 'UNVERIFIED'}{'  (already imported)' if result.data.duplicate else ''}")
-    for issue in s.issues:
-        print(f"  - {issue.code} {issue.on or ''} {issue.message} (expected {issue.expected}, found {issue.found})")
-    redaction = result.data.redaction
-    if redaction:
-        hidden = ", ".join(f"{count} {code}" for code, count in redaction.counts.items()) or "nothing found"
-        print(f"personal data hidden: {hidden} (rules {redaction.rules}, detector {redaction.detector})")
-    ledger = result.data.ledger
-    if ledger.classifier:
-        print(f"ledger: {ledger.posted} transactions ({ledger.new} new) · {ledger.uncategorized} charges uncategorized · {ledger.classifier}")
+    for imported in result.data.imports:
+        s = imported.statement
+        state = "VERIFIED" if s.verified else "UNVERIFIED"
+        print(f"{s.bank}  {s.account_type} {s.account_ref}  {s.period_start} → {s.period_end}  ({s.source}){'  PROVISIONAL' if s.provisional else ''}")
+        print(f"{s.line_count} movements · charges {s.total_debits:,} · credits {s.total_credits:,} {s.currency}")
+        print(f"statement_id {s.statement_id}  {state}{'  (already imported)' if imported.duplicate else ''}")
+        for issue in s.issues:
+            print(f"  - {issue.code} {issue.on or ''} {issue.message} (expected {issue.expected}, found {issue.found})")
+        o = s.obligations
+        if o is not None:
+            amounts = ", ".join(f"{label} {value:,}" for label, value in (("due", o.amount_due), ("minimum", o.minimum_due)) if value is not None)
+            print(f"obligations: {amounts or 'nothing printed'} {s.currency}{f' by {o.due_date}' if o.due_date else ''}")
+            if o.installments:
+                print(f"  cuotas still to bill {o.installments_remaining:,} {s.currency}: " + ", ".join(f"{u.month} {u.amount:,}" for u in o.upcoming))
+        redaction = imported.redaction
+        if redaction:
+            hidden = ", ".join(f"{count} {code}" for code, count in redaction.counts.items()) or "nothing found"
+            print(f"personal data hidden: {hidden} (rules {redaction.rules}, detector {redaction.detector})")
+        ledger = imported.ledger
+        if ledger.classifier:
+            print(f"ledger: {ledger.posted} transactions ({ledger.new} new) · {ledger.uncategorized} charges uncategorized · {ledger.classifier}")
     for warning in result.warnings:
         if warning.code == "NOT_POSTED":
             print(f"ledger: {warning.message}")
@@ -108,7 +116,8 @@ def list_transactions(services: ApplicationServices, user_id: str, as_json: bool
 
 def list_statements(services: ApplicationServices, user_id: str) -> int:
     for s in services.statements.list_statements(user_id).data:
-        print(f"{s.statement_id}  {s.bank}  {s.period_start} → {s.period_end}  {s.line_count} movements  {'VERIFIED' if s.verified else 'UNVERIFIED'}")
+        state = ("PROVISIONAL " if s.provisional else "") + ("VERIFIED" if s.verified else "UNVERIFIED")
+        print(f"{s.statement_id}  {s.bank}  {s.currency}  {s.period_start} → {s.period_end}  {s.line_count} movements  {state}")
     return 0
 
 
@@ -118,7 +127,7 @@ def main(services: ApplicationServices, argv: list[str] | None = None) -> int:
     sub.add_parser("demo", help="run the demo arc offline")
     export = sub.add_parser("demo-and-export", help="run the demo and export the audit log as JSONL evidence")
     export.add_argument("--out", type=Path, default=Path("../evidence/sandbox-logs/audit.jsonl"))
-    imp = sub.add_parser("import-statement", help="read a bank statement (PDF or image), reconcile it and store it")
+    imp = sub.add_parser("import-statement", help="read a bank statement (Excel .xlsx, PDF or image), reconcile it and store it")
     imp.add_argument("file", type=Path)
     imp.add_argument("--user", default=None, help="owner of the statement (default: NL_PERSONA)")
     imp.add_argument("--json", action="store_true", help="print the full envelope")

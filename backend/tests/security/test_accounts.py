@@ -285,7 +285,7 @@ def test_s18_statement_list_and_detail_are_owner_scoped(monkeypatch):
     signup(client)
     upload = client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf"})
     assert upload.status_code == 200, "owner must be able to upload synthetic statement"
-    statement_id = upload.json()["data"]["statement"]["statement_id"]
+    statement_id = upload.json()["data"]["imports"][0]["statement"]["statement_id"]
     own_list = client.get("/v1/statements")
     assert own_list.status_code == 200
     assert statement_id in {item["statement_id"] for item in own_list.json()["data"]}

@@ -43,7 +43,7 @@ from ..adapters.outbound.persistence.sqlite import (
 )
 from ..adapters.outbound.privacy.azure_language import AzureLanguageDetector
 from ..adapters.outbound.privacy.null import NullDetector
-from ..adapters.outbound.statements.reader import OcrStatementReader
+from ..adapters.outbound.statements.reader import StatementFileReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
 from ..adapters.outbound.system.password import ScryptHasher
@@ -203,7 +203,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
-    statements = StatementUseCases(OcrStatementReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
+    statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
     ledger = LedgerUseCases(transaction_store)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
