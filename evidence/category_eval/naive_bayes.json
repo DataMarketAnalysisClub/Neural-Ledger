@@ -1,0 +1,38 @@
+{
+  "model": "naive_bayes",
+  "classifier": "naive_bayes@87700f3ad7a2",
+  "seconds": 2.2,
+  "all": {
+    "n": 98,
+    "coverage": 0.449,
+    "precision": 0.955,
+    "wrong_accepted": 0.02
+  },
+  "seen": {
+    "n": 39,
+    "coverage": 0.821,
+    "precision": 1.0,
+    "wrong_accepted": 0.0
+  },
+  "unseen": {
+    "n": 59,
+    "coverage": 0.203,
+    "precision": 0.833,
+    "wrong_accepted": 0.034
+  },
+  "confusions": [
+    {
+      "expected": "groceries",
+      "got": "shopping",
+      "count": 1
+    },
+    {
+      "expected": "other",
+      "got": "utilities",
+      "count": 1
+    }
+  ],
+  "sources": {
+    "naive_bayes@87700f3ad7a2": 98
+  }
+}
