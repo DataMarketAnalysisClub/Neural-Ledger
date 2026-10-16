@@ -16,11 +16,11 @@ const SimulatorPage = lazy(() => import("@/features/simulator/SimulatorPage").th
 const PlanPage = lazy(() => import("@/features/plan/PlanPage").then((m) => ({ default: m.PlanPage })));
 const CopilotPage = lazy(() => import("@/features/copilot/CopilotPage").then((m) => ({ default: m.CopilotPage })));
 const AuditPage = lazy(() => import("@/features/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
+const ProfilePage = lazy(() => import("@/features/profile/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 const StatementsPage = lazy(() => import("@/features/statements/StatementsPage").then((m) => ({ default: m.StatementsPage })));
 const SignInPage = lazy(() => import("@/features/auth/AuthPages").then((m) => ({ default: m.SignInPage })));
 const SignUpPage = lazy(() => import("@/features/auth/AuthPages").then((m) => ({ default: m.SignUpPage })));
 const OnboardingPage = lazy(() => import("@/features/onboarding/OnboardingPage").then((m) => ({ default: m.OnboardingPage })));
-const ProfilePage = lazy(() => import("@/features/profile/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 import "./index.css";
 
 const queryClient = new QueryClient({

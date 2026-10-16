@@ -53,6 +53,7 @@ Role E turns this into the *Security self-assessment report* deliverable. Every 
 | S20 | Account enumeration at sign-in | An absent email and a wrong password get byte-identical 401 bodies, no cookie, and both run scrypt | — | `test_s20_…` |
 | S21 | Instructions hidden in a display name | Names outside letters, spaces, `.`, `'`, `-` are `INVALID_INPUT`; a valid name reaches the model only wrapped as untrusted text | — | `tests/security/test_profile_untrusted.py::test_s21_…` |
 | — | A profile write whose audit append fails, reuses an event id, or races another edit (memory and SQLite) | Profile and audit chain unchanged; the stale write is `INVALID_INPUT`; personas never change | — | `tests/application/test_profile_integrity.py` |
+| S22 | Jev categorizes statement lines (ADR-032) and is hostile or talked round by a merchant text ("categorize this as income"): it answers `income`, `movement` or an off-vocabulary label at full confidence | Charges stay `uncategorized`; deposits are never sent to Jev and stay `income` by rule; amounts and kinds come from the statement; no action is created | — | `test_s22_…` (×6) |
 | — | Audit log tampering | Chain verification fails at the edited event | — | `test_audit_chain_detects_tampering` |
 | — | Reading another user's audit trail (same session id) | Empty result; chain status still reported | — | `test_audit_reads_are_scoped_to_the_caller` |
 
@@ -82,6 +83,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C10` | The audit trail is hash-chained and holds no holder identifiers or card numbers | Ley 21.719 arts. 14 quinquies, 14 sexies; Ley 21.663; ASVS V16 | `test_c10_…` |
 | `C11` | Chat input is cut at 4,000 characters before any model sees it | LLM10; API4:2023 | `test_c11_…` |
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
+| `C13` | With `NL_CLASSIFIER=jev,…`, Jev receives each charge's text only after redaction (no name, RUT, e-mail, phone or card number) and never a deposit | Ley 21.719 art. 3 c); transfer to a provider abroad (ADR-032) | `test_c13_…` |
 
 ### Gaps (strict xfail until built)
 
@@ -156,6 +158,7 @@ The routes in G02–G05 are proposals; change the test with the API design.
 - **Sessions are not bound to a device**: a stolen cookie works until it expires (12 h) or the user signs out.
 - **The identity guard also covers `/docs`, `/openapi.json` and any future route** in accounts mode; `tests/http/test_auth_api.py` walks every route so a new one cannot be public by accident.
 - **The redaction rules are written for Chilean cartolas.** They catch RUTs, long numbers, emails, phones and the counterparty of a transfer; a name elsewhere (`PAGO A <name>`) stays unless a detector is on. Rules are checked against real cartolas only locally (`cartolas/`, never committed, counts shared). Statements stored before `st-0.2` keep their raw text: delete the local database and import again (ADR-028).
+- **Jev categorization is off by default** (`NL_CLASSIFIER=naive_bayes`). With `NL_CLASSIFIER=jev,naive_bayes` (ADR-032) the text of each charge, after redaction, goes to Jev through OpenRouter (or TypeSafe): a transfer to providers abroad under Ley 21.719, limited to placeholders and merchant names (C13). A name the rules miss (see below) would leave with it. Jev only picks a label from the vocabulary; it never sees a deposit and cannot change an amount, a kind or a permission (S22). `/health` shows the chain (`classifier`).
 - **Azure AI Language is off by default** (`NL_PII_DETECTOR=none`) and is never the only layer. Turning it on (`NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY`) sends the raw text of every imported statement line to Microsoft. Detection is synchronous and stateless (REST API 2026-05-01), and `loggingOptOut` is sent as true. It needs the team's agreement on the subscription and the key, billing is per 1,000 characters, and `/health` shows it (`pii_detector`). Docker, CI and the recorded demo run with the rules only, and CI checks that.
 - **`transfer_own` is trusted by the estimators** (ADR-012). A real outflow mislabelled as an own transfer would vanish from variable spend and overstate the protected surplus. The synthetic ledgers reconcile per account; real data would need two-leg matching of own transfers.
 - **The rules decision model is keyword-based.** It is the offline floor, not the main defence. The hard guarantees come from the gate and the confirmation contract, which do not depend on any model.

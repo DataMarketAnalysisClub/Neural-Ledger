@@ -52,8 +52,8 @@ cd web && npm run dev
 | `/commitments` | 1 | `/v1/commitments`, `/v1/capacity` |
 | `/simulator` Purchase check | 2, 3 | `POST /v1/simulate-purchase` |
 | `/plan` Savings plan | 4 | `/v1/capacity`, `/v1/profile`, `/v1/permitted-profile`, `/v1/savings-plan` |
-| `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` |
-| `/audit` Audit trail | 6 | `/v1/audit`, `/v1/audit/verify` |
+| `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` ("New conversation" starts a new `session_id`; the log is not stored yet) |
+| `/audit` Audit trail | 6 | `/v1/audit` (all or this conversation), `/v1/audit/verify` |
 | `/statements` | — | `/v1/statements`, `/v1/statements/{id}`, `POST /v1/statements`, `/v1/transactions` (imports feed the ledger only, ADR-029; see below) |
 | `/signin`, `/signup` | accounts | `/v1/auth/signin`, `/v1/auth/signup`, `/v1/auth/demo-session` |
 | `/onboarding` | accounts | `GET` and `POST /v1/profile/questionnaire` |
@@ -71,6 +71,7 @@ cd web && npm run dev
 ## Known API gaps (for contract PRs)
 
 - The chat reply cannot tell "offline narration" from "the verifier replaced the model's text" (`fallback_used` covers both).
+- No chat history endpoint: a reload or "New conversation" drops the log (`GET /v1/chat/history` is planned).
 - Audit events carry mismatch amounts only inside `detail`.
 
 ## Accounts mode

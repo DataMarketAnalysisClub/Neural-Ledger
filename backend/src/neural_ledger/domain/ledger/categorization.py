@@ -16,14 +16,34 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from ..agent.questions import ChoiceQuestion
 from ..shared.hashing import content_id
 from ..statements.model import LineKind, StatementLine, StoredStatement
 from .entities import AccountType, InstallmentInfo, Transaction, TransactionKind
 
-CATEGORIZATION_VERSION = "cat-0.2"  # posting rules + vocabulary; outputs carry it as params_version
+CATEGORIZATION_VERSION = "cat-0.3"  # posting rules + vocabulary + category question; outputs carry it as params_version
 
 # Spending categories a classifier may choose. The first six are the personas' categories.
-CATEGORIES = frozenset({"groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other"})
+CATEGORY_OPTIONS = ("groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other")
+CATEGORIES = frozenset(CATEGORY_OPTIONS)
+
+# The same vocabulary as a closed question, for models that answer one (Jev, ADR-032). The line's text is the
+# state and is untrusted: whatever it says, the answer is only a guess that `accept` gates below.
+CATEGORY_QUESTION = ChoiceQuestion(
+    key="category",
+    prompt="Which spending category best matches this line of a Chilean bank or credit card statement?",
+    options=CATEGORY_OPTIONS,
+    notes=(
+        "Supermarkets and food stores: Lider, Jumbo, Unimarc, Santa Isabel, Tottus, aCuenta, minimarkets",
+        "Restaurants, cafés, fast food and food delivery: Starbucks, McDonald's, Uber Eats, PedidosYa, Rappi",
+        "Pharmacies, clinics, doctors, labs, dentists and health insurance: Cruz Verde, Salcobrand, Ahumada",
+        "Retail and online shopping, clothes, electronics, home improvement: Falabella, Paris, Mercado Libre, Sodimac",
+        "Rides, fuel, public transport, tolls and parking: Uber, Cabify, Copec, Shell, Metro, Biotren, TAG",
+        "Household services and bills: electricity, water, gas, internet, mobile and phone plans (CGE, Essbio, Entel, WOM, VTR)",
+        "Streaming, music, games, cinema and events: Netflix, Spotify, HBO Max, Steam, Cinemark",
+        "Spending that fits none of the categories above, such as a transfer to another person",
+    ),
+)
 INCOME = "income"
 MOVEMENT = "movement"  # "Movimiento": money between the holder's own accounts, e.g. paying the card (ADR-024)
 UNCATEGORIZED = "uncategorized"
@@ -38,6 +58,7 @@ class CategoryGuess:
 
     category: str
     confidence: float
+    source: str | None = None  # the model that answered, when a chain may mix them; None = the posting classifier
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.confidence) and 0.0 <= self.confidence <= 1.0):
@@ -102,6 +123,8 @@ def post_statement(
 ) -> tuple[PostedTransaction, ...]:
     """Classifiable lines are categorized by `guesses` (keyed by line index); the rest by rule.
 
+    Each transaction records the model that chose its category: the guess's `source` when it has one
+    (a fallback chain answers some lines with one model and some with another), else `classifier`.
     Only a final statement that reconciles is posted: an unverified amount must not reach the
     ledger the financial core computes from, and a provisional export would be posted twice.
     """
@@ -118,7 +141,8 @@ def post_statement(
             category, method, confidence = _RULE_CATEGORIES[kind], RULE, None
         else:
             guess = guesses.get(line.index)
-            category, method = accept(guess, min_confidence), classifier
+            category = accept(guess, min_confidence)
+            method = (guess.source if guess else None) or classifier
             confidence = guess.confidence if guess else None
         txn = Transaction(
             txn_id=content_id("txn", stored.user_id, stored.statement_id, line.index),

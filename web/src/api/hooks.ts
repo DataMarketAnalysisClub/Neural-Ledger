@@ -32,38 +32,44 @@ interface PersonaContextValue {
   setPersona: (p: PersonaId) => void;
   sessionId: string;
   identity: ApiIdentity;
+  /** Starts a new copilot conversation: a new session_id for chat, pending actions and the audit filter. */
+  newSession: () => void;
 }
 const PersonaContext = createContext<PersonaContextValue | null>(null);
 
-function sessionFor(persona: string): string {
+/** The persona's (or account's) session for this tab, or a new one when `fresh`. */
+function sessionFor(persona: string, fresh = false): string {
   const key = `nl.session.${persona}`;
+  const created = `ui-${persona}-${Math.random().toString(36).slice(2, 8)}`;
   try {
-    const existing = sessionStorage.getItem(key);
+    const existing = fresh ? null : sessionStorage.getItem(key);
     if (existing) return existing;
-    const created = `ui-${persona}-${Math.random().toString(36).slice(2, 8)}`;
     sessionStorage.setItem(key, created);
     return created;
   } catch {
-    return `ui-${persona}`;
+    return fresh ? created : `ui-${persona}`;
   }
 }
 
 export function PersonaProvider({ children, initial = "camila" }: { children: ReactNode; initial?: PersonaId }) {
   const client = useQueryClient();
   const auth = useOptionalAuth();
+  const accountId = auth?.mode === "accounts" ? auth.me?.user_id : undefined;
   const [persona, setPersonaState] = useState<PersonaId>(initial);
+  const [sessionId, setSessionId] = useState(() => sessionFor(accountId ?? initial));
   const setPersona = useCallback(
     (p: PersonaId) => {
       setPersonaState(p);
+      setSessionId(sessionFor(p));
       client.removeQueries(); // nothing from one persona may leak into the other's screens
     },
     [client],
   );
-  const accountId = auth?.mode === "accounts" ? auth.me?.user_id : undefined;
+  const newSession = useCallback(() => setSessionId(sessionFor(accountId ?? persona, true)), [accountId, persona]);
   const value = useMemo(() => ({
-    persona, setPersona, sessionId: sessionFor(accountId ?? persona),
+    persona, setPersona, sessionId, newSession,
     identity: accountId ? { kind: "accounts" as const, user_id: accountId } : { kind: "demo" as const, user_id: persona },
-  }), [persona, setPersona, accountId]);
+  }), [persona, setPersona, sessionId, newSession, accountId]);
   return createElement(PersonaContext.Provider, { value }, children);
 }
 
@@ -172,6 +178,8 @@ export function useAudit(sessionId?: string) {
   return useQuery({
     queryKey: [identity.user_id, "audit", sessionId ?? "all"],
     queryFn: () => request<AuditPage>("/v1/audit", { identity, query: { session_id: sessionId, limit: 500 } }),
+    // Switching the conversation filter keeps the table on screen while it loads; never across identities.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[0] === identity.user_id ? previous : undefined),
   });
 }
 

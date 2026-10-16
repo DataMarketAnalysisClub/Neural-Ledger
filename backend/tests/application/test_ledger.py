@@ -112,7 +112,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
         "camila.spending.CLP.uncategorized": 6_000,
         "camila.income.CLP": 900_000,
     }
-    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.2"
+    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.3"
 
 
 def test_ledger_is_scoped_to_its_user():
@@ -155,7 +155,8 @@ def test_classifier_is_chosen_by_setting_and_unknown_names_fail_at_startup():
     from neural_ledger.bootstrap.container import CLASSIFIERS, build
     from tests.conftest import make_settings
 
-    assert Settings.from_env({"NL_CLASSIFIER": "naive_bayes"}).classifier == "naive_bayes" == Settings.from_env({}).classifier
-    assert "naive_bayes" in CLASSIFIERS
+    assert Settings.from_env({"NL_CLASSIFIER": "naive_bayes"}).classifiers == ("naive_bayes",) == Settings.from_env({}).classifiers
+    assert Settings.from_env({"NL_CLASSIFIER": " jev , naive_bayes "}).classifiers == ("jev", "naive_bayes")
+    assert {"naive_bayes", "jev"} <= set(CLASSIFIERS)
     with pytest.raises(ValueError, match="NL_CLASSIFIER"):
-        build(make_settings(classifier="magic"))
+        build(make_settings(classifiers=("jev", "magic")))

@@ -49,7 +49,9 @@ class ApplicationServices:
     language_model: str
     decision_chain: tuple[str, ...]
     pii_detector: str  # after the redaction rules on imported statements; anything but "none" sends their text out (ADR-028)
+    classifier: str = ""  # spending categories of imported statements; a name with "jev" sends line text to Jev (ADR-032)
     clock: Clock | None = None  # exposed as /health server_time so UI timers follow the API clock (fixed in demos)
     auth: AuthConfig = AuthConfig()
     accounts: AccountUseCases | None = None  # accounts mode only
     profile_editing: ProfileEditing | None = None  # accounts mode only: profile writes are user-only HTTP flows
+    persistence: str = "memory"  # memory | sqlite: `neural-ledger seed` refuses to seed a store that is gone at exit
