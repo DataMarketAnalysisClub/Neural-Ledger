@@ -55,16 +55,28 @@ describe("versioned questionnaire", () => {
     expect(screen.getByText("Answered with pq-0.1")).toBeInTheDocument();
   });
 
-  it("keeps profile empty until the user activates sample data", async () => {
-    await accountsApi.signup({ email: "sample-toggle@example.invalid", password: "synthetic-password", display_name: "Sample Tester" });
-    mount("/profile");
+  it("keeps a new account's profile empty, editable and without a sample-data action", async () => {
+    await accountsApi.signup({ email: "empty-profile@example.invalid", password: "synthetic-password", display_name: "Empty Tester" });
+    const permitted = vi.spyOn(accountsApi, "permitted");
+    const { container } = mount("/profile");
     await waitFor(() => expect(screen.getByRole("heading", { name: "Your profile" })).toBeInTheDocument());
+
     expect(screen.getByText("Capacity is unavailable until financial data is available. No permitted profile can be shown yet.")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "No financial data yet" })).toHaveTextContent("A new account starts empty.");
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/sample/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Financial capacity", { exact: false })).not.toBeInTheDocument();
+    expect(permitted).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Answer the questionnaire" })).toHaveAttribute("href", "/onboarding");
+    expect((await axe(container)).violations).toEqual([]);
 
-    await userEvent.click(screen.getByRole("switch", { name: "Use synthetic Camila sample data" }));
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Display name"));
+    await user.type(screen.getByLabelText("Display name"), "Renamed Tester");
+    await user.click(screen.getByRole("button", { name: "Save profile" }));
 
-    await waitFor(() => expect(screen.getByText("Sample data is on. This version has no remove-sample action.")).toBeInTheDocument());
-    expect(screen.getByRole("switch", { name: "Use synthetic Camila sample data" })).toBeChecked();
-    expect(screen.getByText("Conservative", { selector: "p" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Renamed Tester" })).toBeInTheDocument());
+    expect(await accountsApi.me()).toMatchObject({ data_source: "empty" });
   });
 });

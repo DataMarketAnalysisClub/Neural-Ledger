@@ -42,7 +42,7 @@ describe("local accounts mock", () => {
     });
   });
 
-  it("returns a strict INVALID_INPUT body with a field for a rejected profile edit", async () => {
+  it("answers a domain-rejected profile edit with an INVALID_INPUT envelope naming the field", async () => {
     await accountsApi.signup({ email: "invalid-name@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester" });
 
     const failure = await accountsApi.updateProfile({ display_name: "123", language: "en" }).then(() => null, (error: unknown) => error);
@@ -50,7 +50,22 @@ describe("local accounts mock", () => {
     expect(failure).toBeInstanceOf(ApiError);
     if (failure instanceof ApiError) {
       expect(failure.httpStatus).toBe(422);
-      expect(failure.body).toEqual({ status: "INVALID_INPUT", field: "display_name", message: expect.any(String) });
+      expect(failure.body).toEqual({
+        status: "INVALID_INPUT", params_version: expect.stringMatching(/^mock-/), field: "display_name", allowed: [], message: expect.any(String), facts: [], warnings: [],
+      });
+    }
+    expect((await accountsApi.profile()).data?.display_name.untrusted_text).toBe("Valid Tester");
+  });
+
+  it("answers an empty profile-edit body with the strict auth error on field body", async () => {
+    await accountsApi.signup({ email: "empty-edit@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester" });
+
+    const failure = await request("/v1/profile", { method: "PUT", body: {} }).then(() => null, (error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    if (failure instanceof ApiError) {
+      expect(failure.httpStatus).toBe(422);
+      expect(failure.body).toEqual({ status: "INVALID_INPUT", field: "body", message: expect.any(String) });
     }
   });
 
@@ -202,13 +217,32 @@ describe("local accounts mock", () => {
 
   it("rejects a write to a read-only persona profile with a strict auth error", async () => {
     await accountsApi.demoSession("diego");
+    const definition = await accountsApi.questionnaire();
 
     await expect(accountsApi.updateProfile({ display_name: "Altered", language: "en" })).rejects.toMatchObject({
       httpStatus: 403, body: { status: "PROFILE_READ_ONLY", message: expect.any(String) },
     });
-    const error = await accountsApi.useSampleData().then(() => null, (failure: unknown) => failure);
+    const error = await accountsApi.submitQuestionnaire({
+      version: definition.data?.version ?? "",
+      answers: (definition.data?.questions ?? []).map((question) => ({ question_id: question.question_id, option_id: question.options[0]?.option_id ?? "" })),
+    }).then(() => null, (failure: unknown) => failure);
     expect(error).toBeInstanceOf(ApiError);
     if (error instanceof ApiError) expect(error.body).toEqual({ status: "PROFILE_READ_ONLY", message: expect.any(String) });
+    expect((await accountsApi.profile()).data?.display_name.untrusted_text).toBe("Diego");
+  });
+
+  it("offers no sample-data action: the API has no such method and the mock serves no such route", async () => {
+    await accountsApi.signup({ email: "no-sample@example.invalid", password: "synthetic-password-seven", display_name: "Empty Tester" });
+
+    const attempt = await request("/v1/profile/sample-data", { method: "POST" }).then(() => null, (error: unknown) => error);
+
+    expect(Object.keys(accountsApi).some((name) => /sample/i.test(name))).toBe(false);
+    expect(attempt).toBeInstanceOf(ApiError);
+    if (attempt instanceof ApiError) expect(attempt.httpStatus).toBe(404);
+    expect(await accountsApi.me()).toMatchObject({ data_source: "empty" });
+    await expect(accountsApi.permitted("conservative")).rejects.toMatchObject({
+      httpStatus: 409, body: { status: "INSUFFICIENT_DATA", missing: ["financial data"] },
+    });
   });
 
   it("rejects an expired persona session without returning a prior profile", async () => {

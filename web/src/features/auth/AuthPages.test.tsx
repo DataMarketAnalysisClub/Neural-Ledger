@@ -152,7 +152,7 @@ describe("accounts session", () => {
     expect(client.getQueryData(["usr_probe", "profile"])).toEqual({ private: "new user" });
   });
 
-  it("shows a demo persona's permitted capacity without sample-data controls", async () => {
+  it("shows a demo persona's permitted capacity read-only, without empty-account or sample-data controls", async () => {
     vi.stubEnv("VITE_ACCOUNTS_MOCK", "true");
     await accountsApi.demoSession("camila");
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -165,7 +165,9 @@ describe("accounts session", () => {
     expect(screen.getByText("Conservative", { selector: "p" })).toBeInTheDocument();
     expect(screen.getByText("Financial capacity: Conservative")).toBeInTheDocument();
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-    expect(screen.queryByText("Sample data is on. This version has no remove-sample action.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Display name" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "No financial data yet" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/sample/i)).not.toBeInTheDocument();
   });
 
   it("offers a labelled signup form without axe violations", async () => {

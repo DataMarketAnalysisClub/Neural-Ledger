@@ -1,67 +1,47 @@
 import { request, requestEnvelope, type Envelope } from "./client";
+import type { AuthenticatedUser } from "@/contracts/auth/me";
+import type { AuthSession as SessionReceipt } from "@/contracts/auth/session";
+import type { AuthError as AuthErrorBody } from "@/contracts/auth/error";
+import type { SignupRequest } from "@/contracts/auth/signup_request";
+import type { SigninRequest } from "@/contracts/auth/signin_request";
+import type { DemoSessionRequest } from "@/contracts/auth/demo_session_request";
+import type { ProfileUpdate as ProfileUpdateBody } from "@/contracts/profile/profile_update";
+import type { Questionnaire } from "@/contracts/profile/questionnaire";
 import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
+import type { Answer, UserProfile as UserProfileRecord } from "@/contracts/outputs/user_profile";
 
-export type Tolerance = "conservative" | "moderate" | "aggressive";
+/* The generated contracts are the source of truth; these names only narrow them where the schema says more than its type. */
 
-export interface Me {
-  readonly user_id: string;
-  readonly data_source: "empty" | "sample" | "persona";
-  readonly expires_at: string;
-}
+export type Tolerance = NonNullable<UserProfileRecord["declared_tolerance"]>;
+export type Me = Readonly<AuthenticatedUser>;
+export type AuthSession = Readonly<SessionReceipt>;
 
-export interface AuthSession {
-  readonly user_id: string;
-  readonly expires_at: string;
-}
-
+/** The schema requires `field` when the status is INVALID_INPUT (an if/then the generator does not express). */
 export type AuthError =
   | { readonly status: "INVALID_INPUT"; readonly message: string; readonly field: string }
-  | { readonly status: "IDENTITY_HEADER_REJECTED" | "UNAUTHENTICATED" | "INVALID_CREDENTIALS" | "ORIGIN_REJECTED" | "PROFILE_READ_ONLY" | "NOT_FOUND" | "EMAIL_TAKEN"; readonly message: string; readonly field?: string };
+  | { readonly status: Exclude<AuthErrorBody["status"], "INVALID_INPUT">; readonly message: string; readonly field?: string };
 
-export interface UserProfile {
-  readonly user_id: string;
-  readonly display_name: { readonly untrusted_text: string };
-  readonly language: string;
-  readonly declared_tolerance: Tolerance | null;
-  readonly questionnaire_version: string | null;
-  readonly questionnaire: readonly { readonly question_id: string; readonly option_id: string }[];
-}
+export type UserProfile = Readonly<UserProfileRecord>;
+export type QuestionnaireDefinition = Readonly<Questionnaire>;
 
-export interface QuestionnaireDefinition {
-  readonly version: string;
-  readonly questions: readonly {
-    readonly question_id: string;
-    readonly copy_key: string;
-    readonly options: readonly { readonly option_id: string; readonly copy_key: string; readonly score: number }[];
-  }[];
-}
-
+/** The submitted version comes from the questionnaire the server returned; the server checks it and every answer. */
 export interface QuestionnaireSubmission {
   readonly version: string;
-  readonly answers: readonly { readonly question_id: string; readonly option_id: string }[];
+  readonly answers: Answer[];
 }
 
-export interface SignupInput {
-  readonly email: string;
-  readonly password: string;
-  readonly display_name: string;
-  readonly language?: string;
-}
+export type SignupInput = Readonly<SignupRequest>;
+export type SigninInput = Readonly<SigninRequest>;
+export type DemoPersona = DemoSessionRequest["persona"];
 
-export interface SigninInput {
-  readonly email: string;
-  readonly password: string;
-}
-
-export type ProfileUpdate =
-  | { readonly display_name: string; readonly language?: string }
-  | { readonly display_name?: string; readonly language: string };
+/** At least one field: an empty body is rejected with INVALID_INPUT on `body`. */
+export type ProfileUpdate = Readonly<ProfileUpdateBody> & ({ readonly display_name: string } | { readonly language: string });
 
 export const accountsApi = {
   me: () => request<Me>("/v1/me"),
   signup: (input: SignupInput) => request<AuthSession>("/v1/auth/signup", { method: "POST", body: input }),
   signin: (input: SigninInput) => request<AuthSession>("/v1/auth/signin", { method: "POST", body: input }),
-  demoSession: (persona: "camila" | "diego") => request<AuthSession>("/v1/auth/demo-session", { method: "POST", body: { persona } }),
+  demoSession: (persona: DemoPersona) => request<AuthSession>("/v1/auth/demo-session", { method: "POST", body: { persona } satisfies DemoSessionRequest }),
   signout: () => request<null>("/v1/auth/signout", { method: "POST" }),
   profile: () => requestEnvelope<UserProfile>("/v1/profile", {}),
   permitted: (tolerance: Tolerance) => requestEnvelope<PermittedProfile>("/v1/permitted-profile", { method: "POST", body: { tolerance } }),
@@ -69,7 +49,6 @@ export const accountsApi = {
   submitQuestionnaire: (input: QuestionnaireSubmission) => request<unknown>("/v1/profile/questionnaire", { method: "POST", body: input }),
   updateProfile: (input: ProfileUpdate) =>
     request<unknown>("/v1/profile", { method: "PUT", body: input }),
-  useSampleData: () => request<unknown>("/v1/profile/sample-data", { method: "POST" }),
 };
 
 export type ProfileEnvelope = Envelope<UserProfile>;

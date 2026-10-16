@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accountsApi, type UserProfile } from "@/api/accounts";
 import { usePersona } from "@/api/hooks";
-import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, StatusBadge, Surface, describeError } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, StatusBadge, describeError } from "@/components/ui";
 import { t, tDynamic } from "@/i18n";
 import { useAuth } from "@/features/auth/AuthProvider";
 
@@ -39,14 +39,14 @@ function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
 export function ProfilePage() {
   const auth = useAuth();
   const { identity } = usePersona();
+  // Only a read-only demo persona has financial data; any other account stays empty and asks for no capacity.
   const readOnly = auth.me?.data_source === "persona";
   const profile = useQuery({ queryKey: [identity.user_id, "profile"], queryFn: accountsApi.profile });
   const permitted = useQuery({
     queryKey: [identity.user_id, "profile-permitted", profile.data?.data?.declared_tolerance ?? "conservative", auth.me?.data_source],
     queryFn: () => accountsApi.permitted(profile.data?.data?.declared_tolerance ?? "conservative"),
-    enabled: (auth.me?.data_source === "sample" || auth.me?.data_source === "persona") && Boolean(profile.data?.data),
+    enabled: readOnly && Boolean(profile.data?.data),
   });
-  const sample = useMutation({ mutationFn: accountsApi.useSampleData, onSuccess: () => { void auth.refreshMe(); } });
 
   if (profile.isPending) return <Loading className="max-w-3xl" />;
   if (profile.isError) return <ErrorState error={profile.error} onRetry={() => void profile.refetch()} />;
@@ -73,7 +73,7 @@ export function ProfilePage() {
           {!readOnly && <Button asChild variant="secondary" className="mt-5"><Link to="/onboarding">{t(record.questionnaire_version ? "profile.updateAnswers" : "profile.repeat")}</Link></Button>}
         </Section>
         <Section id="permitted" title={t("profile.permitted")}>
-          {auth.me?.data_source === "empty" ? <p className="text-sm text-ink-2">{t("profile.capacityMissing")}</p> : permitted.isPending ?
+          {!readOnly ? <p className="text-sm text-ink-2">{t("profile.capacityMissing")}</p> : permitted.isPending ?
             <Loading className="max-w-xs" /> : permitted.isError ? <ErrorState error={permitted.error} onRetry={() => void permitted.refetch()} /> : permission && (
               <>
                 <p className="text-xl font-semibold text-ink">{tDynamic("plan.profile.levels", permission.permitted)}</p>
@@ -87,17 +87,8 @@ export function ProfilePage() {
       </div>
 
       {!readOnly && (
-        <Section id="sample" title={t("profile.emptyTitle")} className="mt-10 border-t border-line pt-10">
-          {auth.me?.data_source === "empty" && <EmptyState title={t("profile.emptyTitle")}>{t("profile.emptyDetail")}</EmptyState>}
-          <Surface className="mt-5 max-w-3xl p-6">
-            <label className="flex cursor-pointer items-start gap-3 text-sm font-medium text-ink">
-              <input type="checkbox" role="switch" checked={auth.me?.data_source === "sample"} disabled={auth.me?.data_source === "sample" || sample.isPending}
-                onChange={() => sample.mutate()} className="mt-0.5 size-4 accent-accent" />
-              {t("profile.sample")}
-            </label>
-            <p className="mt-2 text-sm text-ink-2">{auth.me?.data_source === "sample" ? t("profile.sampleActive") : t("profile.sampleHint")}</p>
-            {sample.isError && <div className="mt-4"><ErrorState error={sample.error} /></div>}
-          </Surface>
+        <Section id="financial-data" title={t("profile.emptyTitle")} className="mt-10 border-t border-line pt-10">
+          <p className="max-w-prose text-sm text-ink-2">{t("profile.emptyDetail")}</p>
         </Section>
       )}
     </>

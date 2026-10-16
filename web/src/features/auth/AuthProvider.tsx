@@ -20,7 +20,6 @@ export interface AuthContextValue {
   readonly signin: (input: SigninInput) => Promise<void>;
   readonly explore: (persona: "camila" | "diego") => Promise<void>;
   readonly signout: () => Promise<void>;
-  readonly refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -85,9 +84,6 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     await accountsApi.signout();
     await transition(false);
   }, [transition]);
-  const refreshMe = useCallback(async () => {
-    await transition(true);
-  }, [transition]);
   const retry = useCallback(() => {
     generation.current += 1;
     setSession({ status: "loading" });
@@ -99,8 +95,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     mode, me: session.status === "authenticated" ? session.me : null,
     pending: health.isPending || (mode === "accounts" && session.status === "loading"),
     error: health.error ?? (session.status === "error" ? session.error : null),
-    retry, signup, signin, explore, signout, refreshMe,
-  }), [mode, session, health.isPending, health.error, retry, signup, signin, explore, signout, refreshMe]);
+    retry, signup, signin, explore, signout,
+  }), [mode, session, health.isPending, health.error, retry, signup, signin, explore, signout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

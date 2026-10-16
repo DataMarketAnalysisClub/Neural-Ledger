@@ -36,14 +36,17 @@ const queryClient = new QueryClient({
   },
 });
 
+/** In accounts mode only a read-only demo persona has financial data; every other account stays empty. */
 function FinancialRoute({ children }: { readonly children: React.ReactNode }) {
   const auth = useAuth();
-  if (auth.mode === "accounts" && (auth.me?.data_source === "empty" || (import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true"))) {
+  const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
+  const persona = auth.me?.data_source === "persona";
+  if (auth.mode === "accounts" && (!persona || isMock)) {
     return <>
       <PageHeader title={t("profile.emptyTitle")} subtitle={t("profile.emptyDetail")} />
-      <EmptyState title={auth.me?.data_source === "sample" ? t("auth.mock") : t("profile.emptyTitle")}
+      <EmptyState title={persona ? t("auth.mock") : t("profile.emptyTitle")}
         action={<Button asChild variant="primary"><Link to="/profile">{t("profile.openProfile")}</Link></Button>}>
-        {auth.me?.data_source === "sample" ? t("profile.mockFinancial") : t("profile.capacityMissing")}
+        {persona ? t("profile.mockFinancial") : t("profile.capacityMissing")}
       </EmptyState>
     </>;
   }

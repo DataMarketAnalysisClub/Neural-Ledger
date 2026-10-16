@@ -16,7 +16,7 @@ import { useFinancialState, useHealth, usePersona } from "@/api/hooks";
 import type { PersonaId } from "@/api/client";
 import { t, type MessageKey } from "@/i18n";
 import { formatDate } from "@/lib/format";
-import { Button, ErrorState, Notice, StatusBadge, cn } from "@/components/ui";
+import { Button, ErrorState, StatusBadge, cn } from "@/components/ui";
 import { features } from "@/lib/features";
 import { useAuth } from "@/features/auth/AuthProvider";
 
@@ -114,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const signout = useMutation({ mutationFn: auth.signout });
   const isAccount = auth.mode === "accounts";
   const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
-  const showData = !isAccount || (!isMock && (auth.me?.data_source === "sample" || auth.me?.data_source === "persona"));
+  const showData = !isAccount || (!isMock && auth.me?.data_source === "persona");
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr]">
       <a
@@ -171,9 +171,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>}
         </div>
         {signout.isError && <div className="px-6 pt-4 lg:px-10"><ErrorState error={signout.error} /></div>}
-        {isAccount && auth.me?.data_source === "sample" && <div className="border-b border-line px-6 py-3 lg:px-10">
-          <Notice tone="warning" title={t("profile.sampleBanner")} />
-        </div>}
         <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-8 outline-none lg:px-10 lg:py-10">
           {children}
         </main>

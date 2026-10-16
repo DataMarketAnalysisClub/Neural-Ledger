@@ -28,9 +28,20 @@ function envelope<T>(data: T) {
   return { status: "OK", data, facts: [], warnings: [], params_version: paramsVersion, snapshot_id: `mock:accounts:${++snapshotSequence}`, as_of: new Date().toISOString() };
 }
 
+/** An auth-route or request-body rejection: the strict auth error body (auth/error.schema.json). */
 function invalid(field: string, message: string): never {
   throw new ApiError(422, { status: "INVALID_INPUT", field, message } satisfies AuthError);
 }
+
+/** A value the domain rejects: an INVALID_INPUT envelope (common/envelope.schema.json), as the API answers it. */
+function rejected(field: string, message: string): never {
+  throw new ApiError(422, { status: "INVALID_INPUT", params_version: paramsVersion, field, allowed: [], message, facts: [], warnings: [] });
+}
+
+/** Financial reads that exist on the HTTP API; the mock holds no financial data, so they answer INSUFFICIENT_DATA. */
+const FINANCIAL_PATHS: ReadonlySet<string> = new Set([
+  "/v1/state", "/v1/commitments", "/v1/forecast", "/v1/simulate-purchase", "/v1/protected-surplus", "/v1/capacity", "/v1/permitted-profile", "/v1/savings-plan",
+]);
 
 function requireSession(): { readonly user: MockUser; readonly session: MockSession } {
   const session = currentSession;
@@ -115,7 +126,7 @@ export async function mockRequest(
     const answers = new Map(input.answers.map((answer) => [answer.question_id, answer.option_id]));
     if (input.version !== definition.version || input.answers.length !== questions.length || answers.size !== questions.length ||
         definition.questions.some((question) => !question.options.some((option) => option.option_id === answers.get(question.question_id)))) {
-      throw new ApiError(422, { status: "INVALID_INPUT", params_version: paramsVersion, field: "answers", message: "Complete every question using this questionnaire version.", facts: [], warnings: [] });
+      rejected("answers", "Complete every question using this questionnaire version.");
     }
     const total = definition.questions.reduce((score, question) => score + (question.options.find((option) => option.option_id === answers.get(question.question_id))?.score ?? 0), 0);
     const declared_tolerance: Tolerance = total <= 3 ? "conservative" : total <= 7 || answers.get("tight_month") === "pause" ? "moderate" : "aggressive";
@@ -126,23 +137,23 @@ export async function mockRequest(
   if (path === "/v1/profile" && options.method === "PUT") {
     if (user.data_source === "persona") throw new ApiError(403, { status: "PROFILE_READ_ONLY", message: "profile is read only" } satisfies AuthError);
     const input = options.body as ProfileUpdate;
-    if (input.display_name === undefined && input.language === undefined) invalid("profile", "invalid input");
-    if (input.display_name !== undefined && !/^[\p{L} .'-]{1,40}$/u.test(input.display_name)) invalid("display_name", "Name must use 1 to 40 letters, spaces, periods, apostrophes or hyphens.");
-    if (input.language !== undefined && !/^[a-z]{2}$/.test(input.language)) invalid("language", "invalid language");
+    if (input.display_name === undefined && input.language === undefined) invalid("body", "invalid input");
+    if (input.display_name !== undefined && !/^[\p{L} .'-]{1,40}$/u.test(input.display_name)) rejected("display_name", "Name must use 1 to 40 letters, spaces, periods, apostrophes or hyphens.");
+    if (input.language !== undefined && !/^[a-z]{2}$/.test(input.language)) rejected("language", "invalid language");
     const profile = { ...user.profile, display_name: input.display_name === undefined ? user.profile.display_name : { untrusted_text: input.display_name }, language: input.language ?? user.profile.language };
     users.set(user.email, { ...user, profile });
     return envelope(profile);
   }
-  if (path === "/v1/profile/sample-data" && options.method === "POST") {
-    if (user.data_source === "persona") throw new ApiError(403, { status: "PROFILE_READ_ONLY", message: "profile is read only" } satisfies AuthError);
-    users.set(user.email, { ...user, data_source: "sample" });
-    return me();
-  }
-  if (path === "/v1/permitted-profile" && options.method === "POST" && user.data_source !== "empty") {
+  // Only a read-only demo persona has financial data; a new account stays empty.
+  if (path === "/v1/permitted-profile" && options.method === "POST" && user.data_source === "persona") {
     const input = options.body as { readonly tolerance: Tolerance };
     const capacity: Tolerance = "conservative";
     const permitted: Tolerance = capacity;
     return envelope({ permitted, tolerance: input.tolerance, capacity, hard_rules_triggered: [] });
   }
-  throw new ApiError(409, { status: "INSUFFICIENT_DATA", params_version: paramsVersion, missing: ["financial data"], facts: [], warnings: [] });
+  if (FINANCIAL_PATHS.has(path)) {
+    throw new ApiError(409, { status: "INSUFFICIENT_DATA", params_version: paramsVersion, missing: ["financial data"], facts: [], warnings: [] });
+  }
+  // Anything else is not served by this mock (FastAPI's answer for an unknown route).
+  throw new ApiError(404, { detail: "Not Found" });
 }
