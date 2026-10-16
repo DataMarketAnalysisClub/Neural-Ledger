@@ -4,7 +4,7 @@ JSON Schema 2020-12. If code and a contract disagree, the contract wins and the 
 
 | Folder | Contents |
 |---|---|
-| `common/` | `envelope.schema.json`: status, facts, warnings, snapshot_id, params_version. `redaction.schema.json`: the placeholder codes (`PERSON`, `ID`, …) that replace personal data in statement and transaction text (ADR-028); clients translate them, the backend never does |
+| `common/` | `envelope.schema.json`: status, facts, warnings, snapshot_id, params_version. `redaction.schema.json`: the placeholder codes (`PERSON`, `ID`, …) that replace personal data in statement and transaction text (ADR-028); clients translate them, the backend never does. `rate_limited.schema.json`: the body of a 429 (G07) |
 | `tools/` | One `<tool>.input.schema.json` per agent tool. `description` is what the LLM reads; `x-tier` must match the tier in `application/catalog.py`; `x-owner` is the role |
 | `outputs/` | The `data` of each financial tool, and of the bank statement and transaction ledger endpoints (`statement*.schema.json`, `transactions.schema.json`) |
 | `actions/` | `action_terms` (the confirmation contract) and `action_outcome` |

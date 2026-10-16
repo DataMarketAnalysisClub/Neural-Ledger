@@ -50,7 +50,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 
 ## Compliance map (laws and standards)
 
-`backend/tests/security/test_compliance.py` turns each requirement below into a test that names its norm. A **C** row is a built control and its test passes. A **G** row is a duty that is not built yet: its test is a strict xfail marked `GAP`, so CI stays green and the gap stays visible, and the day the control lands the test XPASSes and the run fails until the marker is removed. `test_every_compliance_test_is_in_the_security_map` fails if a C or G test is missing from this page. This is engineering evidence for counsel to review, not legal advice.
+`backend/tests/security/test_compliance.py` turns each requirement below into a test that names its norm. A **C** row is a built control and its test passes. A **G** row is a duty that is not built yet: its test is a strict xfail marked `GAP`, so CI stays green and the gap stays visible, and the day the control lands the test XPASSes and the run fails until the marker is removed. A G row that is built moves to the built controls and keeps its ID. `test_every_compliance_test_is_in_the_security_map` fails if a C or G test is missing from this page. This is engineering evidence for counsel to review, not legal advice.
 
 **Norms.** Ley 19.628 as amended by **Ley 21.719** (personal data; published 2024-12-13, **in force 2026-12-01**; article numbers per the [BCN summary of the law](https://obtienearchivo.bcn.cl/obtienearchivo?id=repositorio%2F10221%2F37137%2F1%2FInforme_12_25_Ley_Datos_Personales_rev.pdf)): art. 3 principles, arts. 5–9 rights, art. 12 consent, arts. 14 bis–14 sexies duties, art. 15 ter impact assessment, arts. 17–19 financial obligations data, art. 27 international transfers. **Ley 19.496** art. 3 b) (truthful, timely information). **Ley 21.663** (cybersecurity framework). **PCI DSS v4.0** (card data). **OWASP ASVS 5.0**, **OWASP API Security Top 10 (2023)**, **OWASP Top 10 for LLM Applications (2025)**.
 
@@ -72,6 +72,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C10` | The audit trail is hash-chained and holds no holder identifiers or card numbers | Ley 21.719 arts. 14 quinquies, 14 sexies; Ley 21.663; ASVS V16 | `test_c10_…` |
 | `C11` | Chat input is cut at 4,000 characters before any model sees it | LLM10; API4:2023 | `test_c11_…` |
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
+| `G07` | Bursts are rate limited: per caller and per client IP, one-minute windows, stricter on uploads (10), chat (20) and sign-in (10 per IP); over budget is 429 with `Retry-After` and reaches no use case (ADR-033) | API4:2023; LLM10 | `test_g07_…`, `tests/http/test_rate_limit.py` |
 
 ### Gaps (strict xfail until built)
 
@@ -83,7 +84,6 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G04` | Correction of records | Ley 21.719 art. 6 | ADR-021 and ADR-023 (`PATCH /v1/transactions/{id}`) |
 | `G05` | Opposition to and blocking of processing | Ley 21.719 arts. 8, 8 ter | `PUT /v1/me/processing` |
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
-| `G07` | Rate limiting | API4:2023; LLM10 | Per-user and per-IP limits, stricter on uploads and chat |
 | `G08` | CORS open to any origin by default | API8:2023 | Default to the web app's origin; `*` only when set explicitly |
 | `G09` | Security headers on responses | ASVS V3; API8:2023 | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on financial data |
 | `G10` | Live mode starts with the development HMAC secret (it only warns) | ASVS V13; Ley 21.719 art. 14 quinquies | Raise instead of warn in `bootstrap/container.py` |
@@ -135,6 +135,7 @@ The routes in G02–G05 are proposals; change the test with the API design. The 
 ## Known risks (residual)
 
 - **Identity is a header** (`X-User-Id`). Acceptable for a sandbox; real deployments need authentication and per-user authorization on every endpoint (G01). Anyone who sets the header can still read anyone's statements and transactions; since ADR-028 that exposes financial data only: amounts, dates, merchants, categories and a masked account.
+- **Rate limits are per process and per IP as uvicorn sees it** (G07). Counters live in memory: a restart resets them and each worker counts on its own. In demo mode the caller is the `X-User-Id` header, which a client can rotate, so the per-IP budget is the one that holds. Behind nginx the IP comes from `X-Forwarded-For`, trusted only from private ranges (`FORWARDED_ALLOW_IPS` in docker compose); port 8000 is published for development and a caller on it can set that header, so a deployment should publish only the web port. Several users behind one NAT share the per-IP budget.
 - **The redaction rules are written for Chilean cartolas.** They catch RUTs, long numbers, emails, phones and the counterparty of a transfer; a name elsewhere (`PAGO A <name>`) stays unless a detector is on. Rules are checked against real cartolas only locally (`cartolas/`, never committed, counts shared). Statements stored before `st-0.2` keep their raw text: delete the local database and import again (ADR-028).
 - **Azure AI Language is off by default** (`NL_PII_DETECTOR=none`) and is never the only layer. Turning it on (`NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY`) sends the raw text of every imported statement line to Microsoft. Detection is synchronous and stateless (REST API 2026-05-01), and `loggingOptOut` is sent as true. It needs the team's agreement on the subscription and the key, billing is per 1,000 characters, and `/health` shows it (`pii_detector`). Docker, CI and the recorded demo run with the rules only, and CI checks that.
 - **`transfer_own` is trusted by the estimators** (ADR-012). A real outflow mislabelled as an own transfer would vanish from variable spend and overstate the protected surplus. The synthetic ledgers reconcile per account; real data would need two-leg matching of own transfers.

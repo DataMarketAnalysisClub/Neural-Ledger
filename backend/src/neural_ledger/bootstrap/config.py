@@ -43,6 +43,7 @@ class Settings:
     data_dir: Path | None = None
     contracts_dir: Path | None = None
     cors_origins: tuple[str, ...] = ("*",)
+    rate_limit: bool = True  # G07: 429 over the per-caller and per-IP budgets in adapters/inbound/http/rate_limit.py
     ocr_model_dir: str | None = None  # EasyOCR weights; None = ~/.EasyOCR/model (scans and photos only)
     classifier: str = "naive_bayes"  # spending categories for imported statements; see CLASSIFIERS in container.py
     pii_detector: str = "none"  # none | azure: a second layer after the redaction rules; see DETECTORS in container.py
@@ -98,6 +99,7 @@ class Settings:
             data_dir=Path(e["NL_DATA_DIR"]) if e.get("NL_DATA_DIR") else None,
             contracts_dir=Path(e["NL_CONTRACTS_DIR"]) if e.get("NL_CONTRACTS_DIR") else None,
             cors_origins=tuple(o.strip() for o in get("NL_CORS_ORIGINS", "*").split(",")),
+            rate_limit=get("NL_RATE_LIMIT", "on").lower() not in ("off", "false", "0"),
             ocr_model_dir=e.get("NL_OCR_MODEL_DIR") or None,
             classifier=get("NL_CLASSIFIER", cls.classifier),
             pii_detector=get("NL_PII_DETECTOR", cls.pii_detector),

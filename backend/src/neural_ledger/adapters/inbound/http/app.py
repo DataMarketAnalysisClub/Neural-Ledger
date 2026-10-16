@@ -7,6 +7,8 @@ only; real authentication is out of scope and listed in docs/SECURITY.md).
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import Body, FastAPI, Header, Query, Request
@@ -19,6 +21,7 @@ from ....application.use_cases.actions import ActorContext
 from ....application.use_cases.statements import MAX_STATEMENT_BYTES
 from ....domain.audit.events import Actor
 from ....domain.shared.serialization import to_primitive
+from .rate_limit import DEFAULT_LIMITS, Limit, RateLimitMiddleware
 
 _STATUS_CODES = {"OK": 200, "INVALID_INPUT": 422, "INSUFFICIENT_DATA": 409}
 _ACTION_CODES = {"PROPOSED": 201, "CONFIRMED": 201, "EXECUTED": 200, "FAILED": 502, "BLOCKED": 403, "INVALID_INPUT": 422, "INSUFFICIENT_DATA": 409}
@@ -35,8 +38,17 @@ def _action_response(outcome: Any) -> JSONResponse:
     return JSONResponse(payload, status_code=_ACTION_CODES.get(outcome.status, 200))
 
 
-def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ("*",)) -> FastAPI:
+def create_app(
+    services: ApplicationServices,
+    *,
+    cors_origins: tuple[str, ...] = ("*",),
+    rate_limits: tuple[Limit, ...] = DEFAULT_LIMITS,
+    rate_clock: Callable[[], float] = time.monotonic,  # not the services' clock: a fixed demo clock would never reopen a window
+) -> FastAPI:
     app = FastAPI(title="Neural Ledger API", version="0.1.0", description="Contracts: see /contracts in the repository.")
+    # Added before CORS so CORS wraps it: a browser can read a 429 and its Retry-After.
+    if rate_limits:
+        app.add_middleware(RateLimitMiddleware, limits=rate_limits, now=rate_clock)
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_methods=["*"], allow_headers=["*"])
 
     def user(x_user_id: str | None) -> str:

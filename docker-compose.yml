@@ -16,6 +16,10 @@ services:
       NL_SQLITE_PATH: /app/var/neural_ledger.db
       NL_DATA_DIR: /app/data
       NL_CONTRACTS_DIR: /app/contracts
+      # uvicorn takes the client IP from X-Forwarded-For only when the peer is in these ranges (the web
+      # container's nginx). Port 8000 is published for development, and a caller on it can set the header
+      # too: in a deployment publish only the web port.
+      FORWARDED_ALLOW_IPS: "127.0.0.1,172.16.0.0/12,192.168.0.0/16"
     ports:
       - "8000:8000"
     volumes:

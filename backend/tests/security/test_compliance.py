@@ -322,11 +322,11 @@ def test_g06_importing_a_statement_requires_recorded_consent(services):
     assert response.status_code in (403, 428)
 
 
-@gap("no rate limiting. OWASP API4:2023, LLM10")
 def test_g07_bursts_are_rate_limited(services):
+    """OWASP API4:2023, LLM10. Built (ADR-033): a burst of uploads is cut off with 429 before any use case runs."""
     client = TestClient(create_app(services))
-    codes = {client.post("/v1/statements", content=b"x").status_code for _ in range(60)}
-    assert 429 in codes
+    codes = [client.post("/v1/statements", content=b"x").status_code for _ in range(60)]
+    assert codes[:10] == [422] * 10 and set(codes[10:]) == {429}
 
 
 @gap("CORS allows any origin by default (NL_CORS_ORIGINS=*). OWASP API8:2023")
