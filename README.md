@@ -22,7 +22,11 @@ make test-property                 # only the property tests (pytest -m property
 make demo                          # the six-scene demo arc in the terminal
 make api                           # dev server on :8000
 make evidence                      # audit log + full-suite test results into evidence/
+make cartola                       # random synthetic cartolas (.xlsx) in var/samples/, to upload in the app
+make seed                          # random statements imported into SQLite (then: NL_PERSISTENCE=sqlite make api)
 ```
+
+Synthetic data for demos and testing: `make cartola` writes random cartolas that reconcile, to upload like a real export; `make seed` (or `docker compose exec api neural-ledger seed --user camila`) imports months of them so the app opens with statements and transactions. Both go through the real import path. See [docs/runbooks/SYNTHETIC_DATA.md](docs/runbooks/SYNTHETIC_DATA.md).
 
 Bank statements (cartolas): `neural-ledger import-statement <file>` or `POST /v1/statements` with the file as the body. Excel exports (`.xlsx`) need nothing extra and never go through PDF or OCR; text-layer PDFs need the `pdf` extra (in the Docker image). Credit card statements (Excel or PDF) are detected as such and carry their obligations: amount due, minimum, due date and the cuotas left. Scanned PDFs and photos need `pip install -e "backend[ocr]"` (EasyOCR; install the CPU torch wheel first) and the weights once: `python -c "from neural_ledger.adapters.outbound.statements.ocr_tabular import prepare_models; prepare_models()"`. Real statements go in `cartolas/`, which is git-ignored: never commit one. A verified statement is also posted to the transaction ledger with a spending category per charge (naive Bayes, the `ml` extra): `neural-ledger transactions` or `GET /v1/transactions`. Use `NL_PERSISTENCE=sqlite` to keep them between CLI runs.
 
@@ -51,6 +55,7 @@ evidence/    exported audit logs and test results for the submission
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Where code goes and how to add tools, providers and adapters |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permission tiers, S01–S15 and known risks |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision log |
+| [docs/runbooks/SYNTHETIC_DATA.md](docs/runbooks/SYNTHETIC_DATA.md) | Random cartolas to upload, and seeding the database with them |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow and definition of done |
 
 ## Status (Oct 10, 2026)

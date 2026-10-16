@@ -31,3 +31,4 @@ class ApplicationServices:
     decision_chain: tuple[str, ...]
     pii_detector: str  # after the redaction rules on imported statements; anything but "none" sends their text out (ADR-028)
     clock: Clock | None = None  # exposed as /health server_time so UI timers follow the API clock (fixed in demos)
+    persistence: str = "memory"  # memory | sqlite: `neural-ledger seed` refuses to seed a store that is gone at exit

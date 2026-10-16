@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from neural_ledger.adapters.outbound.statements.synthetic import write_xlsx as xlsx
+
 # (day "DD/MM", reference, branch, description, signed amount)
 Movement = tuple[str, str, str, str, int]
 
@@ -113,58 +115,6 @@ def santander_pdf(sample: Sample | None = None) -> bytes:
 # Spreadsheet exports (.xlsx), written with the standard library: what a bank's "Descargar Excel" gives.
 # ---------------------------------------------------------------------------------------------
 Cell = str | int | float | None
-
-
-def xlsx(rows: list[list[Cell]], sheet_name: str = "Hoja1", shared: bool = True) -> bytes:
-    """A minimal valid .xlsx. Strings go to sharedStrings (or inline with shared=False); numbers stay numbers."""
-    import io
-    import zipfile
-    from xml.sax.saxutils import escape
-
-    strings: list[str] = []
-    cells_xml = []
-    for r, row in enumerate(rows, start=1):
-        cells = []
-        for c, value in enumerate(row):
-            if value is None or value == "":
-                continue
-            ref = f"{_letters(c)}{r}"
-            if isinstance(value, str):
-                if shared:
-                    strings.append(value)
-                    cells.append(f'<c r="{ref}" t="s"><v>{len(strings) - 1}</v></c>')
-                else:
-                    cells.append(f'<c r="{ref}" t="inlineStr"><is><t>{escape(value)}</t></is></c>')
-            else:
-                cells.append(f'<c r="{ref}"><v>{value}</v></c>')
-        cells_xml.append(f'<row r="{r}">{"".join(cells)}</row>')
-    main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
-    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-    parts = {
-        "[Content_Types].xml": '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
-        "xl/workbook.xml": f'<?xml version="1.0"?><workbook xmlns="{main}" xmlns:r="{rel}"><sheets><sheet name="{escape(sheet_name)}" sheetId="1" r:id="rId4"/></sheets></workbook>',
-        "xl/_rels/workbook.xml.rels": '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-        f'<Relationship Id="rId4" Type="{rel}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
-        "xl/worksheets/sheet1.xml": f'<?xml version="1.0"?><worksheet xmlns="{main}"><sheetData>{"".join(cells_xml)}</sheetData></worksheet>',
-    }
-    if shared:
-        items = "".join(f"<si><t>{escape(s)}</t></si>" for s in strings)
-        parts["xl/sharedStrings.xml"] = f'<?xml version="1.0"?><sst xmlns="{main}">{items}</sst>'
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, body in parts.items():
-            archive.writestr(name, body)
-    return buffer.getvalue()
-
-
-def _letters(index: int) -> str:
-    letters = ""
-    index += 1
-    while index:
-        index, rem = divmod(index - 1, 26)
-        letters = chr(ord("A") + rem) + letters
-    return letters
-
 
 # (day "DD/MM", branch, description, document, signed amount)
 SheetMovement = tuple[str, str, str, str, int]
