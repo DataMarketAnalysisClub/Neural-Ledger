@@ -90,7 +90,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G11` | Statements and transactions stored in plaintext SQLite | Ley 21.719 art. 14 quinquies; ASVS V14 | Encrypted volume or SQLCipher; key outside the database |
 | `G12` | Published privacy policy and breach response runbook | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `docs/PRIVACY.md`, `docs/runbooks/INCIDENT_RESPONSE.md` |
 
-The routes in G02–G05 are proposals; change the test with the API design.
+The routes in G02–G05 are proposals; change the test with the API design. The plan to close G01–G07 and G11, step by step, is ADR-033.
 
 ### Obligations reviewed but not testable as code
 
