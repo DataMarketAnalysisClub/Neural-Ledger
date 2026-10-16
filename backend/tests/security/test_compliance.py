@@ -283,6 +283,43 @@ def test_c12_consumer_information_is_traceable_and_warnings_are_never_dropped():
         assert f"def {name}(" in suite
 
 
+def test_c13_only_redacted_statement_text_is_sent_to_jev(monkeypatch):
+    """Ley 21.719 art. 3 c) (only the data the purpose needs), and the transfer of data to a provider abroad that
+    categorizing with Jev implies (ADR-032): Jev receives each charge's text after redaction, never a name, RUT,
+    e-mail, phone or card number, and never a deposit (income goes by rule)."""
+    from neural_ledger.adapters.outbound.classifier.jev import JevTransactionClassifier
+    from neural_ledger.bootstrap import container
+    from neural_ledger.domain.agent.questions import Judgment
+    from tests.statement_samples import santander_xlsx
+
+    sent: list[str] = []
+
+    class RecordingJev:
+        name = "jev:recording"
+
+        def judge(self, state, questions):
+            sent.append(state)
+            return {"category": Judgment("category", "other", (("other", 0.9),), 0.9, self.name)}
+
+    monkeypatch.setitem(container.CLASSIFIERS, "jev", lambda s: JevTransactionClassifier(RecordingJev()))
+    services, _ = build(make_settings(classifiers=("jev", "naive_bayes")))
+    movements = (
+        ("03/09", "O.Gerencia", "0071548293 Transf a JUAN PEREZ", "", -40_000),
+        ("03/09", "O.Gerencia", "Transf a 11.111.111-1 MARIA SOTO", "", -25_000),
+        ("05/09", "O.Gerencia", "TEF DE PEDRO ROJAS 12.345.678-5", "", 150_000),
+        ("09/09", "O.Gerencia", "Aviso maria.soto@mail.cl", "", -1_000),
+        ("10/09", "O.Gerencia", "Fono +56 9 8765 4321", "", -2_000),
+        ("15/09", "O.Gerencia", "PAGO TARJETA 4555 1234 5678 9012", "", -60_000),
+    )
+    (imported,) = services.statements.import_statement(USER, santander_xlsx(movements)).data.imports
+    assert imported.statement.verified and sent, "the charges must have been categorized by Jev"
+    personal = ("JUAN", "PEREZ", "MARIA", "SOTO", "PEDRO", "ROJAS", "ANA", "11.111.111-1", "12.345.678-5", "maria.soto@mail.cl",
+                "8765 4321", "4555 1234 5678 9012", "0071548293")  # fmt: skip
+    leaks = [(needle, text) for text in sent for needle in personal if needle in text]
+    assert leaks == []
+    assert not any("TEF DE" in text for text in sent)  # a deposit is income by rule: never sent
+
+
 # ------------------------------------------------------------------------------------------------
 # Gaps: duties not built yet (strict xfail)
 # ------------------------------------------------------------------------------------------------
@@ -371,4 +408,4 @@ def test_every_compliance_test_is_in_the_security_map():
     names = re.findall(r"^def (test_[cg]\d{2}_\w+)", Path(__file__).read_text(encoding="utf-8"), flags=re.M)
     security_md = (ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
     missing = [n for n in names if f"`{n.split('_')[1].upper()}`" not in security_md]
-    assert len(names) == 24 and missing == []
+    assert len(names) == 25 and missing == []
