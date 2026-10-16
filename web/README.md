@@ -39,7 +39,7 @@ Or `docker compose up --build`: API on :8000, UI on :3000 (nginx proxies `/api`)
 | `/plan` Savings plan | 4 | `/v1/capacity`, `/v1/permitted-profile`, `/v1/savings-plan` |
 | `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` |
 | `/audit` Audit trail | 6 | `/v1/audit`, `/v1/audit/verify` |
-| `/statements` | — | hidden until `/v1/statements` reaches main (`VITE_FEATURE_STATEMENTS=true`) |
+| `/statements` | — | `/v1/statements`, `/v1/statements/{id}`, `POST /v1/statements`, `/v1/transactions` (imports feed the ledger only; projections still use the demo scenario, ADR-029) |
 
 ## Known API gaps (for contract PRs)
 

@@ -11,7 +11,7 @@
 `staging` is protected by a GitHub ruleset: changes reach it only through a pull request.
 - At least **1 approving review**, from a role other than the author's. New pushes dismiss earlier approvals, and the last push must be approved by someone else.
 - All review conversations resolved.
-- Required CI checks green: `backend` and `compose` (`web` joins once the frontend is on `staging`).
+- Required CI checks green: `backend`, `compose` and `web`.
 - No direct pushes, force pushes or branch deletion.
 
 The ruleset is versioned in `.github/rulesets/staging.json`. A repository admin applies or updates it with:

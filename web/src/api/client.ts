@@ -54,12 +54,14 @@ export async function request<T>(path: string, { user, method = "GET", body, que
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
         .join("&")
     : "";
+  // A file (statement import) travels as the raw body; the server reads the bytes, not the Content-Type.
+  const raw = body instanceof Blob;
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}${qs === "?" ? "" : qs}`, {
       method,
-      headers: { "X-User-Id": user, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      headers: { "X-User-Id": user, ...(body !== undefined ? { "Content-Type": raw ? "application/octet-stream" : "application/json" } : {}) },
+      body: raw ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
   } catch (cause) {
     throw new NetworkError(cause);
