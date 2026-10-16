@@ -37,12 +37,14 @@ Or `docker compose up --build`: API on :8000, UI on :3000 (nginx proxies `/api`)
 | `/commitments` | 1 | `/v1/commitments`, `/v1/capacity` |
 | `/simulator` Purchase check | 2, 3 | `POST /v1/simulate-purchase` |
 | `/plan` Savings plan | 4 | `/v1/capacity`, `/v1/permitted-profile`, `/v1/savings-plan` |
-| `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` |
-| `/audit` Audit trail | 6 | `/v1/audit`, `/v1/audit/verify` |
+| `/copilot` | 5, 6 | `/v1/chat`, `/v1/actions/*` ("New conversation" starts a new `session_id`; the log is not stored yet) |
+| `/audit` Audit trail | 6 | `/v1/audit` (all or this conversation), `/v1/audit/verify` |
+| `/profile` | — | `/v1/profile`, `/v1/profile/questionnaire` (read only) |
 | `/statements` | — | `/v1/statements`, `/v1/statements/{id}`, `POST /v1/statements`, `/v1/transactions` (imports feed the ledger only; projections still use the demo scenario, ADR-029) |
 
 ## Known API gaps (for contract PRs)
 
 - The chat reply cannot tell "offline narration" from "the verifier replaced the model's text" (`fallback_used` covers both).
-- No HTTP endpoint for the user profile (declared tolerance); the Plan screen lets the user choose the tolerance to test.
+- The profile is read only (`/profile`): `PATCH /v1/profile` and `POST /v1/profile/questionnaire` are not wired yet, and the questionnaire wording (`questionnaire.*` copy keys) is not written yet.
+- No chat history endpoint: a reload or "New conversation" drops the log (`GET /v1/chat/history` is planned).
 - Audit events carry mismatch amounts only inside `detail`.

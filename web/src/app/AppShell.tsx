@@ -8,6 +8,7 @@ import {
   LinkSimple,
   PiggyBank,
   Receipt,
+  UserCircle,
   type Icon,
 } from "@phosphor-icons/react";
 import { useFinancialState, useHealth, usePersona } from "@/api/hooks";
@@ -67,6 +68,15 @@ function PersonaSwitcher() {
           );
         })}
       </div>
+      <NavLink
+        to="/profile"
+        className={({ isActive }) =>
+          cn("mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-control px-1 text-xs lg:min-h-0 lg:py-1", isActive ? "font-medium text-ink" : "text-ink-2 hover:text-ink")
+        }
+      >
+        <UserCircle aria-hidden className="size-4" />
+        {t("profile.link")}
+      </NavLink>
     </fieldset>
   );
 }
