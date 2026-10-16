@@ -393,7 +393,6 @@ def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
     assert "Compra Nacional VD SHOP ONE" not in _stored_bytes(path)
 
 
-@gap("no published privacy policy nor breach response runbook. Ley 21.719 arts. 14 ter and 14 sexies; Ley 21.663")
 def test_g12_privacy_policy_and_breach_runbook_exist():
     assert (ROOT / "docs/PRIVACY.md").is_file()
     assert (ROOT / "docs/runbooks/INCIDENT_RESPONSE.md").is_file()

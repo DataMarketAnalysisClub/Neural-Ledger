@@ -54,8 +54,10 @@ evidence/    exported audit logs and test results for the submission
 | [docs/SCOPE.md](docs/SCOPE.md) | What we are building, the review findings, open decisions, the plan |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Where code goes and how to add tools, providers and adapters |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permission tiers, S01–S15 and known risks |
+| [docs/PRIVACY.md](docs/PRIVACY.md) | Privacy policy: what data is processed, where, for how long, who receives it, and what is not built yet |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision log |
 | [docs/runbooks/SYNTHETIC_DATA.md](docs/runbooks/SYNTHETIC_DATA.md) | Random cartolas to upload, and seeding the database with them |
+| [docs/runbooks/INCIDENT_RESPONSE.md](docs/runbooks/INCIDENT_RESPONSE.md) | Breach response: detect, contain, assess, notify, recover, learn |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow and definition of done |
 
 ## Status (Oct 10, 2026)

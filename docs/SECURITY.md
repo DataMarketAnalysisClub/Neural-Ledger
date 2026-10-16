@@ -77,6 +77,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G08` | CORS is closed by default: only the web app's origin (`http://localhost:3000`) unless `NL_CORS_ORIGINS` is set; `*` only when set explicitly | API8:2023 | `test_g08_…` |
 | `G09` | Every API response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` | ASVS V3; API8:2023 | `test_g09_…` |
 | `G10` | Live mode refuses to start with the development HMAC secret (`NL_HMAC_SECRET` must be set) | ASVS V13; Ley 21.719 art. 14 quinquies | `test_g10_…` |
+| `G12` | A privacy policy (`docs/PRIVACY.md`) and a breach response runbook (`docs/runbooks/INCIDENT_RESPONSE.md`) are published | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `test_g12_…` |
 
 ### Gaps (strict xfail until built)
 
@@ -90,7 +91,6 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
 | `G07` | Rate limiting | API4:2023; LLM10 | Per-user and per-IP limits, stricter on uploads and chat |
 | `G11` | Statements and transactions stored in plaintext SQLite | Ley 21.719 art. 14 quinquies; ASVS V14 | Encrypted volume or SQLCipher; key outside the database |
-| `G12` | Published privacy policy and breach response runbook | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `docs/PRIVACY.md`, `docs/runbooks/INCIDENT_RESPONSE.md` |
 
 The routes in G02–G05 are proposals; change the test with the API design.
 
@@ -100,7 +100,7 @@ The routes in G02–G05 are proposals; change the test with the API design.
 - **International transfers (art. 27).** In live mode, prompts go to the LLM provider and, for Jev, to OpenRouter, both outside Chile. Prompts carry financial facts, not statements or identifiers (C09 covers secrets only). Document the safeguards before live use with real users.
 - **Financial obligations data (arts. 17–19).** The app does not communicate anyone's debts to third parties. Keep it that way, or review these articles first.
 - **Ley 21.521 (Fintec) and the Open Finance System (CMF NCG 514).** Not applicable while statements are uploaded by the user. Connecting to banks through the system's APIs brings its consent and security rules, and its start date should be confirmed with the CMF.
-- **Ley 21.663.** Its incident duties (an early alert within 3 hours to the national CSIRT) bind essential services and operators of vital importance. The app is neither, and G12's runbook should follow the same steps anyway.
+- **Ley 21.663.** Its incident duties (an early alert within 3 hours to the national CSIRT) bind essential services and operators of vital importance. The app is neither, and the breach runbook (`docs/runbooks/INCIDENT_RESPONSE.md`) follows the same steps anyway.
 - **Children's data (art. 16 quáter).** There is no age check. Personas and uploads are assumed to be adults.
 
 **Development tooling.** `npx ecc-agentshield scan` on the repository (2026-10-14) graded the agent configuration B (79/100). All 13 findings were about `CLAUDE.md` (missing prompt-defense wording, file group-writable). After a "Working safely" section in `CLAUDE.md` and a local `chmod 600` (file modes other than the executable bit are not tracked by git, so each checkout needs its own), the re-scan graded A (100/100) with no findings.
