@@ -112,7 +112,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
         "camila.spending.CLP.uncategorized": 6_000,
         "camila.income.CLP": 900_000,
     }
-    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.2"
+    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.3"
 
 
 def test_ledger_is_scoped_to_its_user():
