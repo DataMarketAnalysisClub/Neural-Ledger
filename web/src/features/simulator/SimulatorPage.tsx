@@ -7,7 +7,6 @@ import { Button, EmptyState, ErrorState, Notice, PageHeader, Section, Surface, c
 import { formatMoney, formatMonth, formatPercent } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
 
-const INSTALLMENTS = [3, 6, 12, 18, 24] as const;
 
 interface FormState {
   note: string;
@@ -82,14 +81,24 @@ export function SimulatorPage() {
               />
             </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field id={ids.installments} label={t("simulator.form.installments")} error={fieldError("installments", "installments")}>
-                <select id={ids.installments} value={form.installments} onChange={(e) => update("installments", e.target.value)}>
-                  {INSTALLMENTS.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
+              <Field
+                id={ids.installments}
+                label={t("simulator.form.installments")}
+                hint={t("simulator.form.installmentsHint")}
+                error={fieldError("installments", "installments")}
+              >
+                {/* The API decides what is valid (fc-0.2: 1 to 48); min and max only guide the browser control. */}
+                <input
+                  id={ids.installments}
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={48}
+                  step={1}
+                  value={form.installments}
+                  onChange={(e) => update("installments", e.target.value)}
+                  className="num"
+                />
               </Field>
               <Field id={ids.first} label={t("simulator.form.firstMonth")} hint={t("simulator.form.firstMonthHint")} error={fieldError("firstMonth", "first_installment_month")}>
                 <select id={ids.first} value={form.firstMonth} onChange={(e) => update("firstMonth", e.target.value)}>

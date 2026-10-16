@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 test("scenes 2-3: a 400k laptop in 12 cuotas fits a typical month only, with alternatives (E02-E04)", async ({ page }) => {
   await page.goto("/simulator");
   await page.getByLabel("Price (CLP)").fill("400000");
-  await page.getByLabel("Installments").selectOption("12");
+  await page.getByLabel("Installments").fill("12");
   await page.getByRole("button", { name: "Check this purchase" }).click();
 
   await expect(page.getByRole("heading", { name: "December 2026 limits this purchase" })).toBeVisible();
@@ -20,6 +20,19 @@ test("scenes 2-3: a 400k laptop in 12 cuotas fits a typical month only, with alt
   await expect(page.getByText("CLP −18,995 below the floor, December 2026")).toBeVisible(); // E03
   await expect(page.getByText("Start in January 2027")).toBeVisible(); // E04 (a)
   await expect(page.getByText("About CLP 205,000 instead")).toBeVisible(); // E04 (c)
+});
+
+test("any installment count from 1 to 48 is priced; 49 is refused (fc-0.2)", async ({ page }) => {
+  await page.goto("/simulator");
+  await page.getByLabel("Price (CLP)").fill("400000");
+  for (const count of ["1", "10"]) {
+    await page.getByLabel("Installments").fill(count);
+    await page.getByRole("button", { name: "Check this purchase" }).click();
+    await expect(page.getByText(new RegExp(`a month for ${count} cuota`))).toBeVisible();
+  }
+  await page.getByLabel("Installments").fill("49");
+  await page.getByRole("button", { name: "Check this purchase" }).click();
+  await expect(page.getByText("installments must be an integer from 1 to 48")).toBeVisible();
 });
 
 test("scene 4: capacity caps an aggressive tolerance to the conservative profile (E05, E06)", async ({ page }) => {

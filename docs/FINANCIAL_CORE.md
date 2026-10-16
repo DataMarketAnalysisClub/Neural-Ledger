@@ -1,6 +1,6 @@
 # Financial core: implemented behavior and handoff (Role A)
 
-**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-015 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
+**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-015 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.2` since ADR-032; the golden answers are unchanged from `fc-0.1`).
 
 ## 4.1 Commitments
 

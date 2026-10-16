@@ -8,7 +8,10 @@ export interface SimulatePurchaseInput {
    * Price in minor units of the user's currency.
    */
   amount: number;
-  installments: 3 | 6 | 12 | 18 | 24;
+  /**
+   * Number of cuotas; 1 means paid in one charge (no cuotas).
+   */
+  installments: number;
   first_installment_month?: string;
   /**
    * Monthly interest rate as a fraction, e.g. 0.025.
