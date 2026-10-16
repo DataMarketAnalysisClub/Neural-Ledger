@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/common/rate_limited.schema.json",
   "title": "RateLimited",
-  "description": "The body of a 429 answer (G07). The request went over the caller's or the client IP's budget for that kind of request in the current one-minute window and reached no use case. retry_after equals the Retry-After header: the seconds until the window ends.",
+  "description": "The body of a 429 answer (G07). The request went over the caller's or the client IP's budget for that kind of request in the current one-minute window and reached no use case. retry_after equals the Retry-After header: the seconds until the window ends. status and message have the same shape as the auth error body, so clients read every error the same way.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["status", "detail", "retry_after"],
+  "required": ["status", "message", "retry_after"],
   "properties": {
     "status": { "const": "RATE_LIMITED" },
-    "detail": { "type": "string" },
+    "message": { "type": "string", "minLength": 1 },
     "retry_after": { "type": "integer", "minimum": 1 }
   }
 }

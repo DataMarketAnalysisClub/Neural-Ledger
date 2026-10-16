@@ -92,7 +92,7 @@ class RateLimitMiddleware:
                 self.counter.hit(f"{limit.name}|ip|{ip}", limit.per_ip, limit.window_seconds),
             )
             if retry_after:
-                body = {"status": "RATE_LIMITED", "detail": "too many requests", "retry_after": retry_after}
+                body = {"status": "RATE_LIMITED", "message": "too many requests", "retry_after": retry_after}
                 await JSONResponse(body, status_code=429, headers={"Retry-After": str(retry_after)})(scope, receive, send)
                 return
         await self.app(scope, receive, send)
