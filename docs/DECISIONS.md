@@ -238,7 +238,7 @@ Reversing the option order changed the label in 2% of the cases, all ambiguous. 
 
 The gate for keeping Jev first: higher coverage on unseen merchants with a wrong-and-accepted rate no higher than naive Bayes'. Fill the Jev column from the live run and move this ADR to Accepted or Rejected.
 **Data protection:** posting runs after redaction (ADR-028), so Jev receives `[NUMBER] Transf a [PERSON]`, never a name, RUT, e-mail, phone or card number, and never a deposit (income goes by rule). Sending merchant text to OpenRouter and TypeSafe is a transfer to providers abroad; it happens only when `NL_CLASSIFIER` includes `jev` (C13).
-**Consequences:** Jev is advisory here too: a hostile or talked-round Jev can only pick a label from the vocabulary (S16). Categories do not feed the forecast today; if ADR-029 makes them, re-check S16 against that use. Cost and latency scale with distinct merchants per import (about 20 calls for a month), not with lines.
+**Consequences:** Jev is advisory here too: a hostile or talked-round Jev can only pick a label from the vocabulary (S22). Categories do not feed the forecast today; if ADR-029 makes them, re-check S22 against that use. Cost and latency scale with distinct merchants per import (about 20 calls for a month), not with lines.
 
 ### ADR-027 · OpenRouter is the only live LLM provider; the verifier allows one repair per turn (ap-0.2) · Proposed
 **Context:** Groq's free tier (8,000 tokens per minute) cannot hold a turn that grows from about 3,700 to over 10,000 tokens. Claude 5.x models on OpenRouter reject `temperature`, and real models quote numbers from earlier turns or do their own arithmetic.

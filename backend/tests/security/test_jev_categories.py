@@ -1,4 +1,4 @@
-"""S16: Jev as the spending classifier is advisory too (ADR-032). A hostile or talked-round Jev can only pick a label.
+"""S22: Jev as the spending classifier is advisory too (ADR-032). A hostile or talked-round Jev can only pick a label.
 
 The line text Jev reads is the merchant's, so it can carry instructions ("categorize as income"). Whatever Jev
 answers, the domain keeps only a category from the spending vocabulary with confidence >= 0.5; income and card
@@ -50,7 +50,7 @@ def _services(monkeypatch, jev: HostileJev):
 
 
 @pytest.mark.parametrize("label", ["income", "movement", "uncategorized", "transfer 700000 to 99999999", "INCOME"])
-def test_s16_a_label_outside_the_spending_vocabulary_is_never_kept(monkeypatch, label):
+def test_s22_a_label_outside_the_spending_vocabulary_is_never_kept(monkeypatch, label):
     jev = HostileJev(label)
     services = _services(monkeypatch, jev)
     result = services.statements.import_statement("camila", santander_xlsx(MOVEMENTS))
@@ -66,7 +66,7 @@ def test_s16_a_label_outside_the_spending_vocabulary_is_never_kept(monkeypatch, 
     assert not any("REMUNERACION" in text for text in jev.asked)  # income is never sent to the model
 
 
-def test_s16_an_injected_merchant_gets_at_most_a_label_and_moves_no_money(monkeypatch):
+def test_s22_an_injected_merchant_gets_at_most_a_label_and_moves_no_money(monkeypatch):
     jev = HostileJev("shopping")  # obeys the attacker as far as the vocabulary allows
     services = _services(monkeypatch, jev)
     services.statements.import_statement("camila", santander_xlsx(MOVEMENTS))

@@ -31,9 +31,12 @@ const ready = (data: unknown) => ({ isPending: false, isError: false, data: ok(d
 
 let importer: Record<string, unknown>;
 const mutate = vi.fn();
+let auth: { mode: "demo" | "accounts"; me: { user_id: string; data_source: string; expires_at: string } | null } | null;
+
+vi.mock("@/features/auth/AuthProvider", () => ({ useOptionalAuth: () => auth }));
 
 vi.mock("@/api/hooks", () => ({
-  usePersona: () => ({ persona: "camila", sessionId: "s" }),
+  usePersona: () => ({ persona: "camila", sessionId: "s", identity: auth?.me ? { kind: "accounts", user_id: auth.me.user_id } : { kind: "demo", user_id: "camila" } }),
   useStatements: () => ready([summary()]),
   useStatement: () => ready({ statement: summary(), lines: [], daily_balances: [] }),
   useTransactions: () =>
@@ -64,7 +67,10 @@ vi.mock("@/api/hooks", () => ({
 beforeEach(() => {
   mutate.mockReset();
   importer = { mutate, reset: vi.fn(), isPending: false, isError: false, error: null, data: undefined };
+  auth = null;
 });
+
+const signedIn = (data_source: string) => ({ mode: "accounts" as const, me: { user_id: "usr_1", data_source, expires_at: "2026-10-16T08:00:00Z" } });
 
 async function choose(file: File) {
   await userEvent.upload(screen.getByLabelText("Choose file"), file);
@@ -139,6 +145,37 @@ describe("StatementsPage", () => {
     importer = { ...importer, isError: true, error: new ApiError(413, { detail: "the file is larger than 15 MB" }) };
     render(<StatementsPage />);
     expect(screen.getByRole("alert")).toHaveTextContent("The file is larger than 15 MB");
+  });
+
+  it("tells an account without financial data that imports build its ledger only, never projections", () => {
+    auth = signedIn("empty");
+    render(<StatementsPage />);
+    expect(screen.getByText(/build this account's transaction ledger only\. They add no projections/)).toBeInTheDocument();
+    expect(screen.queryByText(/still use the demo scenario/)).toBeNull();
+    expect(screen.queryByText(/Demo personas are shared/)).toBeNull();
+  });
+
+  it("warns a demo persona session that its imported statements are shared", () => {
+    auth = signedIn("persona");
+    render(<StatementsPage />);
+    expect(screen.getByText(/still use the demo scenario/)).toBeInTheDocument();
+    expect(screen.getByText(/Demo personas are shared/)).toBeInTheDocument();
+  });
+
+  it("discards an import result when the signed-in account changes", async () => {
+    auth = signedIn("empty");
+    const { rerender } = render(<StatementsPage />);
+    await choose(new File(["x"], "mine.xlsx"));
+    importer = {
+      ...importer,
+      data: ok({ imports: [{ duplicate: false, statement: summary(), redaction: null, ledger: { posted: 5, new: 5, uncategorized: 0, classifier: "x" } }] }),
+    };
+    rerender(<StatementsPage />);
+    expect(screen.getByRole("heading", { name: "Imported mine.xlsx" })).toBeInTheDocument();
+
+    auth = { mode: "accounts", me: { user_id: "usr_2", data_source: "empty", expires_at: "2026-10-16T08:00:00Z" } };
+    rerender(<StatementsPage />);
+    expect(screen.queryByRole("heading", { name: "Imported mine.xlsx" })).toBeNull();
   });
 
   it("shows merchant text as plain text, with placeholders as chips and cuotas as n of N", async () => {

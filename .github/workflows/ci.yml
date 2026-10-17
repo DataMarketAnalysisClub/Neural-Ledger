@@ -67,19 +67,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: A copied .env.example keeps durable storage
+      - name: A copied .env.example keeps durable storage and cookie sessions
         run: |
           cp .env.example .env
           docker compose config | grep -q 'NL_PERSISTENCE: sqlite'
+          docker compose config | grep -q 'NL_AUTH: accounts'
           rm .env
       - run: docker compose up --build --detach --wait --wait-timeout 120
       - name: Smoke test
         run: |
           curl --fail --silent http://localhost:8000/health | tee health.json
           grep -q '"mode":"offline"' health.json
+          grep -q '"auth":"accounts"' health.json
           grep -q '"pii_detector":"none"' health.json
           grep -q '"audit_chain_ok":true' health.json
-          curl --fail --silent -H 'X-User-Id: camila' 'http://localhost:8000/v1/forecast?scenario=conservative' > /dev/null
+          # Accounts mode: the identity header is rejected, a session cookie is required, a demo session issues one.
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' -H 'X-User-Id: camila' 'http://localhost:8000/v1/forecast?scenario=conservative')" = 400
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' 'http://localhost:8000/v1/forecast?scenario=conservative')" = 401
+          curl --fail --silent --cookie-jar jar.txt -H 'Origin: http://localhost:3000' -H 'Content-Type: application/json' \
+            --data '{"persona":"camila"}' http://localhost:8000/v1/auth/demo-session > /dev/null
+          curl --fail --silent --cookie jar.txt 'http://localhost:8000/v1/forecast?scenario=conservative' > /dev/null
           curl --fail --silent http://localhost:3000/ | grep -q '<div id="root">'
           curl --fail --silent -H 'X-User-Id: camila' http://localhost:3000/api/health | grep -q '"audit_chain_ok":true'
       - if: failure()

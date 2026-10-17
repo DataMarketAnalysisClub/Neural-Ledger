@@ -128,23 +128,24 @@ class SqliteDatabase:
             return self.connection.execute(sql, params).fetchall()
 
 
+def _profile_from(payload: dict) -> UserProfile:
+    return UserProfile(
+        user_id=payload["user_id"],
+        display_name=payload["display_name"],
+        language=payload["language"],
+        declared_tolerance=RiskProfile(payload["declared_tolerance"]) if payload["declared_tolerance"] is not None else None,
+        questionnaire=tuple(QuestionnaireAnswer(**answer) for answer in payload["questionnaire"]),
+        questionnaire_version=payload["questionnaire_version"],
+    )
+
+
 class SqliteUserProfileStore:
     def __init__(self, db: SqliteDatabase) -> None:
         self._db = db
 
     def get(self, user_id: str) -> UserProfile | None:
         row = self._db.fetchone("SELECT payload FROM user_profiles WHERE user_id = ?", (user_id,))
-        if row is None:
-            return None
-        payload = json.loads(row[0])
-        return UserProfile(
-            user_id=payload["user_id"],
-            display_name=payload["display_name"],
-            language=payload["language"],
-            declared_tolerance=RiskProfile(payload["declared_tolerance"]) if payload["declared_tolerance"] is not None else None,
-            questionnaire=tuple(QuestionnaireAnswer(**answer) for answer in payload["questionnaire"]),
-            questionnaire_version=payload["questionnaire_version"],
-        )
+        return _profile_from(json.loads(row[0])) if row else None
 
     def put(self, profile: UserProfile) -> None:
         with self._db.lock:
@@ -608,6 +609,22 @@ class SqliteAccountWrites:
             if cursor.rowcount == 0:
                 return False
             self._check_events(conn, events)
+            for event in events:
+                _append_audit(conn, event)
+            return True
+
+    def update_profile(self, expected: UserProfile, updated: UserProfile, events: Sequence[AuditDraft]) -> bool:
+        if updated.user_id != expected.user_id or any(event.user_id != expected.user_id for event in events):
+            raise ValueError("profile ownership mismatch")
+        # Raw connection only: the store and audit-log methods take db.lock, which this transaction already holds.
+        with _account_transaction(self._db) as conn:
+            row = conn.execute("SELECT payload FROM user_profiles WHERE user_id = ?", (expected.user_id,)).fetchone()
+            if row is None or _profile_from(json.loads(row[0])) != expected:
+                return False
+            self._check_events(conn, events)
+            conn.execute(
+                "UPDATE user_profiles SET payload = ? WHERE user_id = ?", (json.dumps(to_primitive(updated)), updated.user_id)
+            )
             for event in events:
                 _append_audit(conn, event)
             return True
