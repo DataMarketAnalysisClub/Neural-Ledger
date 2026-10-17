@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/session.schema.json",
+  "title": "AuthSession",
+  "description": "Body of successful signup (201), signin (200) or demo-session (200). The secret session token is set only in the HttpOnly nl_session cookie, never in JSON. Signout returns 204 with no body.",
+  "type": "object",
+  "required": ["user_id", "expires_at"],
+  "properties": {
+    "user_id": {"type": "string", "minLength": 1},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"user_id": "usr_7f3a9c21", "expires_at": "2026-10-15T12:00:00Z"},
+    {"user_id": "camila", "expires_at": "2026-10-15T12:00:00Z"}
+  ]
+}

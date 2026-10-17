@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/demo_session_request.schema.json",
+  "title": "DemoSessionRequest",
+  "description": "POST /v1/auth/demo-session in accounts mode when NL_DEMO_PERSONAS is enabled. Public, shared, read-only persona records; no arbitrary user ID is accepted.",
+  "type": "object",
+  "required": ["persona"],
+  "properties": {
+    "persona": {"type": "string", "enum": ["camila", "diego"]}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"persona": "camila"},
+    {"persona": "diego"}
+  ]
+}

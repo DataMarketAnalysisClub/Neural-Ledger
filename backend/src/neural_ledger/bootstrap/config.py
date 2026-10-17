@@ -50,6 +50,10 @@ class Settings:
     pii_detector: str = "none"  # none | azure: a second layer after the redaction rules; see DETECTORS in container.py
     azure_language_endpoint: str | None = None  # e.g. https://<resource>.cognitiveservices.azure.com
     azure_language_api_key: str | None = None
+    auth: str = "demo"  # demo (X-User-Id header, read-only profiles) | accounts (nl_session cookie; docker compose)
+    app_origins: tuple[str, ...] = ("http://localhost:3000", "http://localhost:5173")  # may send unsafe requests (accounts)
+    cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
+    demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -108,4 +112,17 @@ class Settings:
             pii_detector=get("NL_PII_DETECTOR", cls.pii_detector),
             azure_language_endpoint=e.get("AZURE_LANGUAGE_ENDPOINT") or None,
             azure_language_api_key=e.get("AZURE_LANGUAGE_API_KEY") or None,
+            auth=get("NL_AUTH", cls.auth),
+            app_origins=tuple(o.strip() for o in get("NL_APP_ORIGINS", ",".join(cls.app_origins)).split(",") if o.strip()),
+            cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
+            demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
         )
+
+
+def _flag(value: str, name: str) -> bool:
+    lowered = value.strip().lower()
+    if lowered in ("true", "1", "yes"):
+        return True
+    if lowered in ("false", "0", "no"):
+        return False
+    raise ValueError(f"{name} must be true or false")
