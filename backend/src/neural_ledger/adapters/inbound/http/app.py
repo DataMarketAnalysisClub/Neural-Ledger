@@ -55,6 +55,27 @@ def _action_response(outcome: Any) -> JSONResponse:
     return JSONResponse(payload, status_code=_ACTION_CODES.get(outcome.status, 200))
 
 
+class SecurityHeadersMiddleware:
+    """G09: every response says nosniff and no-store (the API serves financial data). Pure ASGI so streaming bodies are untouched."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() not in (b"x-content-type-options", b"cache-control")]
+                headers += [(b"x-content-type-options", b"nosniff"), (b"cache-control", b"no-store")]
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 def _auth_error(status: str, message: str, field: str | None = None) -> JSONResponse:
     return JSONResponse(auth_error_body(status, message, field), status_code=AUTH_HTTP_STATUS[status])
 
@@ -113,7 +134,7 @@ def _session_body(issued: IssuedSession) -> dict[str, str]:
 def create_app(
     services: ApplicationServices,
     *,
-    cors_origins: tuple[str, ...] = ("*",),
+    cors_origins: tuple[str, ...] = (),
     rate_limits: tuple[Limit, ...] = DEFAULT_LIMITS,
     rate_clock: Callable[[], float] = time.monotonic,  # not the services' clock: a fixed demo clock would never reopen a window
 ) -> FastAPI:
@@ -127,9 +148,10 @@ def create_app(
     # Inside CORS, so a browser can read a 429 and its Retry-After; outside the guard, so it counts before any session lookup.
     if rate_limits:
         app.add_middleware(RateLimitMiddleware, limits=rate_limits, now=rate_clock)
-    # Added last, so it is outermost: preflights are answered and guard rejections still carry CORS headers.
+    # Outside the guard: preflights are answered and guard rejections still carry CORS headers.
     # No credentials: the web UI reaches the API on its own origin (nginx /api), never cross-site with cookies.
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(SecurityHeadersMiddleware)  # G09: added after CORS, so it wraps CORS, the guard and every response
 
     @app.exception_handler(_NoSession)
     async def no_session(request: Request, exc: _NoSession) -> JSONResponse:

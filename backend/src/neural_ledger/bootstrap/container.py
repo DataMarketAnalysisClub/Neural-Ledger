@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import secrets
-import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -141,7 +140,10 @@ def _auth_config(s: Settings) -> AuthConfig:
 def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapters]:
     s = settings or Settings.from_env()
     if s.hmac_secret == DEV_SECRET and s.mode == "live":
-        warnings.warn("NL_HMAC_SECRET is the development default; set a real secret", stacklevel=2)
+        raise ValueError(
+            "live mode refuses the development default for NL_HMAC_SECRET; set a real one, "
+            'e.g. python -c "import secrets; print(secrets.token_hex(32))"'
+        )
 
     clock = FixedClock(s.fixed_instant) if s.clock == "fixed" else SystemClock()
     ids = SequentialIds() if s.ids == "sequential" else UuidIds()
