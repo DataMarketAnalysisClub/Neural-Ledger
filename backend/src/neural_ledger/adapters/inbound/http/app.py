@@ -52,6 +52,27 @@ def _action_response(outcome: Any) -> JSONResponse:
     return JSONResponse(payload, status_code=_ACTION_CODES.get(outcome.status, 200))
 
 
+class SecurityHeadersMiddleware:
+    """G09: every response says nosniff and no-store (the API serves financial data). Pure ASGI so streaming bodies are untouched."""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", []) if k.lower() not in (b"x-content-type-options", b"cache-control")]
+                headers += [(b"x-content-type-options", b"nosniff"), (b"cache-control", b"no-store")]
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 def _auth_error(status: str, message: str, field: str | None = None) -> JSONResponse:
     return JSONResponse(auth_error_body(status, message, field), status_code=AUTH_HTTP_STATUS[status])
 
@@ -107,7 +128,7 @@ def _session_body(issued: IssuedSession) -> dict[str, str]:
     return {"user_id": issued.user_id, "expires_at": issued.expires_at.isoformat()}
 
 
-def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ("*",)) -> FastAPI:
+def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ()) -> FastAPI:
     app = FastAPI(title="Neural Ledger API", version="0.1.0", description="Contracts: see /contracts in the repository.")
     auth = services.auth
     accounts = services.accounts
@@ -115,9 +136,10 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
         if accounts is None:
             raise ValueError("accounts mode needs AccountUseCases")
         app.add_middleware(IdentityGuard, resolve=accounts.resolve, origins=auth.app_origins)
-    # Added last, so it is outermost: preflights are answered and guard rejections still carry CORS headers.
+    # Outside the guard: preflights are answered and guard rejections still carry CORS headers.
     # No credentials: the web UI reaches the API on its own origin (nginx /api), never cross-site with cookies.
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(SecurityHeadersMiddleware)  # G09: added after CORS, so it wraps CORS, the guard and every response
 
     @app.exception_handler(_NoSession)
     async def no_session(request: Request, exc: _NoSession) -> JSONResponse:

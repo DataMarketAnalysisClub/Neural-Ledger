@@ -26,7 +26,7 @@ CREDENTIALS = {"status": "INVALID_CREDENTIALS", "message": "invalid credentials"
 
 def _client(auth: str = "accounts", origin: str | None = ORIGIN, **overrides):
     services, adapters = build(make_settings(auth=auth, app_origins=(ORIGIN,), **overrides))
-    client = TestClient(create_app(services), headers={"Origin": origin} if origin else {})
+    client = TestClient(create_app(services, cors_origins=(ORIGIN,)), headers={"Origin": origin} if origin else {})  # G08: CORS is closed unless configured
     return client, services, adapters
 
 

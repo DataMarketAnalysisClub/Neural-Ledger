@@ -366,19 +366,16 @@ def test_g07_bursts_are_rate_limited(services):
     assert 429 in codes
 
 
-@gap("CORS allows any origin by default (NL_CORS_ORIGINS=*). OWASP API8:2023")
 def test_g08_cors_is_not_open_by_default():
     assert "*" not in Settings().cors_origins
 
 
-@gap("no security headers on API responses. ASVS 5.0 V3 (web frontend security), OWASP API8:2023")
 def test_g09_responses_carry_security_headers(services):
     headers = TestClient(create_app(services)).get("/v1/transactions").headers
     assert headers.get("x-content-type-options") == "nosniff"
     assert "no-store" in headers.get("cache-control", "")
 
 
-@gap("live mode only warns about the development HMAC secret. ASVS 5.0 V13, Ley 21.719 art. 14 quinquies")
 def test_g10_live_mode_refuses_the_development_secret():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -396,7 +393,6 @@ def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
     assert "Compra Nacional VD SHOP ONE" not in _stored_bytes(path)
 
 
-@gap("no published privacy policy nor breach response runbook. Ley 21.719 arts. 14 ter and 14 sexies; Ley 21.663")
 def test_g12_privacy_policy_and_breach_runbook_exist():
     assert (ROOT / "docs/PRIVACY.md").is_file()
     assert (ROOT / "docs/runbooks/INCIDENT_RESPONSE.md").is_file()

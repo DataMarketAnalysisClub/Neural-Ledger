@@ -84,6 +84,10 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C11` | Chat input is cut at 4,000 characters before any model sees it | LLM10; API4:2023 | `test_c11_…` |
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
 | `C13` | With `NL_CLASSIFIER=jev,…`, Jev receives each charge's text only after redaction (no name, RUT, e-mail, phone or card number) and never a deposit | Ley 21.719 art. 3 c); transfer to a provider abroad (ADR-032) | `test_c13_…` |
+| `G08` | CORS is closed by default: only the web app's origin (`http://localhost:3000`) unless `NL_CORS_ORIGINS` is set; `*` only when set explicitly | API8:2023 | `test_g08_…` |
+| `G09` | Every API response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` | ASVS V3; API8:2023 | `test_g09_…` |
+| `G10` | Live mode refuses to start with the development HMAC secret (`NL_HMAC_SECRET` must be set) | ASVS V13; Ley 21.719 art. 14 quinquies | `test_g10_…` |
+| `G12` | A privacy policy (`docs/PRIVACY.md`) and a breach response runbook (`docs/runbooks/INCIDENT_RESPONSE.md`) are published | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `test_g12_…` |
 
 ### Gaps (strict xfail until built)
 
@@ -96,21 +100,17 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G05` | Opposition to and blocking of processing | Ley 21.719 arts. 8, 8 ter | `PUT /v1/me/processing` |
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
 | `G07` | Rate limiting | API4:2023; LLM10 | Per-user and per-IP limits, stricter on uploads and chat |
-| `G08` | CORS open to any origin by default | API8:2023 | Default to the web app's origin; `*` only when set explicitly |
-| `G09` | Security headers on responses | ASVS V3; API8:2023 | `X-Content-Type-Options: nosniff`, `Cache-Control: no-store` on financial data |
-| `G10` | Live mode starts with the development HMAC secret (it only warns) | ASVS V13; Ley 21.719 art. 14 quinquies | Raise instead of warn in `bootstrap/container.py` |
 | `G11` | Statements and transactions stored in plaintext SQLite | Ley 21.719 art. 14 quinquies; ASVS V14 | Encrypted volume or SQLCipher; key outside the database |
-| `G12` | Published privacy policy and breach response runbook | Ley 21.719 arts. 14 ter, 14 sexies; Ley 21.663 | `docs/PRIVACY.md`, `docs/runbooks/INCIDENT_RESPONSE.md` |
 
 The routes in G02–G05 are proposals; change the test with the API design.
 
 ### Obligations reviewed but not testable as code
 
 - **Impact assessment (Ley 21.719 art. 15 ter).** Profiling a person's finances from bank statements is likely high-risk processing. Write the assessment before real users.
-- **International transfers (art. 27).** In live mode, prompts go to the LLM provider and, for Jev, to OpenRouter, both outside Chile. Prompts carry financial facts, not statements or identifiers (C09 covers secrets only). Document the safeguards before live use with real users.
+- **International transfers (art. 27).** Each provider below receives data only when its setting is on, and all are outside Chile. The LLM (`NL_LLM=openrouter`, or `anthropic` directly) receives the system prompt, the session's conversation history, the user's messages and tool results. Messages are free text cut at 4,000 characters and can contain identifiers the user types. Tool results hold financial figures, the profile's display name, pending actions and the session's audit events. No agent tool returns statements or transactions. Jev for decisions (`jev` in `NL_DECISION_CHAIN`) receives each chat message, to classify intent and detect injection, and the user's recent messages for the risk-tolerance question. Jev for categories (`jev` in `NL_CLASSIFIER`, ADR-032) receives each charge's statement-line text after redaction, never a deposit (`C13`). Azure AI Language (`NL_PII_DETECTOR=azure`) receives the raw text of each imported statement line, before redaction. All are off in offline mode. `C09` only guarantees that keys and the signing secret never reach the model, not that prompts are free of personal data. See [PRIVACY.md](PRIVACY.md) ("Who receives data") for the full table. Document the safeguards before live use with real users.
 - **Financial obligations data (arts. 17–19).** The app does not communicate anyone's debts to third parties. Keep it that way, or review these articles first.
 - **Ley 21.521 (Fintec) and the Open Finance System (CMF NCG 514).** Not applicable while statements are uploaded by the user. Connecting to banks through the system's APIs brings its consent and security rules, and its start date should be confirmed with the CMF.
-- **Ley 21.663.** Its incident duties (an early alert within 3 hours to the national CSIRT) bind essential services and operators of vital importance. The app is neither, and G12's runbook should follow the same steps anyway.
+- **Ley 21.663.** Its incident duties (an early alert within 3 hours to the national CSIRT) bind essential services and operators of vital importance. The app is neither, and the breach runbook (`docs/runbooks/INCIDENT_RESPONSE.md`) follows the same steps anyway.
 - **Children's data (art. 16 quáter).** There is no age check. Personas and uploads are assumed to be adults.
 
 **Development tooling.** `npx ecc-agentshield scan` on the repository (2026-10-14) graded the agent configuration B (79/100). All 13 findings were about `CLAUDE.md` (missing prompt-defense wording, file group-writable). After a "Working safely" section in `CLAUDE.md` and a local `chmod 600` (file modes other than the executable bit are not tracked by git, so each checkout needs its own), the re-scan graded A (100/100) with no findings.
@@ -164,7 +164,7 @@ The routes in G02–G05 are proposals; change the test with the API design.
 - **The rules decision model is keyword-based.** It is the offline floor, not the main defence. The hard guarantees come from the gate and the confirmation contract, which do not depend on any model.
 - **The verifier checks numbers, warnings and a few phrases.** Semantic contradictions in free prose need the model-based check (Should).
 - **No rate limiting** and no abuse detection on the API (G07).
-- **The secret comes from the environment** (`NL_HMAC_SECRET`); a KMS is out of scope. The development default must never be used in a recorded demo.
+- **The secret comes from the environment** (`NL_HMAC_SECRET`); a KMS is out of scope. Live mode refuses the development default (G10); offline mode accepts it, so never use it in a recorded demo.
 - **Real statements are processed locally.** A developer's own cartolas in the git-ignored `cartolas/` are read on their machine; the repository and the test suite hold synthetic data only (C01, C02, C07). The repository is public: never commit keys or personal documents.
 - **Estimator warnings are not forwarded.** `LedgerModelSource.load` discards the stage-1 `Envelope` warnings and facts, and estimation caveats have empty `must_mention`. Chat verification cannot enforce caveats it never receives; B must decide forwarding semantics before the ledger-default switch. See `docs/EXPLANATION_HANDOFF.md`.
 - **The rolling-origin backtest is synthetic-only implementation validation.** Grid A December coverage is adverse without a prior December; this is not evidence of real-world predictive accuracy or a security mitigation. See `docs/BACKTEST.md`.
