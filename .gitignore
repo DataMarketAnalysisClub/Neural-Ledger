@@ -20,6 +20,8 @@ var/
 *.db
 *.db-wal
 *.db-shm
+# The SQLite data key an offline run creates next to its database (G11); never commit it
+*.db.key
 *.log
 
 # Frontend (web/)

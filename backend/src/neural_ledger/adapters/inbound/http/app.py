@@ -9,6 +9,8 @@ accounts reads only the nl_session cookie, through the guard in identity.py.
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import Body, FastAPI, Query, Request
@@ -34,6 +36,7 @@ from .identity import (
     session_cookie,
     session_token,
 )
+from .rate_limit import DEFAULT_LIMITS, Limit, RateLimitMiddleware
 
 _STATUS_CODES = {"OK": 200, "INVALID_INPUT": 422, "INSUFFICIENT_DATA": 409}
 _ACTION_CODES = {"PROPOSED": 201, "CONFIRMED": 201, "EXECUTED": 200, "FAILED": 502, "BLOCKED": 403, "INVALID_INPUT": 422, "INSUFFICIENT_DATA": 409}
@@ -128,7 +131,13 @@ def _session_body(issued: IssuedSession) -> dict[str, str]:
     return {"user_id": issued.user_id, "expires_at": issued.expires_at.isoformat()}
 
 
-def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] = ()) -> FastAPI:
+def create_app(
+    services: ApplicationServices,
+    *,
+    cors_origins: tuple[str, ...] = (),
+    rate_limits: tuple[Limit, ...] = DEFAULT_LIMITS,
+    rate_clock: Callable[[], float] = time.monotonic,  # not the services' clock: a fixed demo clock would never reopen a window
+) -> FastAPI:
     app = FastAPI(title="Neural Ledger API", version="0.1.0", description="Contracts: see /contracts in the repository.")
     auth = services.auth
     accounts = services.accounts
@@ -136,6 +145,9 @@ def create_app(services: ApplicationServices, *, cors_origins: tuple[str, ...] =
         if accounts is None:
             raise ValueError("accounts mode needs AccountUseCases")
         app.add_middleware(IdentityGuard, resolve=accounts.resolve, origins=auth.app_origins)
+    # Inside CORS, so a browser can read a 429 and its Retry-After; outside the guard, so it counts before any session lookup.
+    if rate_limits:
+        app.add_middleware(RateLimitMiddleware, limits=rate_limits, now=rate_clock)
     # Outside the guard: preflights are answered and guard rejections still carry CORS headers.
     # No credentials: the web UI reaches the API on its own origin (nginx /api), never cross-site with cookies.
     app.add_middleware(CORSMiddleware, allow_origins=list(cors_origins), allow_credentials=False, allow_methods=["*"], allow_headers=["*"])

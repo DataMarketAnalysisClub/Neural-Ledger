@@ -234,12 +234,14 @@ def test_c08_sql_is_always_parameterized(tmp_path):
     ]
     assert built == [], f"SQL built from strings at lines {built}"
 
+    from neural_ledger.adapters.outbound.persistence.field_cipher import FieldCipher
     from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, SqliteStatementStore, SqliteTransactionStore
 
     db = SqliteDatabase(tmp_path / "inj.db")
     hostile = "x' OR '1'='1"
-    assert SqliteStatementStore(db).for_user(hostile) == ()
-    assert SqliteTransactionStore(db).for_user(hostile) == ()
+    cipher = FieldCipher(bytes(32))
+    assert SqliteStatementStore(db, cipher).for_user(hostile) == ()
+    assert SqliteTransactionStore(db, cipher).for_user(hostile) == ()
 
 
 def test_c09_the_language_model_never_receives_secrets(services, adapters):
@@ -359,11 +361,11 @@ def test_g06_importing_a_statement_requires_recorded_consent(services):
     assert response.status_code in (403, 428)
 
 
-@gap("no rate limiting. OWASP API4:2023, LLM10")
 def test_g07_bursts_are_rate_limited(services):
+    """OWASP API4:2023, LLM10. Built (ADR-033): a burst of uploads is cut off with 429 before any use case runs."""
     client = TestClient(create_app(services))
-    codes = {client.post("/v1/statements", content=b"x").status_code for _ in range(60)}
-    assert 429 in codes
+    codes = [client.post("/v1/statements", content=b"x").status_code for _ in range(60)]
+    assert codes[:10] == [422] * 10 and set(codes[10:]) == {429}
 
 
 def test_g08_cors_is_not_open_by_default():
@@ -384,13 +386,17 @@ def test_g10_live_mode_refuses_the_development_secret():
 
 
 @needs_pdf
-@gap("statements are stored in plaintext SQLite. Ley 21.719 art. 14 quinquies (security measures), ASVS 5.0 V14")
 def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
+    """Ley 21.719 art. 14 quinquies (security measures), ASVS 5.0 V14. Built (ADR-033): payloads are sealed
+    with AES-GCM and the key lives outside the database."""
     from tests.statement_samples import santander_xlsx
 
     services, _, path = sqlite_system
     services.statements.import_statement(USER, santander_xlsx())
-    assert "Compra Nacional VD SHOP ONE" not in _stored_bytes(path)
+    assert services.ledger.list_transactions(USER).data.transactions  # imported and readable through the API
+    stored = _stored_bytes(path)
+    assert "Compra Nacional VD SHOP ONE" not in stored and "SHOP ONE" not in stored
+    assert "nlenc1:" in stored
 
 
 def test_g12_privacy_policy_and_breach_runbook_exist():

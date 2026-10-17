@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -15,6 +16,7 @@ from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
 from ..adapters.outbound.llm.openrouter import OpenRouterLanguageModel
 from ..adapters.outbound.llm.scripted import ScriptedLanguageModel
+from ..adapters.outbound.persistence.field_cipher import FieldCipher
 from ..adapters.outbound.persistence.memory import (
     InMemoryAccountWrites,
     InMemoryActionRepository,
@@ -105,6 +107,20 @@ def _jev(s: Settings) -> JevDecisionModel:
     return JevDecisionModel(s.typesafe_api_key, s.jev_model)
 
 
+def _data_cipher(s: Settings) -> FieldCipher:
+    """G11: the key that seals statement and transaction payloads in SQLite, never stored in the database.
+
+    Live mode needs NL_DATA_KEY. Offline runs (tests, docker compose, the demo) without it get a random key
+    in <db>.key, created once: the database alone, or a copy of it, reads nothing."""
+    if s.data_key:
+        return FieldCipher.from_hex(s.data_key)
+    if s.mode == "live":
+        raise ValueError("live mode with SQLite needs NL_DATA_KEY (64 hex characters) to encrypt statements at rest")
+    if s.sqlite_path == ":memory:":
+        return FieldCipher(secrets.token_bytes(32))  # the data dies with the process, and so does its key
+    return FieldCipher.from_key_file(f"{s.sqlite_path}.key")
+
+
 AUTH_MODES = ("demo", "accounts")
 COOKIE_SECURE = ("auto", "true", "false")
 
@@ -145,11 +161,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     db: SqliteDatabase | None = None
     if s.persistence == "sqlite":
         db = SqliteDatabase(s.sqlite_path)
+        cipher = _data_cipher(s)
         actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
-        statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db)
-        transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db)
+        statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
+        transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
         writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
