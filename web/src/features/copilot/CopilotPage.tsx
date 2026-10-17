@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
-import { ArrowUp, ChatText, Info, SealCheck, Wrench } from "@phosphor-icons/react";
-import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending } from "@/api/hooks";
+import { ArrowUp, ChatText, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
+import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending, usePersona } from "@/api/hooks";
 import { ApiError, type ActionOutcome, type ChatReply } from "@/api/client";
 import { ProposalReceipt, VerdictBanner } from "@/components/actions";
 import { Button, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
@@ -22,7 +22,19 @@ function outcomeFrom(error: unknown): ActionOutcome | null {
   return null;
 }
 
+/**
+ * One conversation per session_id. A new conversation (or another persona) remounts it, so the log, the pending
+ * proposal and every request state start empty; the API then answers for the new session only.
+ * shortcut: the log lives only in this component, so a reload or a new conversation drops it; replace with
+ * GET /v1/chat/history when the backend stores conversations (plan item D2).
+ */
 export function CopilotPage() {
+  const { sessionId } = usePersona();
+  return <Conversation key={sessionId} />;
+}
+
+function Conversation() {
+  const { newSession } = usePersona();
   const location = useLocation();
   const initialPrompt = (location.state as { prompt?: string } | null)?.prompt ?? "";
   const state = useFinancialState();
@@ -103,7 +115,16 @@ export function CopilotPage() {
 
   return (
     <>
-      <PageHeader title={t("copilot.title")} subtitle={t("copilot.subtitle")} />
+      <PageHeader
+        title={t("copilot.title")}
+        subtitle={t("copilot.subtitle")}
+        actions={
+          <Button variant="secondary" onClick={newSession}>
+            <NotePencil aria-hidden className="size-4" />
+            {t("copilot.newConversation")}
+          </Button>
+        }
+      />
 
       <div className="grid gap-10 xl:grid-cols-[1fr_400px]">
         <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-15rem)] min-h-[440px] min-w-0 flex-col rounded-control border border-line bg-surface">

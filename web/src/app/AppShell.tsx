@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
 import {
   CalendarDots,
   ChartLineDown,
@@ -8,20 +9,20 @@ import {
   LinkSimple,
   PiggyBank,
   Receipt,
+  UserCircle,
   type Icon,
 } from "@phosphor-icons/react";
 import { useFinancialState, useHealth, usePersona } from "@/api/hooks";
 import type { PersonaId } from "@/api/client";
 import { t, type MessageKey } from "@/i18n";
 import { formatDate } from "@/lib/format";
-import { cn } from "@/components/ui";
-import { features } from "@/lib/features";
+import { Button, ErrorState, StatusBadge, cn } from "@/components/ui";
+import { useAuth } from "@/features/auth/AuthProvider";
 
 interface NavItem {
   to: string;
   label: MessageKey;
   icon: Icon;
-  hidden?: boolean;
 }
 
 const NAV: NavItem[] = [
@@ -31,7 +32,8 @@ const NAV: NavItem[] = [
   { to: "/plan", label: "nav.plan", icon: PiggyBank },
   { to: "/copilot", label: "nav.copilot", icon: ChatText },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
-  { to: "/statements", label: "nav.statements", icon: Files, hidden: !features.statements },
+  { to: "/statements", label: "nav.statements", icon: Files },
+  { to: "/profile", label: "auth.account", icon: UserCircle },
 ];
 
 /** The product mark: a balance stepping down to a protected floor, the product's own mechanism. */
@@ -80,11 +82,15 @@ function RuleCounter() {
   return <p className="num text-xs text-ink-3">{t("nav.rules", { count })}</p>;
 }
 
-function SandboxSeal() {
-  const health = useHealth();
+function DataAsOf() {
   const state = useFinancialState();
-  const mode = health.data?.mode;
   const asOf = state.data?.as_of;
+  return asOf ? <span>{t("app.asOf", { date: formatDate(asOf) })}</span> : null;
+}
+
+function SandboxSeal({ showData }: { readonly showData: boolean }) {
+  const health = useHealth();
+  const mode = health.data?.mode;
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
       <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 font-medium text-ink-2">
@@ -96,12 +102,17 @@ function SandboxSeal() {
           {mode === "live" ? t("app.modeLive") : t("app.modeOffline")}
         </span>
       )}
-      {asOf && <span>{t("app.asOf", { date: formatDate(asOf) })}</span>}
+      {showData && <DataAsOf />}
     </div>
   );
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const signout = useMutation({ mutationFn: auth.signout });
+  const isAccount = auth.mode === "accounts";
+  const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
+  const showData = !isAccount || (!isMock && auth.me?.data_source === "persona");
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_1fr]">
       <a
@@ -116,13 +127,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Mark />
           <span className="text-base font-semibold tracking-[-0.01em] text-ink">{t("app.name")}</span>
         </div>
-        <div className="px-4 pb-4">
-          <PersonaSwitcher />
-        </div>
+        {!isAccount && <div className="px-4 pb-4"><PersonaSwitcher /></div>}
         <nav aria-label={t("nav.label")} className="px-3 pb-3 lg:flex-1 lg:overflow-y-auto">
           {/* Below lg every item stays visible in a grid; nothing hides off-screen. */}
-          <ul className="grid grid-cols-3 gap-1 sm:grid-cols-6 lg:flex lg:flex-col">
-            {NAV.filter((n) => !n.hidden).map(({ to, label, icon: IconCmp }) => (
+          <ul className={cn("grid grid-cols-3 gap-1 lg:flex lg:flex-col", isAccount ? "sm:grid-cols-4" : "sm:grid-cols-7")}>
+            {NAV.filter((item) => isAccount || item.to !== "/profile").map(({ to, label, icon: IconCmp }) => (
               <li key={to}>
                 <NavLink
                   to={to}
@@ -145,19 +154,25 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
           </ul>
         </nav>
-        <div className="hidden border-t border-line px-5 py-4 lg:block">
-          <RuleCounter />
-        </div>
+        {showData && <div className="hidden border-t border-line px-5 py-4 lg:block"><RuleCounter /></div>}
       </aside>
 
       <div className="flex min-w-0 flex-col">
-        <div className="flex items-center justify-end border-b border-line px-6 py-3 lg:px-10">
-          <SandboxSeal />
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3 lg:px-10">
+          <SandboxSeal showData={showData} />
+          {isAccount && <div className="flex flex-wrap items-center gap-3 text-sm">
+            {isMock && <StatusBadge tone="warning">{t("auth.mock")}</StatusBadge>}
+            <Button asChild variant="quiet" size="sm"><Link to="/profile">{t("auth.account")}</Link></Button>
+            <Button variant="quiet" size="sm" onClick={() => signout.mutate()} disabled={signout.isPending} busy={signout.isPending}>
+              {signout.isPending ? t("auth.signingOut") : t("auth.signout")}
+            </Button>
+          </div>}
         </div>
+        {signout.isError && <div className="px-6 pt-4 lg:px-10"><ErrorState error={signout.error} /></div>}
         <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-8 outline-none lg:px-10 lg:py-10">
           {children}
         </main>
-        <footer className="px-6 pb-6 text-xs text-ink-3 lg:px-10">{t("app.footer")}</footer>
+        <footer className="px-6 pb-6 text-xs text-ink-3 lg:px-10">{t(isAccount ? "auth.footer" : "app.footer")}</footer>
       </div>
     </div>
   );

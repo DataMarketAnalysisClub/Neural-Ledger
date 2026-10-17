@@ -51,6 +51,10 @@ class AccountOutcome:
 
 INVALID_CREDENTIALS = AccountOutcome(AccountStatus.INVALID_CREDENTIALS, message="invalid credentials")
 EMAIL_TAKEN = AccountOutcome(AccountStatus.EMAIL_TAKEN, field="email", message="email already registered")
+UNKNOWN_PERSONA = AccountOutcome(AccountStatus.INVALID_INPUT, field="persona", message="choose an available demo persona")
+
+# The only public, read-only personas a demo session can open. Never an arbitrary user id.
+DEMO_PERSONAS: tuple[str, ...] = ("camila", "diego")
 
 
 class AccountUseCases:
@@ -63,7 +67,12 @@ class AccountUseCases:
         tokens: TokenGenerator,
         clock: Clock,
         ids: IdGenerator,
+        *,
+        demo_personas: frozenset[str] = frozenset(),
     ) -> None:
+        if not demo_personas <= frozenset(DEMO_PERSONAS):
+            raise ValueError("demo sessions open only the allowlisted personas")
+        self._demo_personas = frozenset(demo_personas)
         self._accounts = accounts
         self._sessions = sessions
         self._writes = writes
@@ -106,6 +115,26 @@ class AccountUseCases:
         token, session = self._new_session(account.user_id, now)
         self._writes.open_session(session, (self._draft(AuditKind.SESSION_STARTED, account.user_id, session.session_ref, "reason=signin", now),))
         return AccountOutcome(AccountStatus.OK, session=IssuedSession(account.user_id, session.session_ref, session.expires_at, token))
+
+    @property
+    def demo_personas(self) -> tuple[str, ...]:
+        return tuple(sorted(self._demo_personas))
+
+    def start_demo_session(self, persona: str) -> AccountOutcome:
+        """A session on a shared, read-only persona from the enabled allowlist. The value is never echoed."""
+        if not isinstance(persona, str) or persona not in self._demo_personas:
+            return UNKNOWN_PERSONA
+        now = self._clock.now()
+        token, session = self._new_session(persona, now)
+        self._writes.open_session(session, (self._draft(AuditKind.SESSION_STARTED, persona, session.session_ref, "reason=demo_session", now),))
+        return AccountOutcome(AccountStatus.OK, session=IssuedSession(persona, session.session_ref, session.expires_at, token))
+
+    def data_source(self, user_id: str) -> str:
+        """persona (no account: a demo session), sample (the account chose sample data) or empty."""
+        account = self._accounts.get(user_id)
+        if account is None:
+            return "persona"
+        return "sample" if account.sample_data else "empty"
 
     def resolve(self, token: str) -> Session | None:
         """The active session for this token. Read-only: using a session never extends it."""

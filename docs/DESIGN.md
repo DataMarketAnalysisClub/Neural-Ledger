@@ -243,7 +243,7 @@ The scale is fixed rem (ratio about 1.2) for product UI; only the hero figure is
 
 ## Layout
 
-- **Shell:** at `lg` (1024px) and up, a 248px sticky side rail (rail-gray, full viewport height) beside the content column; below `lg` the rail stacks on top and the nav becomes a grid (3 columns, 6 from `sm`) so no item hides off-screen. Nav targets are at least 44px tall on touch layouts.
+- **Shell:** at `lg` (1024px) and up, a 248px sticky side rail (rail-gray, full viewport height) beside the content column; below `lg` the rail stacks on top and the nav becomes a grid (3 columns, 7 from `sm`, one per item) so no item hides off-screen. Nav targets are at least 44px tall on touch layouts.
 - **Content column:** a thin top bar (sandbox seal, mode, as-of date, right-aligned) above `main`, max width 1280px, padding 24px (40px from `lg`), vertical padding 32px (40px from `lg`).
 - **Rhythm:** a 4px base. Common steps are 8, 12, 16, 24 and 32px; page header to content 32px; section heading to content 16px; receipt internal blocks 20 to 24px.
 - **Sections** are separated by space and hairlines, not nested cards. A white surface is used for a working object (the bridge, the chat, the receipt, tables), not as a default wrapper for every block.
