@@ -227,21 +227,23 @@ ADR-026 and ADR-027 are numbered after Role A's ADR-014 to ADR-018, the statemen
 
 Reversing the option order changed the label in 2% of the cases, all ambiguous. Median latency 570 ms (p95 830 ms) per call.
 **Limits:** the set is small, was written by the same person who wrote the option descriptions, and has no adaptive attacks or real user messages. The injection margin is narrow (lowest attack 0.64, highest legitimate request 0.31, threshold 0.5), and TypeSafe documents that text arguing for its own classification can move an answer.
+**Found 2026-10-18 (ADR-032 eval):** OpenRouter no longer serves `typesafe/jev-1.13.0` (HTTP 400, model does not exist), so with the default `NL_JEV_MODEL` every live Jev call fails and the chain runs on rules alone (S10 behaviour, no error shown). `jev-latest` answers as `typesafe/jev-1.14-20261014`. The go/no-go needs a new pin and a re-run of the decision eval on it.
 **Consequences:** Jev is advisory. A fooled or down Jev must not open any door: S13 and S14 test it, and permissions, stored authorizations and the verifier stay deterministic. Next: enlarge the set with adaptive attacks and messages from teammates, then re-check the 0.80 and 0.55 thresholds.
 
-### ADR-032 · Jev categorizes statement lines; naive Bayes is the fallback · Proposed (live eval pending)
+### ADR-032 · Jev categorizes statement lines; naive Bayes is the fallback · Proposed (live eval run 2026-10-18: misses the gate on wrong-and-accepted)
 **Context:** the naive Bayes classifier (ADR-022) knows only the 96 merchants it was trained on. On the category set it categorizes 82% of known merchants but 20% of Chilean merchants it never saw (O-2). Jev answers closed questions with calibrated probabilities and is already wired through OpenRouter (ADR-026).
 **Decision:** `NL_CLASSIFIER` is an ordered chain. Live mode uses `jev,naive_bayes`: Jev answers the domain's `CATEGORY_QUESTION` (the spending vocabulary with a note per option) once per distinct line text, in parallel, cached per process; if Jev is unavailable (no key, network, HTTP or a malformed answer) the whole statement goes to naive Bayes, and if both are down the statement is stored and not posted. The default stays `naive_bayes`, so CI, Docker and the recorded demo stay offline and deterministic; `jev` in the chain makes `/health` report `live`. The fallback is for unavailability only: a low-confidence Jev answer stays `uncategorized` rather than being overruled by a weaker model. Each transaction records the model that chose its category (`jev:jev-1.13.0` or `naive_bayes@<hash>`), and `CATEGORIZATION_VERSION` is `cat-0.3`.
 **Evidence** (`backend/tests/category_eval`, 98 lines in the redacted form the classifier receives; `PYTHONPATH=src:. python -m tests.category_eval.run --model jev`):
 
 | | naive Bayes | Jev |
 |---|---|---|
-| Coverage, merchants it was trained on (39) | 82% | pending |
-| Coverage, merchants it never saw (59) | 20% | pending |
-| Precision of accepted categories | 95.5% | pending |
-| Wrong and accepted, all lines | 2.0% | pending |
+| Coverage, merchants it was trained on (39) | 82% | 95% |
+| Coverage, merchants it never saw (59) | 20% | 86% |
+| Precision of accepted categories | 95.5% | 96.6% |
+| Wrong and accepted, all lines | 2.0% (2 of 98) | 3.1% (3 of 98) |
 
-The gate for keeping Jev first: higher coverage on unseen merchants with a wrong-and-accepted rate no higher than naive Bayes'. Fill the Jev column from the live run and move this ADR to Accepted or Rejected.
+The gate for keeping Jev first: higher coverage on unseen merchants with a wrong-and-accepted rate no higher than naive Bayes'. **Live run, 2026-10-18** (`evidence/category_eval/jev.json`, 8.3 s): Jev passes the coverage half (86% vs 20%) and misses the error half (3.1% vs 2.0%), so as written the gate says Rejected. Its precision is higher; it is wrong more often in total only because it accepts 88 lines where naive Bayes accepts 44. Its three errors: dining → shopping, utilities → transport, other → transport. The team decides whether the gate should compare precision instead, or stand.
+**The pinned model is gone.** OpenRouter answers `Model typesafe/jev-1.13.0 does not exist` (and the same for `typesafe/jev-router`, which its model list does show), so live mode as configured (`NL_JEV_MODEL` default `jev-1.13.0`) always falls through to naive Bayes. The run above used the `jev-latest` alias; the answering version, recorded on every line, was `typesafe/jev-1.14-20261014`. Re-pinning to that version is a decision for ADR-026.
 **Data protection:** posting runs after redaction (ADR-028), so Jev receives `[NUMBER] Transf a [PERSON]`, never a name, RUT, e-mail, phone or card number, and never a deposit (income goes by rule). Sending merchant text to OpenRouter and TypeSafe is a transfer to providers abroad; it happens only when `NL_CLASSIFIER` includes `jev` (C13).
 **Consequences:** Jev is advisory here too: a hostile or talked-round Jev can only pick a label from the vocabulary (S22). Categories do not feed the forecast today; if ADR-029 makes them, re-check S22 against that use. Cost and latency scale with distinct merchants per import (about 20 calls for a month), not with lines.
 
