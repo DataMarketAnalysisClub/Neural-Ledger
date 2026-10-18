@@ -79,6 +79,10 @@ class InMemoryTransactionStore:
     def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
         return self._transactions.get((user_id, txn_id))
 
+    def has_transactions(self, user_id: str) -> bool:
+        with self._lock:
+            return any(owner == user_id for owner, _ in self._transactions)
+
 
 
 class InMemoryActionRepository:

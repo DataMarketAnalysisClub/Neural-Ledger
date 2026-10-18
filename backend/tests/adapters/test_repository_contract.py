@@ -320,3 +320,9 @@ def test_a_transaction_change_commits_with_its_audit_event_or_not_at_all(transac
     with pytest.raises(ValueError):
         writes.update_transaction(mine, relabel(first, "health"), (_category_event("evt_5", "diego"),))  # another user's event
     assert len(audit.events()) == 1 and verify_chain(audit.events()).ok
+
+
+def test_has_transactions_is_per_user(transaction_store):
+    assert transaction_store.has_transactions("camila") is False
+    transaction_store.add(_posted())
+    assert transaction_store.has_transactions("camila") is True and transaction_store.has_transactions("diego") is False

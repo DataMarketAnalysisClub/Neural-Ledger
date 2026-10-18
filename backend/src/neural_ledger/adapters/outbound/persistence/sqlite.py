@@ -526,6 +526,9 @@ class SqliteTransactionStore:
         row = self._db.fetchone("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id))
         return None if row is None else self._open(user_id, txn_id, row[0])
 
+    def has_transactions(self, user_id: str) -> bool:
+        return self._db.fetchone("SELECT 1 FROM transactions WHERE user_id = ? LIMIT 1", (user_id,)) is not None
+
     def _open(self, user_id: str, txn_id: str, payload: str) -> PostedTransaction:
         return _open_transaction(self._cipher, user_id, txn_id, payload)
 

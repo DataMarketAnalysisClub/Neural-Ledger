@@ -201,7 +201,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
         accounts = AccountUseCases(
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
-            demo_personas=frozenset(auth.demo_personas),
+            demo_personas=frozenset(auth.demo_personas), transactions=transaction_store,
         )
         profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
 

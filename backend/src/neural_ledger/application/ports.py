@@ -161,6 +161,10 @@ class TransactionStore(Protocol):
         """This user's transaction, or None: another user's id is not found either."""
         ...
 
+    def has_transactions(self, user_id: str) -> bool:
+        """Whether this user has any posted transaction; cheap, without reading their payloads."""
+        ...
+
 
 @runtime_checkable
 class TransactionWrites(Protocol):
