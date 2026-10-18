@@ -30,16 +30,6 @@ test("New conversation sends a new session_id, empties the log and scopes the au
   expect(await rows.count()).toBeGreaterThan(0);
 });
 
-test("the profile is read only and shows the declared tolerance", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("link", { name: "Profile" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Profile");
-  await expect(page.getByText("Aggressive")).toBeVisible();
-  await expect(page.getByText(/Not answered yet \(pq-0\.1, 5 questions\)/)).toBeVisible();
-  await page.getByRole("radio", { name: /Diego/ }).check({ force: true });
-  await expect(page.getByText("Moderate")).toBeVisible();
-});
-
 test("long tables scroll inside their box: the page never grows past the app", async ({ page }) => {
   for (const path of ["/audit", "/statements"]) {
     await page.goto(path);

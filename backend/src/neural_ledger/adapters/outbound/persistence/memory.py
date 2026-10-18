@@ -349,3 +349,14 @@ class InMemoryAccountWrites:
 
             self._publish(events, update)
             return True
+
+    def update_profile(self, expected: UserProfile, updated: UserProfile, events: Sequence[AuditDraft]) -> bool:
+        if updated.user_id != expected.user_id or any(event.user_id != expected.user_id for event in events):
+            raise ValueError("profile ownership mismatch")
+        with self._accounts._lock:
+            # The writable store only: a persona behind the overlay is never there, so it never matches.
+            if self._profile_store.get(expected.user_id) != expected:
+                return False
+            self._check_events(events)
+            self._publish(events, lambda: self._profile_store.put(updated))
+            return True

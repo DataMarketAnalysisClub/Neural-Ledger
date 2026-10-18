@@ -12,6 +12,7 @@ import {
   type Transactions,
 } from "@/api/hooks";
 import { ApiError, type Envelope } from "@/api/client";
+import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import { RedactedText, redactedPlainText } from "@/components/redaction";
 import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, ScrollBox, Section, StatusBadge, Surface, cn, describeError, stickyHead } from "@/components/ui";
 import { formatDate, formatMoney, formatMonth } from "@/lib/format";
@@ -29,22 +30,28 @@ type Tab = "statements" | "transactions";
  * (ADR-028): they render through <RedactedText>, never as markup.
  */
 export function StatementsPage() {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return (
     <>
       <PageHeader title={t("statements.title")} subtitle={t("statements.subtitle")} />
-      {/* Keyed by persona: an import result or an open statement never carries over to the other persona. */}
-      <StatementsBody key={persona} />
+      {/* Keyed by identity: an import result or an open statement never carries over to another persona or account. */}
+      <StatementsBody key={identity.user_id} />
     </>
   );
 }
 
 function StatementsBody() {
+  const auth = useOptionalAuth();
   const [tab, setTab] = useState<Tab>("statements");
   const [openId, setOpenId] = useState<string | null>(null);
+  // An account without financial data has no demo scenario to fall back on; a shared demo persona is visible to all.
+  const account = auth?.mode === "accounts";
+  const persona = auth?.me?.data_source === "persona";
   return (
     <div className="space-y-10">
-      <Notice tone="neutral" icon={Info} title={t("statements.scope")} />
+      <Notice tone="neutral" icon={Info} title={account && !persona ? t("statements.scopeAccount") : t("statements.scope")}>
+        {account && persona ? t("statements.sharedPersona") : undefined}
+      </Notice>
       <ImportSection />
       <section aria-label={t("statements.tabs.label")}>
         <fieldset className="mb-6">

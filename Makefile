@@ -1,4 +1,4 @@
-.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest evidence api up
+.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest evidence api up cartola seed
 
 PY ?= python3
 
@@ -34,6 +34,17 @@ ledgers:            ## regenerate data/ledgers/*.json (deterministic, seeded)
 
 backtest:           ## synthetic implementation validation (100 seeded ledgers per source)
 	cd backend && PYTHONPATH=src:. $(PY) -m tests.backtest.run --seeds 100 --out ../evidence/backtest/synthetic_backtest.json
+
+# Synthetic data (docs/runbooks/SYNTHETIC_DATA.md). Optional: SEED=42 MONTHS=3 PERSONA=diego.
+SEED_ARG = $(if $(SEED),--seed $(SEED))
+PERSONA ?= camila
+
+cartola:            ## write random cartolas (.xlsx) to var/samples/ to upload on the Statements page; no database
+	cd backend && PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli cartola --months $(or $(MONTHS),1) $(SEED_ARG) --out ../var/samples
+	cd backend && PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli cartola --kind card $(SEED_ARG) --out ../var/samples
+
+seed:               ## import random statements into the local SQLite database (then: NL_PERSISTENCE=sqlite make api)
+	cd backend && NL_PERSISTENCE=sqlite PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli seed --user $(PERSONA) --months $(or $(MONTHS),6) $(SEED_ARG)
 
 evidence:           ## demo + audit export + junit results of the FULL suite into evidence/
 	cd backend && NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo-and-export --out ../evidence/sandbox-logs/audit.jsonl

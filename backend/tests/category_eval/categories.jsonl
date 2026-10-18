@@ -1,0 +1,98 @@
+{"text": "Compra Nacional VD COMPRA LIDER EXPRESS", "category": "groceries", "slice": "seen"}
+{"text": "Compra Nacional VD COMPRA TDB UNIMARC", "category": "groceries", "slice": "seen"}
+{"text": "COMPRA SANTA ISABEL COMPRAS", "category": "groceries", "slice": "seen"}
+{"text": "Compra Nacional VD COMPRA TDB JUMBO CONCEPCION", "category": "groceries", "slice": "seen"}
+{"text": "COMPRA ACUENTA COMPRAS", "category": "groceries", "slice": "seen"}
+{"text": "Compra Nacional VD COMPRA MAYORISTA 10", "category": "groceries", "slice": "seen"}
+{"text": "Compra Nacional VD STARBUCKS COFFEE CENTRO", "category": "dining", "slice": "seen"}
+{"text": "UBER EATS PEDIDO COMPRAS", "category": "dining", "slice": "seen"}
+{"text": "Compra Nacional VD PEDIDOSYA TICKET", "category": "dining", "slice": "seen"}
+{"text": "BURGER KING COMPRAS", "category": "dining", "slice": "seen"}
+{"text": "Compra Nacional VD RENDIBU BARROS ARANA", "category": "dining", "slice": "seen"}
+{"text": "PAPA JOHNS PIZZA COMPRAS", "category": "dining", "slice": "seen"}
+{"text": "Compra Nacional VD FARMACIAS CRUZ VERDE", "category": "health", "slice": "seen"}
+{"text": "SALCOBRAND S.A. COMPRAS", "category": "health", "slice": "seen"}
+{"text": "Compra Nacional VD FARMACIAS AHUMADA", "category": "health", "slice": "seen"}
+{"text": "CLINICA REDSALUD COMPRAS", "category": "health", "slice": "seen"}
+{"text": "Compra Nacional VD MERCADO LIBRE COMPRA", "category": "shopping", "slice": "seen"}
+{"text": "FALABELLA RETAIL COMPRAS", "category": "shopping", "slice": "seen"}
+{"text": "Compra Nacional VD SODIMAC HOMECENTER", "category": "shopping", "slice": "seen"}
+{"text": "PARIS.CL COMPRA WEB", "category": "shopping", "slice": "seen"}
+{"text": "ALIEXPRESS LONDON COMPRAS", "category": "shopping", "slice": "seen"}
+{"text": "Compra Nacional VD UBER TRIP HELP.UBER.COM", "category": "transport", "slice": "seen"}
+{"text": "COPEC ESTACION DE SERVICIO COMPRAS", "category": "transport", "slice": "seen"}
+{"text": "Compra Nacional VD EFE SUR BIOTREN", "category": "transport", "slice": "seen"}
+{"text": "CABIFY VIAJE COMPRAS", "category": "transport", "slice": "seen"}
+{"text": "Compra Nacional VD SHELL TIENDA UPA", "category": "transport", "slice": "seen"}
+{"text": "ENTEL S.A. PLAN MOVIL", "category": "utilities", "slice": "seen"}
+{"text": "MUNDO PACIFICO INTERNET", "category": "utilities", "slice": "seen"}
+{"text": "PAGO CGE DISTRIBUCION", "category": "utilities", "slice": "seen"}
+{"text": "PAGO EN LINEA ESSBIO", "category": "utilities", "slice": "seen"}
+{"text": "VTR VTR.COM PAGO", "category": "utilities", "slice": "seen"}
+{"text": "WOM S.A. PLAN MOVIL", "category": "utilities", "slice": "seen"}
+{"text": "CARGO MENSUAL NETFLIX", "category": "entertainment", "slice": "seen"}
+{"text": "CARGO AUTOMATICO SPOTIFY", "category": "entertainment", "slice": "seen"}
+{"text": "HBO MAX SUSCRIPCION", "category": "entertainment", "slice": "seen"}
+{"text": "STEAM GAMES COMPRAS", "category": "entertainment", "slice": "seen"}
+{"text": "Compra Nacional VD CINEMARK MALL PLAZA", "category": "entertainment", "slice": "seen"}
+{"text": "TRANSFERENCIA A TERCEROS [PERSON]", "category": "other", "slice": "seen"}
+{"text": "[NUMBER] Transf a [PERSON]", "category": "other", "slice": "seen"}
+{"text": "Compra Nacional VD TOTTUS LA FLORIDA", "category": "groceries", "slice": "unseen"}
+{"text": "OK MARKET PROVIDENCIA COMPRAS", "category": "groceries", "slice": "unseen"}
+{"text": "Compra Nacional VD EKONO", "category": "groceries", "slice": "unseen"}
+{"text": "ALVI MAYORISTA COMPRAS", "category": "groceries", "slice": "unseen"}
+{"text": "Compra Nacional VD SUPERMERCADO EL TREBOL", "category": "groceries", "slice": "unseen"}
+{"text": "MINIMARKET DON PEPE COMPRAS", "category": "groceries", "slice": "unseen"}
+{"text": "Compra Nacional VD LA VEGA CENTRAL", "category": "groceries", "slice": "unseen"}
+{"text": "Compra Nacional VD JUAN MAESTRO", "category": "dining", "slice": "unseen"}
+{"text": "DOGGIS MALL COMPRAS", "category": "dining", "slice": "unseen"}
+{"text": "Compra Nacional VD TELEPIZZA", "category": "dining", "slice": "unseen"}
+{"text": "RAPPI RESTAURANTES COMPRAS", "category": "dining", "slice": "unseen"}
+{"text": "Compra Nacional VD DUNKIN DONUTS", "category": "dining", "slice": "unseen"}
+{"text": "JUAN VALDEZ CAFE COMPRAS", "category": "dining", "slice": "unseen"}
+{"text": "Compra Nacional VD CHINA WOK", "category": "dining", "slice": "unseen"}
+{"text": "SUSHI BLUE COMPRAS", "category": "dining", "slice": "unseen"}
+{"text": "Compra Nacional VD FARMACIAS DR SIMI", "category": "health", "slice": "unseen"}
+{"text": "INTEGRAMEDICA CONSULTA COMPRAS", "category": "health", "slice": "unseen"}
+{"text": "Compra Nacional VD CLINICA ALEMANA", "category": "health", "slice": "unseen"}
+{"text": "LABORATORIO BLANCO COMPRAS", "category": "health", "slice": "unseen"}
+{"text": "PAGO ISAPRE COLMENA", "category": "health", "slice": "unseen"}
+{"text": "Compra Nacional VD CENTRO DENTAL SONRISA", "category": "health", "slice": "unseen"}
+{"text": "OPTICA GMO COMPRAS", "category": "health", "slice": "unseen"}
+{"text": "Compra Nacional VD RIPLEY COSTANERA", "category": "shopping", "slice": "unseen"}
+{"text": "LA POLAR COMPRAS", "category": "shopping", "slice": "unseen"}
+{"text": "Compra Nacional VD H&M PARQUE ARAUCO", "category": "shopping", "slice": "unseen"}
+{"text": "ZARA COMPRAS", "category": "shopping", "slice": "unseen"}
+{"text": "Compra Nacional VD PC FACTORY", "category": "shopping", "slice": "unseen"}
+{"text": "EASY HOMECENTER COMPRAS", "category": "shopping", "slice": "unseen"}
+{"text": "Compra Nacional VD HITES", "category": "shopping", "slice": "unseen"}
+{"text": "IKEA CHILE COMPRAS", "category": "shopping", "slice": "unseen"}
+{"text": "Compra Nacional VD ABCDIN", "category": "shopping", "slice": "unseen"}
+{"text": "RECARGA BIP METRO DE SANTIAGO", "category": "transport", "slice": "unseen"}
+{"text": "AUTOPISTA CENTRAL TAG", "category": "transport", "slice": "unseen"}
+{"text": "Compra Nacional VD ARAMCO ESTACION", "category": "transport", "slice": "unseen"}
+{"text": "DIDI RIDES COMPRAS", "category": "transport", "slice": "unseen"}
+{"text": "Compra Nacional VD TURBUS PASAJES", "category": "transport", "slice": "unseen"}
+{"text": "ESTACIONAMIENTO SABA COMPRAS", "category": "transport", "slice": "unseen"}
+{"text": "Compra Nacional VD TERPEL", "category": "transport", "slice": "unseen"}
+{"text": "COSTANERA NORTE PEAJE", "category": "transport", "slice": "unseen"}
+{"text": "PAGO ENEL DISTRIBUCION", "category": "utilities", "slice": "unseen"}
+{"text": "AGUAS ANDINAS PAGO EN LINEA", "category": "utilities", "slice": "unseen"}
+{"text": "METROGAS PAGO", "category": "utilities", "slice": "unseen"}
+{"text": "CLARO CHILE PLAN HOGAR", "category": "utilities", "slice": "unseen"}
+{"text": "MOVISTAR FIBRA PAGO", "category": "utilities", "slice": "unseen"}
+{"text": "GTD INTERNET PAGO", "category": "utilities", "slice": "unseen"}
+{"text": "LIPIGAS GAS LICUADO", "category": "utilities", "slice": "unseen"}
+{"text": "ESVAL PAGO EN LINEA", "category": "utilities", "slice": "unseen"}
+{"text": "DISNEY PLUS SUSCRIPCION", "category": "entertainment", "slice": "unseen"}
+{"text": "YOUTUBE PREMIUM", "category": "entertainment", "slice": "unseen"}
+{"text": "PUNTOTICKET ENTRADAS COMPRAS", "category": "entertainment", "slice": "unseen"}
+{"text": "TICKETMASTER CHILE COMPRAS", "category": "entertainment", "slice": "unseen"}
+{"text": "PLAYSTATION NETWORK COMPRAS", "category": "entertainment", "slice": "unseen"}
+{"text": "Compra Nacional VD CINEPLANET", "category": "entertainment", "slice": "unseen"}
+{"text": "PRIME VIDEO CHANNELS", "category": "entertainment", "slice": "unseen"}
+{"text": "AMAZON MUSIC SUSCRIPCION", "category": "entertainment", "slice": "unseen"}
+{"text": "PAGO A [PERSON] ARRIENDO", "category": "other", "slice": "unseen"}
+{"text": "Compra Nacional VD DONACION FUNDACION LAS ROSAS", "category": "other", "slice": "unseen"}
+{"text": "MULTA TRANSITO MUNICIPALIDAD", "category": "other", "slice": "unseen"}
+{"text": "PAGO CONTRIBUCIONES TGR", "category": "other", "slice": "unseen"}

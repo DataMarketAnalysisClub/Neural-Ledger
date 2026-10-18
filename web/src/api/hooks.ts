@@ -16,12 +16,12 @@ import type { Statements } from "@/contracts/outputs/statements";
 import type { Statement } from "@/contracts/outputs/statement";
 import type { StatementImport } from "@/contracts/outputs/statement_import";
 import type { Transactions } from "@/contracts/outputs/transactions";
-import type { UserProfile } from "@/contracts/outputs/user_profile";
-import type { Questionnaire } from "@/contracts/profile/questionnaire";
-import { request, requestEnvelope, type ActionOutcome, type AuditEvent, type ChatReply, type PersonaId } from "./client";
+import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
+import { useOptionalAuth } from "@/features/auth/AuthProvider";
+import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
-export type { Statements, Statement, StatementImport, Transactions, UserProfile, Questionnaire };
+export type { Statements, Statement, StatementImport, Transactions };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -31,13 +31,14 @@ interface PersonaContextValue {
   persona: PersonaId;
   setPersona: (p: PersonaId) => void;
   sessionId: string;
+  identity: ApiIdentity;
   /** Starts a new copilot conversation: a new session_id for chat, pending actions and the audit filter. */
   newSession: () => void;
 }
 const PersonaContext = createContext<PersonaContextValue | null>(null);
 
-/** The persona's session for this tab, or a new one when `fresh`. */
-function sessionFor(persona: PersonaId, fresh = false): string {
+/** The persona's (or account's) session for this tab, or a new one when `fresh`. */
+function sessionFor(persona: string, fresh = false): string {
   const key = `nl.session.${persona}`;
   const created = `ui-${persona}-${Math.random().toString(36).slice(2, 8)}`;
   try {
@@ -52,8 +53,10 @@ function sessionFor(persona: PersonaId, fresh = false): string {
 
 export function PersonaProvider({ children, initial = "camila" }: { children: ReactNode; initial?: PersonaId }) {
   const client = useQueryClient();
+  const auth = useOptionalAuth();
+  const accountId = auth?.mode === "accounts" ? auth.me?.user_id : undefined;
   const [persona, setPersonaState] = useState<PersonaId>(initial);
-  const [sessionId, setSessionId] = useState(() => sessionFor(initial));
+  const [sessionId, setSessionId] = useState(() => sessionFor(accountId ?? initial));
   const setPersona = useCallback(
     (p: PersonaId) => {
       setPersonaState(p);
@@ -62,8 +65,11 @@ export function PersonaProvider({ children, initial = "camila" }: { children: Re
     },
     [client],
   );
-  const newSession = useCallback(() => setSessionId(sessionFor(persona, true)), [persona]);
-  const value = useMemo(() => ({ persona, setPersona, sessionId, newSession }), [persona, setPersona, sessionId, newSession]);
+  const newSession = useCallback(() => setSessionId(sessionFor(accountId ?? persona, true)), [accountId, persona]);
+  const value = useMemo(() => ({
+    persona, setPersona, sessionId, newSession,
+    identity: accountId ? { kind: "accounts" as const, user_id: accountId } : { kind: "demo" as const, user_id: persona },
+  }), [persona, setPersona, sessionId, newSession, accountId]);
   return createElement(PersonaContext.Provider, { value }, children);
 }
 
@@ -77,6 +83,7 @@ export function usePersona(): PersonaContextValue {
 
 export interface Health {
   status: string;
+  auth?: "demo" | "accounts";
   mode: "offline" | "live";
   language_model: string;
   decision_chain: string[];
@@ -87,49 +94,53 @@ export interface Health {
 }
 
 export function useHealth() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: ["health"], queryFn: () => request<Health>("/health", { user: persona }), staleTime: 30_000 });
+  return useQuery({ queryKey: ["health"], queryFn: () => request<Health>("/health"), staleTime: 30_000 });
 }
 
 export function useFinancialState() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: [persona, "state"], queryFn: () => requestEnvelope<FinancialState>("/v1/state", { user: persona }) });
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "state"], queryFn: () => requestEnvelope<FinancialState>("/v1/state", { identity }) });
 }
 
 export function useForecast(scenario: Scenario, includePlan: IncludePlan = "none", horizon = 6) {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useQuery({
-    queryKey: [persona, "forecast", scenario, includePlan, horizon],
+    queryKey: [identity.user_id, "forecast", scenario, includePlan, horizon],
     queryFn: () =>
-      requestEnvelope<Forecast>("/v1/forecast", { user: persona, query: { scenario, include_plan: includePlan, horizon_months: horizon } }),
+      requestEnvelope<Forecast>("/v1/forecast", { identity, query: { scenario, include_plan: includePlan, horizon_months: horizon } }),
   });
 }
 
 export function useProtectedSurplus(includePlan: IncludePlan = "none") {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useQuery({
-    queryKey: [persona, "surplus", includePlan],
-    queryFn: () => requestEnvelope<SurplusResult>("/v1/protected-surplus", { user: persona, query: { include_plan: includePlan } }),
+    queryKey: [identity.user_id, "surplus", includePlan],
+    queryFn: () => requestEnvelope<SurplusResult>("/v1/protected-surplus", { identity, query: { include_plan: includePlan } }),
   });
 }
 
 export function useCommitments() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: [persona, "commitments"], queryFn: () => requestEnvelope<Commitments>("/v1/commitments", { user: persona }) });
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "commitments"], queryFn: () => requestEnvelope<Commitments>("/v1/commitments", { identity }) });
 }
 
 export function useCapacity() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: [persona, "capacity"], queryFn: () => requestEnvelope<CapacityAssessment>("/v1/capacity", { user: persona }) });
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "capacity"], queryFn: () => requestEnvelope<CapacityAssessment>("/v1/capacity", { identity }) });
+}
+
+export function useUserProfile() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "profile"], queryFn: () => requestEnvelope<ProfileTolerance>("/v1/profile", { identity }) });
 }
 
 export function useSavingsPlan(permittedProfile?: string) {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useQuery({
-    queryKey: [persona, "plan", permittedProfile ?? "auto"],
+    queryKey: [identity.user_id, "plan", permittedProfile ?? "auto"],
     queryFn: () =>
       requestEnvelope<SavingsPlan>("/v1/savings-plan", {
-        user: persona,
+        identity,
         method: "POST",
         body: permittedProfile ? { permitted_profile: permittedProfile } : {},
       }),
@@ -137,10 +148,10 @@ export function useSavingsPlan(permittedProfile?: string) {
 }
 
 export function usePermittedProfile(tolerance: string) {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useQuery({
-    queryKey: [persona, "permitted", tolerance],
-    queryFn: () => requestEnvelope<PermittedProfile>("/v1/permitted-profile", { user: persona, method: "POST", body: { tolerance } }),
+    queryKey: [identity.user_id, "permitted", tolerance],
+    queryFn: () => requestEnvelope<PermittedProfile>("/v1/permitted-profile", { identity, method: "POST", body: { tolerance } }),
   });
 }
 
@@ -150,10 +161,10 @@ export interface PendingActions {
 }
 
 export function usePending() {
-  const { persona, sessionId } = usePersona();
+  const { identity, sessionId } = usePersona();
   return useQuery({
-    queryKey: [persona, "pending", sessionId],
-    queryFn: () => request<PendingActions>("/v1/actions/pending", { user: persona, query: { session_id: sessionId } }),
+    queryKey: [identity.user_id, "pending", sessionId],
+    queryFn: () => request<PendingActions>("/v1/actions/pending", { identity, query: { session_id: sessionId } }),
   });
 }
 
@@ -163,46 +174,32 @@ export interface AuditPage {
 }
 
 export function useAudit(sessionId?: string) {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useQuery({
-    queryKey: [persona, "audit", sessionId ?? "all"],
-    queryFn: () => request<AuditPage>("/v1/audit", { user: persona, query: { session_id: sessionId, limit: 500 } }),
-    // Switching the conversation filter keeps the table on screen while it loads; never across personas.
-    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[0] === persona ? previous : undefined),
+    queryKey: [identity.user_id, "audit", sessionId ?? "all"],
+    queryFn: () => request<AuditPage>("/v1/audit", { identity, query: { session_id: sessionId, limit: 500 } }),
+    // Switching the conversation filter keeps the table on screen while it loads; never across identities.
+    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[0] === identity.user_id ? previous : undefined),
   });
 }
 
 export function useStatements() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: [persona, "statements"], queryFn: () => requestEnvelope<Statements>("/v1/statements", { user: persona }) });
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "statements"], queryFn: () => requestEnvelope<Statements>("/v1/statements", { identity }) });
 }
 
 export function useStatement(statementId: string | null) {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useQuery({
-    queryKey: [persona, "statements", statementId],
-    queryFn: () => requestEnvelope<Statement>(`/v1/statements/${encodeURIComponent(statementId!)}`, { user: persona }),
+    queryKey: [identity.user_id, "statements", statementId],
+    queryFn: () => requestEnvelope<Statement>(`/v1/statements/${encodeURIComponent(statementId!)}`, { identity }),
     enabled: statementId !== null,
   });
 }
 
 export function useTransactions() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: [persona, "transactions"], queryFn: () => requestEnvelope<Transactions>("/v1/transactions", { user: persona }) });
-}
-
-export function useProfile() {
-  const { persona } = usePersona();
-  return useQuery({ queryKey: [persona, "profile"], queryFn: () => requestEnvelope<UserProfile>("/v1/profile", { user: persona }) });
-}
-
-export function useQuestionnaire() {
-  const { persona } = usePersona();
-  return useQuery({
-    queryKey: [persona, "questionnaire"],
-    queryFn: () => requestEnvelope<Questionnaire>("/v1/profile/questionnaire", { user: persona }),
-    staleTime: Infinity, // versioned and fixed per version
-  });
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "transactions"], queryFn: () => requestEnvelope<Transactions>("/v1/transactions", { identity }) });
 }
 
 export interface ChainCheck {
@@ -213,8 +210,8 @@ export interface ChainCheck {
 }
 
 export function useVerifyChain() {
-  const { persona } = usePersona();
-  return useMutation({ mutationFn: () => request<ChainCheck>("/v1/audit/verify", { user: persona }) });
+  const { identity } = usePersona();
+  return useMutation({ mutationFn: () => request<ChainCheck>("/v1/audit/verify", { identity }) });
 }
 
 // ---- Writes -----------------------------------------------------------------------------------
@@ -228,68 +225,71 @@ export interface PurchaseInput {
 }
 
 export function useSimulatePurchase() {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   return useMutation({
     mutationFn: (input: PurchaseInput) =>
-      requestEnvelope<PurchaseSimulation>("/v1/simulate-purchase", { user: persona, method: "POST", body: input }),
+      requestEnvelope<PurchaseSimulation>("/v1/simulate-purchase", { identity, method: "POST", body: input }),
   });
 }
 
-/** Imports a statement file. Imports feed the transaction ledger only; projections still use the demo scenario (ADR-029). */
+/**
+ * Imports a statement file. Imports feed the transaction ledger only (ADR-029): demo projections still use the demo
+ * scenario, and an account without financial data gets no projection from them.
+ */
 export function useImportStatement() {
-  const { persona } = usePersona();
+  const { identity } = usePersona();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (file: Blob) => requestEnvelope<StatementImport>("/v1/statements", { user: persona, method: "POST", body: file }),
+    mutationFn: (file: Blob) => requestEnvelope<StatementImport>("/v1/statements", { identity, method: "POST", body: file }),
     onSettled: () => {
-      void client.invalidateQueries({ queryKey: [persona, "statements"] });
-      void client.invalidateQueries({ queryKey: [persona, "transactions"] });
-      void client.invalidateQueries({ queryKey: [persona, "audit"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "statements"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
     },
   });
 }
 
 export function useChat() {
-  const { persona, sessionId } = usePersona();
+  const { identity, sessionId } = usePersona();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (message: string) => request<ChatReply>("/v1/chat", { user: persona, method: "POST", body: { session_id: sessionId, message } }),
+    mutationFn: (message: string) => request<ChatReply>("/v1/chat", { identity, method: "POST", body: { session_id: sessionId, message } }),
     onSettled: () => {
-      void client.invalidateQueries({ queryKey: [persona, "pending"] });
-      void client.invalidateQueries({ queryKey: [persona, "audit"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "pending"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
     },
   });
 }
 
 /** The ONLY way to authorize: the user confirms the exact terms the card shows, unchanged. */
 export function useConfirmProposal() {
-  const { persona, sessionId } = usePersona();
+  const { identity, sessionId } = usePersona();
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ proposalId, terms }: { proposalId: string; terms: unknown }) =>
       request<ActionOutcome>(`/v1/actions/proposals/${encodeURIComponent(proposalId)}/confirm`, {
-        user: persona,
+        identity,
         method: "POST",
         body: { session_id: sessionId, terms },
       }),
     onSettled: () => {
-      void client.invalidateQueries({ queryKey: [persona, "pending"] });
-      void client.invalidateQueries({ queryKey: [persona, "audit"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "pending"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
     },
   });
 }
 
 /** Execution reads its terms from the stored authorization; the UI sends only the id. */
 export function useExecute() {
-  const { persona, sessionId } = usePersona();
+  const { identity, sessionId } = usePersona();
   const client = useQueryClient();
   return useMutation({
     mutationFn: (authorizationId: string) =>
-      request<ActionOutcome>("/v1/actions/execute", { user: persona, method: "POST", body: { session_id: sessionId, authorization_id: authorizationId } }),
+      request<ActionOutcome>("/v1/actions/execute", { identity, method: "POST", body: { session_id: sessionId, authorization_id: authorizationId } }),
     onSettled: () => {
-      void client.invalidateQueries({ queryKey: [persona, "pending"] });
-      void client.invalidateQueries({ queryKey: [persona, "audit"] });
-      void client.invalidateQueries({ queryKey: [persona, "state"] }); // the rule counter is re-read, never incremented locally
+      void client.invalidateQueries({ queryKey: [identity.user_id, "pending"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "state"] }); // the rule counter is re-read, never incremented locally
     },
   });
 }

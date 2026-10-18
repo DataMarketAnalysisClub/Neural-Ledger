@@ -296,3 +296,16 @@ class AccountWrites(Protocol):
     def close_session(self, session: Session, at: datetime, events: Sequence[AuditDraft]) -> bool: ...
 
     def set_sample_data(self, user_id: str, enabled: bool, events: Sequence[AuditDraft]) -> bool: ...
+
+
+@runtime_checkable
+class ProfileWrites(Protocol):
+    """Commit a writable profile change and its audit drafts together, or leave both unchanged."""
+
+    def update_profile(self, expected: UserProfile, updated: UserProfile, events: Sequence[AuditDraft]) -> bool:
+        """Compare-and-set. False, with no writes, if the stored writable profile is missing or no longer equals expected.
+
+        Personas are never writable. Raises ValueError on an owner mismatch and IdCollision on a reused event id;
+        any exception also leaves no writes.
+        """
+        ...

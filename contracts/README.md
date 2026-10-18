@@ -10,6 +10,8 @@ JSON Schema 2020-12. If code and a contract disagree, the contract wins and the 
 | `actions/` | `action_terms` (the confirmation contract) and `action_outcome` |
 | `audit/` | `audit_event` with the hash-chain fields |
 | `chat/` | Chat request and reply |
+| `auth/` | Accounts mode (`NL_AUTH=accounts`) HTTP bodies: `signup_request`, `signin_request`, `demo_session_request`, `session` (signup, signin and demo-session responses), `me` (`GET /v1/me`) and `error` (`AuthError` for HTTP, body, guard and auth errors, with its HTTP status in `x-http-status`). The session token travels only in the HttpOnly `nl_session` cookie, never in a body; no error echoes an email, password, token or supplied value |
+| `profile/` | `questionnaire` and `questionnaire_submission` (`POST /v1/profile/questionnaire`), and `profile_update` (`PUT /v1/profile`: display name and language only; the tolerance comes only from the questionnaire). Both writes are user-only, accounts-mode HTTP flows that commit with their `PROFILE_UPDATED` audit event or not at all. Domain validation errors and compare-and-swap conflicts use `common/envelope.schema.json`, not `AuthError` |
 | `ledger/` | `ledger.schema.json`: the sandbox ledger the stage-1 estimators read. Its limits (CLP only, \|amount\| ≤ 10^9) mirror `domain/finance/estimation.py`; `tests/contract/test_ledger_contract.py` keeps them aligned and validates the generated ledgers |
 | `catalog/` | Existing financial Fact key templates, Caveat codes and error-field patterns; `test_fact_catalog.py` checks static emissions and runtime examples. Estimation-only warnings are not forwarded by the ledger adapter. |
 
