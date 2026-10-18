@@ -36,13 +36,16 @@ def test_seven_months_of_statements_give_an_account_its_own_forecast():
         assert envelope.status is Status.OK, (envelope.missing, envelope.message)
 
 
-def test_the_model_is_estimated_from_the_accounts_own_lines():
+def test_the_checking_balance_is_the_one_the_bank_printed_for_as_of():
+    from neural_ledger.adapters.outbound.statements.reader import StatementFileReader
+
     services = _imported(7)
-    state = services.financial.financial_state(ACCOUNT)
-    facts = {f.key: f.value for f in state.facts}
-    persona = {f.key: f.value for f in services.financial.financial_state("camila").facts}
-    assert facts != persona  # not a persona's numbers
-    assert services.financial.forecast(ACCOUNT).snapshot_id != services.financial.forecast(ACCOUNT, scenario="typical").snapshot_id
+    september = SyntheticStatements().checking(4, date(2026, 9, 30), months=7)[-1]
+    (statement,) = StatementFileReader().read(september.content)
+    printed = max((b for b in statement.daily_balances if b.on <= date(2026, 9, 29)), key=lambda b: b.on).balance
+    facts = {f.key: f.value for f in services.financial.financial_state(ACCOUNT).facts}
+    assert facts["balance.checking"] == printed  # the bank's own figure, not a persona's
+    assert facts["balance.reserve"] == 0  # no statement shows a savings bucket
 
 
 def test_six_calendar_months_are_five_full_cycles_and_say_so():

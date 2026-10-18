@@ -25,6 +25,10 @@ from neural_ledger.domain.statements.model import LineKind, StoredStatement, rec
     [
         ("0123456789 Transf a Ahorro", True),
         ("TRANSFERENCIA A CUENTA AHORRO", True),
+        ("Transf a cuenta de ahorros", True),
+        ("0123456789 Transf de Ahorro", True),  # money back from their savings: not income
+        ("TRANSFERENCIA DESDE CUENTA AHORRO", True),
+        ("COMPRA LIDER PAGO TARJETA", False),  # not at the start: a merchant's text, not the bank's own line
         ("Pago Tarjeta de Credito", True),
         ("PAGO TARJETA VISA", True),
         ("0123456789 TRANSFERENCIA A TERCEROS ARRIENDO", False),  # a third party: spending
@@ -61,3 +65,12 @@ def test_own_money_is_posted_as_movement_by_rule_and_never_classified():
         p = posted[index]
         assert (p.transaction.category, p.classifier, p.confidence) == (MOVEMENT, RULE, None)
         assert p.transaction.kind is TransactionKind.PURCHASE  # money out, by sign: only the label is the rule's
+
+
+def test_a_card_line_marked_as_own_money_is_a_card_payment():
+    from neural_ledger.domain.ledger.categorization import transaction_kind
+    from neural_ledger.domain.ledger.entities import AccountType
+    from neural_ledger.domain.statements.model import StatementLine
+
+    line = StatementLine(0, date(2026, 9, 5), "PAGO", 100_000, kind=LineKind.TRANSFER_OWN)
+    assert transaction_kind(AccountType.CREDIT_CARD, line) is TransactionKind.CARD_PAYMENT

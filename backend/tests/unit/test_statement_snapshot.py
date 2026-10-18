@@ -34,7 +34,7 @@ USER = "usr_test"
 SALARY, RENT, SAVINGS, GROCERIES = 1_500_000, 500_000, 100_000, 20_000
 
 
-def _month(year: int, month: int, opening: int) -> BankStatement:
+def _month(year: int, month: int, opening: int, account_ref: str = "****1234") -> BankStatement:
     """One reconciling checking cartola: rent, groceries, then salary and a transfer to savings on payday."""
     last = date(year, month, calendar.monthrange(year, month)[1])
     pay = payday(Month(year, month))
@@ -51,7 +51,7 @@ def _month(year: int, month: int, opening: int) -> BankStatement:
     debits = -sum(line.amount for line in lines if line.amount < 0)
     credits = sum(line.amount for line in lines if line.amount > 0)
     return BankStatement(
-        "santander_cl_cuentacorriente_xlsx", "****1234", "CLP", date(year, month, 1), last, tuple(lines),
+        "santander_cl_cuentacorriente_xlsx", account_ref, "CLP", date(year, month, 1), last, tuple(lines),
         StatementSummary(opening, debits, credits, balance), tuple(balances),
     )
 
@@ -89,12 +89,46 @@ def test_history_starts_at_the_first_payday_so_every_cycle_is_full():
 def test_the_checking_balance_is_the_one_on_as_of():
     statements, posted = _history(Month(2026, 3), 7)
     snapshot = build_ledger_snapshot(USER, statements, posted)
-    september = statements[-1].statement
-    expected = september.summary.opening_balance + sum(line.amount for line in september.lines if line.posted_on <= snapshot.as_of)
+    # 900,000 + 6 months x 820,000 (salary - rent - groceries - savings) = 5,820,000 on Sept 1; then rent and
+    # four groceries by Sept 29: 5,820,000 - 500,000 - 80,000. September's salary and savings fall on the 30th.
     (account,) = snapshot.accounts
     assert (account.account_id, account.type, account.balance, account.currency) == (
-        "santander_cl_cuentacorriente_xlsx:****1234", AccountType.CHECKING, expected, "CLP",
+        "santander_cl_cuentacorriente_xlsx:****1234", AccountType.CHECKING, 5_240_000, "CLP",
     )
+
+
+def test_a_statement_that_starts_after_as_of_changes_nothing():
+    statements, posted = _history(Month(2026, 3), 7)
+    october, october_posted = _history(Month(2026, 10), 1, opening=statements[-1].statement.summary.closing_balance)
+    half = replace(october[0], statement_id="stmt_oct_half", statement=replace(october[0].statement, period_end=date(2026, 10, 15)))
+    snapshot = build_ledger_snapshot(USER, [*statements, half], posted)
+    assert snapshot.as_of == date(2026, 9, 29) and snapshot.accounts[0].balance == 5_240_000
+
+
+def test_a_missing_month_cuts_the_history_to_the_unbroken_run_before_as_of():
+    statements, posted = _history(Month(2026, 3), 7)
+    without_june = [s for s in statements if s.statement.period_start.month != 6]
+    snapshot = build_ledger_snapshot(USER, without_june, posted)
+    assert min(t.date for t in snapshot.transactions) == payday(Month(2026, 7))  # from July on: no cycle with a hole
+    assert snapshot.as_of == date(2026, 9, 29)
+
+
+def test_an_account_not_seen_in_the_last_cycle_is_left_out():
+    statements, posted = _history(Month(2026, 3), 7)
+    old, old_posted = _history(Month(2026, 3), 1, account_ref="****9999")  # a second account, last seen in March
+    old = [replace(s, statement_id="stmt_old") for s in old]
+    old_posted = [replace(p, statement_id="stmt_old") for p in old_posted]
+    snapshot = build_ledger_snapshot(USER, [*statements, *old], [*posted, *old_posted])
+    assert [a.account_id for a in snapshot.accounts] == ["santander_cl_cuentacorriente_xlsx:****1234"]
+    assert all(t.account_id.endswith("****1234") for t in snapshot.transactions)
+
+
+def test_without_an_opening_balance_the_last_printed_balance_counts():
+    statements, posted = _history(Month(2026, 3), 7)
+    september = statements[-1]
+    printed_only = replace(september, statement=replace(september.statement, summary=None))  # as stored, still verified
+    snapshot = build_ledger_snapshot(USER, [*statements[:-1], printed_only], posted)
+    assert snapshot.accounts[0].balance == 5_240_000  # the printed balance of Sept 24, the last day before as_of with one
 
 
 def test_own_money_is_a_transfer_and_the_users_movement_label_counts():
