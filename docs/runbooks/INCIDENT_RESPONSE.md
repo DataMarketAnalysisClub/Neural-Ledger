@@ -33,7 +33,7 @@ When unsure, open an incident. Closing one costs little.
 - **Access log:** `docker compose logs --timestamps api` (one line per request: client address, request line, status).
 - **Regression checks** on the deployed commit: `make test-security`. S01–S16 cover the attacks, `test_s15_…` personal data in every surface, `test_c10_…` the audit trail, `test_c07_…` secrets in the repository.
 
-**Do not run `neural-ledger demo-and-export` (or `make evidence`) against the incident database.** It runs the demo arc first, as the default user, and appends its chat, confirmation and execution events before exporting. There is no export-only command; use the commands in step 2 on a copy.
+**Do not run `neural-ledger demo-and-export` (or `make evidence`) against the incident database.** It runs the demo arc first, as the default user, and appends its chat, confirmation and execution events before exporting. Use `neural-ledger export-audit` (step 2) on a copy instead: it only exports.
 
 Alert the incident lead as soon as one of the signs above shows. Write down the time you noticed it.
 
@@ -56,11 +56,11 @@ Do these in order. Preserve before you clean anything.
    Then extract or copy it again into a working folder (`tar -xzf ledger-data.tgz -C <work dir>`) and use only that: opening a database writes to it, so never open the preserved one. From `backend/`, with `<copy>` the working copy's `neural_ledger.db`:
 
    ```bash
-   # verify the chain
-   PYTHONPATH=src python3 -c "import sys; from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, SqliteAuditLog; from neural_ledger.domain.audit.events import verify_chain; print(verify_chain(SqliteAuditLog(SqliteDatabase(sys.argv[1])).events()))" <copy>
-   # export the whole trail as JSONL
-   PYTHONPATH=src python3 -c "import json, sys; from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, SqliteAuditLog; [print(json.dumps(e.to_record(), ensure_ascii=False)) for e in SqliteAuditLog(SqliteDatabase(sys.argv[1])).events()]" <copy> > "$INCIDENT_DIR/audit.jsonl"
+   # export the whole trail as JSONL and verify the chain (it prints "chain OK" or "chain BROKEN"; exit 1 if broken)
+   NL_PERSISTENCE=sqlite NL_SQLITE_PATH=<copy> PYTHONPATH=src python3 -m neural_ledger.bootstrap.cli export-audit --out "$INCIDENT_DIR/audit.jsonl"
    ```
+
+   Copy the `neural_ledger.db.key` file next to the database too (the `cp` above does), or set `NL_DATA_KEY`: without the key the statements cannot be read, although the audit trail, which is not encrypted, still exports.
 
 3. **Rotate the signing secret** if it may have leaked, or if an authorization looks forged: generate a new one (`python -c "import secrets; print(secrets.token_hex(32))"`) and set `NL_HMAC_SECRET` in `.env`. Every authorization is checked against the current secret when it is executed, so the ones signed with the old secret are blocked as `AUTHORIZATION_TAMPERED`. Expect those events after a rotation. Authorizations expire after 10 minutes anyway; savings rules already executed stay. Users confirm again.
 4. **Rotate provider keys** that may have leaked: revoke and regenerate `OPENROUTER_API_KEY`, `TYPESAFE_API_KEY`, `ANTHROPIC_API_KEY` or `AZURE_LANGUAGE_API_KEY` in the provider's console, and put the new value in `.env`. A key that reached a commit is leaked even after the commit is removed: rotate it.

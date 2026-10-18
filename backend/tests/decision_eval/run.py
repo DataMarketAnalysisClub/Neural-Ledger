@@ -70,13 +70,13 @@ def evaluate(model: DecisionModel, examples: list[dict], *, notes: bool, reverse
         started = time.perf_counter()
         try:
             answers = model.judge(example["text"], (intent_q, INJECTION_QUESTION))
-            row["seconds"] = time.perf_counter() - started
+            row["seconds"] = round(time.perf_counter() - started, 3)  # ms: long floats look like card numbers to C07
             intent, injection = answers["intent"], answers["injection"]
             row |= {"got": intent.label, "confidence": intent.confidence, "p_injection": injection.probability("yes"), "source": intent.source}
             if reverse:
                 row["got_reversed"] = model.judge(example["text"], (reversed_q,))["intent"].label
         except DecisionModelUnavailable as exc:
-            row |= {"error": str(exc)[:200], "seconds": time.perf_counter() - started}
+            row |= {"error": str(exc)[:200], "seconds": round(time.perf_counter() - started, 3)}
         rows.append(row)
     return rows
 
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", choices=("rules", "jev"), required=True)
     parser.add_argument("--provider", choices=tuple(PROVIDERS), default="openrouter", help="where Jev is called (default: OpenRouter)")
-    parser.add_argument("--model-id", default="jev-latest", help="Jev model or alias (pin jev-1.13.0 for a repeatable run)")
+    parser.add_argument("--model-id", default="jev-latest", help="Jev model or alias (pin jev-1.14-20261014 for a repeatable run, ADR-026)")
     parser.add_argument("--no-notes", action="store_true", help="send option names only, without the per-option descriptions")
     parser.add_argument("--reverse-options", action="store_true", help="also ask with the options in reverse order (position bias)")
     parser.add_argument("--limit", type=int, default=0, help="only the first N examples")

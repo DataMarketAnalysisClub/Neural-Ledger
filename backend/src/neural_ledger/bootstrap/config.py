@@ -27,13 +27,13 @@ def _find_dir(name: str) -> Path:
 class Settings:
     persona: str = "camila"
     model_source: str = "fixture"  # fixture (calibrated personas) | ledger (data/ledgers + stage-1 estimators)
-    llm: str = "scripted"  # scripted | anthropic | openrouter
+    llm: str = "scripted"  # scripted | openrouter | anthropic (deprecated, ADR-027: logs a warning)
     llm_model: str = ""  # empty = the provider's default (DEFAULT_LLM_MODELS)
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     decision_chain: tuple[str, ...] = ("rules",)  # e.g. ("jev", "rules")
     typesafe_api_key: str | None = None
-    jev_model: str = "jev-1.13.0"  # pinned: the jev-latest alias moves when TypeSafe ships a release
+    jev_model: str = "jev-1.14-20261014"  # pinned: the jev-latest alias moves when TypeSafe ships a release
     persistence: str = "memory"  # memory | sqlite
     sqlite_path: str = "./var/neural_ledger.db"
     data_key: str | None = None  # G11: 64 hex chars sealing SQLite payloads; offline without it, a key file next to the database
@@ -75,7 +75,13 @@ class Settings:
 
     @property
     def mode(self) -> str:
-        offline = self.llm == "scripted" and all(m == "rules" for m in self.decision_chain) and "jev" not in self.classifiers
+        """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories) or the Azure detector."""
+        offline = (
+            self.llm == "scripted"
+            and all(m == "rules" for m in self.decision_chain)
+            and "jev" not in self.classifiers
+            and self.pii_detector == "none"
+        )
         return "offline" if offline else "live"
 
     @classmethod

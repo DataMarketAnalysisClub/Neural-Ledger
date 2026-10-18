@@ -16,12 +16,13 @@ import type { Statements } from "@/contracts/outputs/statements";
 import type { Statement } from "@/contracts/outputs/statement";
 import type { StatementImport } from "@/contracts/outputs/statement_import";
 import type { Transactions } from "@/contracts/outputs/transactions";
+import type { CategoryUpdate } from "@/contracts/transactions/category_update";
 import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
-export type { Statements, Statement, StatementImport, Transactions };
+export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -243,6 +244,29 @@ export function useImportStatement() {
     mutationFn: (file: Blob) => requestEnvelope<StatementImport>("/v1/statements", { identity, method: "POST", body: file }),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: [identity.user_id, "statements"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+    },
+  });
+}
+
+export type Transaction = Transactions["transactions"][number];
+
+/**
+ * The user sets one transaction's category (ADR-023). Not optimistic: the ledger and its totals are re-read when
+ * the API answers. A category the transaction's kind cannot take is an ApiError whose detail lists the allowed ones.
+ */
+export function useSetCategory() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ txnId, category }: { txnId: string; category: CategoryUpdate["category"] }) =>
+      requestEnvelope<Transaction>(`/v1/transactions/${encodeURIComponent(txnId)}`, {
+        identity,
+        method: "PATCH",
+        body: { category, session_id: sessionId } satisfies CategoryUpdate,
+      }),
+    onSettled: () => {
       void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
       void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
     },

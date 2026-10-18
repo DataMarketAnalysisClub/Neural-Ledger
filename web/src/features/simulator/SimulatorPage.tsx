@@ -87,7 +87,7 @@ export function SimulatorPage() {
                 hint={t("simulator.form.installmentsHint")}
                 error={fieldError("installments", "installments")}
               >
-                {/* The API decides what is valid (fc-0.2: 1 to 48); min and max only guide the browser control. */}
+                {/* The API decides what is valid (fc-0.3: 1 to 48; 1 is a single charge with no interest); min and max only guide the browser control. */}
                 <input
                   id={ids.installments}
                   type="number"

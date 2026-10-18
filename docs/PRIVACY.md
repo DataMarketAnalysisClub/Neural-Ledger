@@ -16,7 +16,7 @@ The team that runs an instance is responsible for the data it processes. Fill th
 **Where.** Two storage modes, set by `NL_PERSISTENCE`:
 
 - `memory` (the default for `make api` and `make demo`): everything lives in the API process and is gone when it stops.
-- `sqlite` (Docker always uses it): one file at `NL_SQLITE_PATH`, by default `./var/neural_ledger.db` relative to where the API runs. In Docker it is `/app/var/neural_ledger.db` on the `ledger-data` volume. The file is not encrypted (`G11`).
+- `sqlite` (Docker always uses it): one file at `NL_SQLITE_PATH`, by default `./var/neural_ledger.db` relative to where the API runs, which is `backend/var/neural_ledger.db` with the `make` targets. In Docker it is `/app/var/neural_ledger.db` on the `ledger-data` volume. The file is not encrypted (`G11`).
 
 **How long.** There is no automatic retention period and nothing is deleted on a schedule. Data in SQLite stays until the operator deletes the database.
 
@@ -38,12 +38,12 @@ To forecast your cash flow, simulate purchases, compute how much you can spend o
 
 ## Who receives data
 
-With the default settings no data leaves the server. Each provider below receives data only when its setting is on. `GET /health` shows which are on (`mode`, `language_model`, `decision_chain`, `classifier`, `pii_detector`).
+With the default settings no data leaves the server. Each provider below receives data only when its setting is on. `GET /health` shows which are on (`language_model`, `decision_chain`, `classifier`, `pii_detector`); `mode` is `live` as soon as any of them sends data out.
 
 | Setting | Provider | What is sent |
 |---|---|---|
 | `NL_LLM=openrouter` | OpenRouter, which routes the request to the provider of the chosen model (default `anthropic/claude-haiku-5.5`) | The system prompt, the session's conversation history, your message, and the results of the tools the agent calls: financial figures, your profile (display name marked as untrusted text), pending actions and your audit events in the session. No agent tool returns statements or transactions. |
-| `NL_LLM=anthropic` | Anthropic, directly | The same. ADR-027 chose OpenRouter as the only live provider; the code still accepts this setting. |
+| `NL_LLM=anthropic` | Anthropic, directly | The same. ADR-027 chose OpenRouter as the only live provider; the code still accepts this setting and logs a deprecation warning at startup. |
 | `NL_DECISION_CHAIN` includes `jev` | Jev, through OpenRouter (or TypeSafe directly when only `TYPESAFE_API_KEY` is set) | Each chat message (cut at 4,000 characters), to classify intent and detect injection. For the risk-tolerance tool, the last 2,000 characters of your messages in the session. |
 | `NL_CLASSIFIER` includes `jev` | Jev, through OpenRouter or TypeSafe | The text of each charge after redaction, to pick a spending category. Never a deposit (`C13`, ADR-032). |
 | `NL_PII_DETECTOR=azure` | Microsoft (Azure AI Language) | The raw text of every imported statement line, before redaction, to find more personal data. Detection is synchronous and `loggingOptOut` is sent as true. |
@@ -66,7 +66,7 @@ Ley 21.719 gives you rights over your data (arts. 5–9). The software supports 
 | Right | Article | In the software today | Meanwhile |
 |---|---|---|---|
 | A copy of all your data (access, portability) | arts. 5, 9 | Partly: `GET /v1/statements`, `/v1/transactions` and `/v1/audit` show your statements, transactions and audit events. No full export (`G02`). | The team exports it by hand. |
-| Correction | art. 6 | No (`G04`) | The team corrects it by hand. |
+| Correction | art. 6 | Partly: you can change the category of any transaction, and the change is recorded (`G04`). Correcting a statement line's amount, date or description is not built yet (ADR-021). | The team corrects a line by hand. |
 | Deletion | art. 7 | No per-user deletion (`G03`) | The operator can delete the whole database: the file at `NL_SQLITE_PATH` (and any `-wal` and `-shm` files next to it), or `docker compose down --volumes` in Docker. This removes every user's data, the audit trail and the sandbox bank. Removing one user's audit events would break the hash chain; what the trail keeps after a deletion request is an open decision (`G03`). |
 | Opposition and blocking | arts. 8, 8 ter | No (`G05`) | Stop uploading statements and ask the team. |
 

@@ -38,11 +38,11 @@ export interface Transactions {
     kind: "purchase" | "income" | "card_payment" | "refund" | "fee";
     category: Category;
     /**
-     * What chose the category: a classifier name with its training-data hash, or "rule" for income and card payments.
+     * What chose the category: a classifier name with its training-data hash, "rule" for income and card payments, or "user" when the user set it (PATCH /v1/transactions/{txn_id}, ADR-023).
      */
     classifier: string;
     /**
-     * The classifier's confidence, kept even when too low to accept; null for rules.
+     * The classifier's confidence, kept even when too low to accept; null for rules and for the user.
      */
     confidence: number | null;
     statement_id: string;
@@ -62,7 +62,7 @@ export interface Transactions {
     } | null;
   }[];
   /**
-   * Purchases and fees less refunds, per currency and category, largest first. Card payments are excluded.
+   * Purchases and fees less refunds, per currency and category, largest first. Movimientos (card payments, and anything the user marks movement) are excluded.
    */
   spending: Total[];
   /**

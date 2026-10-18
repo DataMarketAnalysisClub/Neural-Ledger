@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
-import { PersonaProvider, useImportStatement, usePersona, useStatements } from "./hooks";
+import { PersonaProvider, useImportStatement, usePersona, useSetCategory, useStatements, useTransactions } from "./hooks";
 
 /** A stand-in for the HTTP API: it records every request and keeps statements per owner, as the backend does. */
 interface Sent {
@@ -16,6 +16,7 @@ let mode: "demo" | "accounts";
 let signedIn: string | null;
 let sent: Sent[];
 let owned: Map<string, number>;
+let relabeled: string | null;
 
 const ok = (data: unknown) => ({ status: "OK", params_version: "st-0.1", facts: [], warnings: [], data });
 const reply = (status: number, body: unknown) => new Response(body === null ? null : JSON.stringify(body), { status });
@@ -47,6 +48,14 @@ function serve(input: RequestInfo | URL, init: RequestInit = {}): Response {
   }
   if (path === "/api/v1/statements") {
     return reply(200, ok(Array.from({ length: owned.get(owner) ?? 0 }, (_, i) => statement(owner, i + 1))));
+  }
+  if (path.startsWith("/api/v1/transactions/") && method === "PATCH") {
+    const { category } = JSON.parse(String(init.body)) as { category: string };
+    relabeled = category;
+    return reply(200, ok({ txn_id: path.split("/").pop(), category, classifier: "user", confidence: null }));
+  }
+  if (path === "/api/v1/transactions") {
+    return reply(200, ok({ transactions: [{ txn_id: "txn_1", category: relabeled ?? "other" }], spending: [], income: [] }));
   }
   return reply(404, { detail: "Not Found" });
 }
@@ -87,6 +96,7 @@ beforeEach(() => {
   vi.stubEnv("VITE_ACCOUNTS_MOCK", "false");
   sent = [];
   owned = new Map();
+  relabeled = null;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => serve(input, init));
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
@@ -148,6 +158,37 @@ describe("statement hooks in demo mode", () => {
     expect(upload?.init.body).toBe(file);
     expect(upload?.init.headers).toEqual({ "X-User-Id": "camila", "Content-Type": "application/octet-stream" });
     expect(owned.get("camila")).toBe(1);
+  });
+});
+
+function CategoryProbe() {
+  const transactions = useTransactions();
+  const setCategory = useSetCategory();
+  const first = transactions.data?.data?.transactions[0];
+  return (
+    <div>
+      <p>{first ? `category ${first.category}` : "transactions loading"}</p>
+      <button type="button" onClick={() => setCategory.mutate({ txnId: "txn_1", category: "movement" })}>mark movement</button>
+    </div>
+  );
+}
+
+describe("category hook", () => {
+  it("sends the user's category as a PATCH under the persona and re-reads the ledger from the API", async () => {
+    mode = "demo";
+    signedIn = null;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<QueryClientProvider client={client}><AuthProvider><PersonaProvider><CategoryProbe /></PersonaProvider></AuthProvider></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByText("category other")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "mark movement" }));
+    await waitFor(() => expect(screen.getByText("category movement")).toBeInTheDocument());
+
+    const patch = sent.find((s) => s.method === "PATCH");
+    expect(patch?.path).toBe("/api/v1/transactions/txn_1");
+    expect(patch?.init.headers).toEqual({ "X-User-Id": "camila", "Content-Type": "application/json" });
+    expect(JSON.parse(String(patch?.init.body))).toMatchObject({ category: "movement" });
+    expect(sent.filter((s) => s.path === "/api/v1/transactions")).toHaveLength(2); // shown only after the API answered
   });
 });
 

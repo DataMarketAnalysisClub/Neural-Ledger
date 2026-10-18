@@ -79,7 +79,7 @@ def test_statement_upload_list_and_detail(client):
     assert detail["data"]["lines"][0]["description"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
 
     other = client.get(f"/v1/statements/{summary['statement_id']}", headers={"X-User-Id": "diego"})
-    assert other.status_code == 409 and client.get("/v1/statements", headers={"X-User-Id": "diego"}).json()["data"] == []
+    assert other.status_code == 404 and client.get("/v1/statements", headers={"X-User-Id": "diego"}).json()["data"] == []
 
 
 def test_imported_statement_reaches_the_transaction_ledger(client):
@@ -115,3 +115,30 @@ def test_statement_upload_limit_holds_without_content_length(client):
 
     response = client.post("/v1/statements", content=chunks(), headers={"Content-Type": "application/pdf"})
     assert response.status_code == 413
+
+
+def test_the_user_sets_a_category_over_http(client):
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    pytest.importorskip("sklearn")
+    from tests.statement_samples import santander_pdf
+
+    camila = {"X-User-Id": "camila"}
+    client.post("/v1/statements", content=santander_pdf(), headers={"Content-Type": "application/pdf", **camila})
+    first = client.get("/v1/transactions", headers=camila).json()["data"]["transactions"][0]
+    path = f"/v1/transactions/{first['txn_id']}"
+
+    changed = client.patch(path, json={"category": "movement", "session_id": "web-1"}, headers=camila)
+    assert changed.status_code == 200
+    assert {k: changed.json()["data"][k] for k in ("txn_id", "category", "classifier", "confidence", "amount")} == {
+        "txn_id": first["txn_id"], "category": "movement", "classifier": "user", "confidence": None, "amount": first["amount"],
+    }
+    assert client.get("/v1/transactions", headers=camila).json()["data"]["transactions"][0]["category"] == "movement"
+    events = client.get("/v1/audit", headers=camila, params={"session_id": "web-1"}).json()["events"]
+    assert [e["kind"] for e in events] == ["CATEGORY_CHANGED"]
+
+    refused = client.patch(path, json={"category": "approved"}, headers=camila)
+    assert refused.status_code == 422 and refused.json()["field"] == "category" and "movement" in refused.json()["allowed"]
+    assert client.patch(path, json={"category": ["dining"]}, headers=camila).status_code == 422
+    assert client.patch(path, json={"category": "dining"}, headers={"X-User-Id": "diego"}).status_code == 404
+    assert client.patch("/v1/transactions/txn_nope", json={"category": "dining"}, headers=camila).status_code == 404

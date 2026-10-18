@@ -19,7 +19,7 @@ SECRET = "test_secret_value_not_a_real_key"
 class FakeJev:
     """A DecisionModel that answers from a table and records every state it was asked about."""
 
-    name = "jev:jev-1.13.0"
+    name = "jev:jev-1.14-20261014"
 
     def __init__(self, answers: dict[str, tuple[str, float]] | None = None, down_on: str | None = None) -> None:
         self.answers = answers or {}
@@ -34,22 +34,22 @@ class FakeJev:
         if state == self.down_on:
             raise DecisionModelUnavailable("jev returned HTTP 503: overloaded")
         label, confidence = self.answers.get(state, ("other", 0.3))
-        return {"category": Judgment("category", label, ((label, confidence),), confidence, "jev:jev-1.13.0")}
+        return {"category": Judgment("category", label, ((label, confidence),), confidence, "jev:jev-1.14-20261014")}
 
 
 def test_is_a_transaction_classifier_named_after_the_model():
     classifier = JevTransactionClassifier(FakeJev())
-    assert isinstance(classifier, TransactionClassifier) and classifier.name == "jev:jev-1.13.0"
+    assert isinstance(classifier, TransactionClassifier) and classifier.name == "jev:jev-1.14-20261014"
 
 
 def test_one_question_per_distinct_text_answers_in_order_with_the_source():
     jev = FakeJev({"UBER TRIP": ("transport", 0.93), "LIDER": ("groceries", 0.88)})
     guesses = JevTransactionClassifier(jev).classify(["UBER TRIP", "LIDER", "UBER TRIP", "  UBER   TRIP "])
     assert guesses == (
-        CategoryGuess("transport", 0.93, "jev:jev-1.13.0"),
-        CategoryGuess("groceries", 0.88, "jev:jev-1.13.0"),
-        CategoryGuess("transport", 0.93, "jev:jev-1.13.0"),
-        CategoryGuess("transport", 0.93, "jev:jev-1.13.0"),  # whitespace does not make a new merchant
+        CategoryGuess("transport", 0.93, "jev:jev-1.14-20261014"),
+        CategoryGuess("groceries", 0.88, "jev:jev-1.14-20261014"),
+        CategoryGuess("transport", 0.93, "jev:jev-1.14-20261014"),
+        CategoryGuess("transport", 0.93, "jev:jev-1.14-20261014"),  # whitespace does not make a new merchant
     )
     assert sorted(jev.asked) == ["LIDER", "UBER TRIP"]
 
@@ -103,7 +103,7 @@ def test_an_unusable_answer_is_unavailable_too():
 @pytest.fixture
 def server():
     body = {
-        "model": "jev-1.13.0",
+        "model": "jev-1.14-20261014",
         "answers": {
             "category": {
                 "type": "choice",
@@ -119,9 +119,9 @@ def server():
 
 
 def test_wire_format_sends_the_category_question_and_the_text_as_state(server):
-    model = JevDecisionModel(SECRET, "jev-1.13.0", base_url=server.url)
+    model = JevDecisionModel(SECRET, "jev-1.14-20261014", base_url=server.url)
     (guess,) = JevTransactionClassifier(model).classify(["Compra Nacional VD STARBUCKS COFFEE CENTRO"])
-    assert guess == CategoryGuess("dining", 0.84, "jev:jev-1.13.0")
+    assert guess == CategoryGuess("dining", 0.84, "jev:jev-1.14-20261014")
     (request,) = server.requests
     assert request["headers"]["Authorization"] == f"Bearer {SECRET}"
     sent = request["body"]

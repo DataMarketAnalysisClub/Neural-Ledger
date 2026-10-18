@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient
 from neural_ledger.adapters.inbound.http.app import create_app
 from neural_ledger.bootstrap.config import DEV_SECRET, Settings
 from neural_ledger.bootstrap.container import build
+from neural_ledger.domain.audit.events import AuditKind
 from neural_ledger.domain.shared.serialization import to_primitive
 from tests.conftest import make_settings
 
@@ -152,7 +153,7 @@ def test_c04_a_user_cannot_reach_another_users_financial_records(services):
     assert client.get("/v1/transactions", headers=as_diego).json()["data"]["transactions"] == []
     foreign = client.get(f"/v1/statements/{statement_id}", headers=as_diego)
     missing = client.get("/v1/statements/stmt_does_not_exist", headers=as_diego)
-    assert foreign.status_code == missing.status_code == 409
+    assert foreign.status_code == missing.status_code == 404
     assert foreign.json()["message"] == missing.json()["message"]
     assert all(e["user_id"] == "diego" for e in client.get("/v1/audit", headers=as_diego).json()["events"])
 
@@ -345,9 +346,20 @@ def test_g03_a_user_can_delete_their_data(services):
     assert ("DELETE", "/v1/me/data") in _routes(services)
 
 
-@gap("no correction of a transaction (ADR-021, ADR-023). Ley 21.719 art. 6 (rectificación)")
 def test_g04_a_user_can_correct_their_records(services):
+    """Ley 21.719 art. 6 (rectificación). Built for categories (ADR-023): PATCH /v1/transactions/{txn_id}, audited
+    as a user action. Line corrections for unreconciled statements (ADR-021) are still to come."""
     assert any(method == "PATCH" and path.startswith("/v1/transactions/") for method, path in _routes(services))
+    assert "CATEGORY_CHANGED" in {kind.value for kind in AuditKind}
+
+
+def test_g04_no_agent_tool_can_set_a_category():
+    """ADR-023: a category is the user's correction, so it is set only through the UI route. The catalog never
+    reaches LedgerUseCases.set_category, and no tool contract offers it."""
+    catalog = (Path(__file__).parents[2] / "src/neural_ledger/application/catalog.py").read_text()
+    assert "set_category" not in catalog and "LedgerUseCases" not in catalog
+    tools = Path(__file__).parents[3] / "contracts/tools"
+    assert not [f.name for f in tools.glob("*.json") if "categor" in f.name]
 
 
 @gap("no way to oppose or block processing. Ley 21.719 arts. 8 (oposición) and 8 ter (bloqueo)")
@@ -410,4 +422,4 @@ def test_every_compliance_test_is_in_the_security_map():
     names = re.findall(r"^def (test_[cg]\d{2}_\w+)", Path(__file__).read_text(encoding="utf-8"), flags=re.M)
     security_md = (ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
     missing = [n for n in names if f"`{n.split('_')[1].upper()}`" not in security_md]
-    assert len(names) == 25 and missing == []
+    assert len(names) == 26 and missing == []

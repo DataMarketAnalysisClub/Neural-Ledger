@@ -47,7 +47,7 @@ def probabilities(winner: str, p: float = 0.9) -> dict[str, float]:
     return {o: p if o == winner else rest for o in options}
 
 
-def answer(model: str = "jev-1.13.0", intent: str = "forecast", p: float = 0.9, injection: float = 0.02) -> dict:
+def answer(model: str = "jev-1.14-20261014", intent: str = "forecast", p: float = 0.9, injection: float = 0.02) -> dict:
     return {
         "model": model,
         "answers": {
@@ -72,23 +72,23 @@ def test_request_shape_and_auth(serve):
 
 
 def test_options_without_notes_send_null_criteria(serve):
-    server = serve(body={"model": "jev-1.13.0", "answers": {"pick": {"type": "choice", "choice": "a", "probabilities": {"a": 0.7, "b": 0.3}, "confidence": 0.6}}})
+    server = serve(body={"model": "jev-1.14-20261014", "answers": {"pick": {"type": "choice", "choice": "a", "probabilities": {"a": 0.7, "b": 0.3}, "confidence": 0.6}}})
     jev(server).judge("x", (ChoiceQuestion("pick", "Pick one", ("a", "b")),))
     assert server.requests[0]["body"]["questions"]["pick"]["criteria"] == {"a": None, "b": None}
 
 
 def test_answers_become_judgments_and_report_the_versioned_model(serve):
-    server = serve(body=answer(model="jev-1.13.0", intent="savings_plan", p=0.7, injection=0.9))
+    server = serve(body=answer(model="jev-1.14-20261014", intent="savings_plan", p=0.7, injection=0.9))
     result = jev(server).judge("x", (INTENT_QUESTION, INJECTION_QUESTION))
     intent, injection = result["intent"], result["injection"]
-    assert intent.label == "savings_plan" and intent.confidence == 0.81 and intent.source == "jev:jev-1.13.0"
+    assert intent.label == "savings_plan" and intent.confidence == 0.81 and intent.source == "jev:jev-1.14-20261014"
     assert intent.probability("savings_plan") == 0.7 and set(dict(intent.probabilities)) == set(INTENT_QUESTION.options)
     assert injection.label == "yes" and injection.probability("yes") == 0.9 and injection.confidence == 0.9
 
 
 def test_a_score_answer_picks_the_most_probable_level(serve):
     body = {
-        "model": "jev-1.13.0",
+        "model": "jev-1.14-20261014",
         "answers": {"risk_tolerance": {"type": "score", "score": 1.05, "legend": {}, "probabilities": {"0": 0.0, "1": 0.95, "2": 0.05}, "confidence": 0.92}},
     }
     result = jev(serve(body=body)).judge("x", (TOLERANCE_QUESTION,))
@@ -129,8 +129,8 @@ def broken(**changes) -> dict:
         broken(confidence=1.5),
         broken(confidence=True),
         broken(type="noul"),
-        {"model": "jev-1.13.0", "answers": {"intent": answer()["answers"]["intent"]}},  # injection missing
-        {"model": "jev-1.13.0"},
+        {"model": "jev-1.14-20261014", "answers": {"intent": answer()["answers"]["intent"]}},  # injection missing
+        {"model": "jev-1.14-20261014"},
         ["not", "an", "object"],
     ],
 )

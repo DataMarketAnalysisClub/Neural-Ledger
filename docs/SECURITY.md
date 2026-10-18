@@ -74,7 +74,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C01` | Card numbers are kept as the last four digits only, even when a statement prints the full PAN; nothing card-shaped is stored or returned | PCI DSS 3.3, 3.4.1; Ley 21.719 art. 3 c) | `test_c01_…` |
 | `C02` | The holder's name, RUT and e-mail printed on a statement are never stored (database, WAL or audit) | Ley 21.719 art. 3 c) | `test_c02_…` |
 | `C03` | Statement text reaches clients and the model only as `{"untrusted_text": …}` | LLM01; ASVS V1; Ley 19.496 art. 3 b) | `test_c03_…` |
-| `C04` | A user cannot read another user's statements, transactions or audit events; a foreign id answers like a missing one | API1:2023; Ley 21.719 art. 14 bis | `test_c04_…` |
+| `C04` | A user cannot read another user's statements, transactions or audit events; a foreign id answers like a missing one (404) | API1:2023; Ley 21.719 art. 14 bis | `test_c04_…` |
 | `C05` | Uploads are typed by their bytes and bounded in size (HTML-as-PDF and legacy `.xls` refused; 413 over 15 MB) | API4:2023; ASVS V5 | `test_c05_…` |
 | `C06` | Server errors expose no stack trace, path or message | ASVS V16; API8:2023 | `test_c06_…` |
 | `C07` | The public repository tracks no `.env`, no key-shaped secret, no card number and no file under `cartolas/` | ASVS V13; Ley 21.719 arts. 3 h), 14 bis | `test_c07_…` |
@@ -84,6 +84,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C11` | Chat input is cut at 4,000 characters before any model sees it | LLM10; API4:2023 | `test_c11_…` |
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
 | `C13` | With `NL_CLASSIFIER=jev,…`, Jev receives each charge's text only after redaction (no name, RUT, e-mail, phone or card number) and never a deposit | Ley 21.719 art. 3 c); transfer to a provider abroad (ADR-032) | `test_c13_…` |
+| `G04` | The user corrects a transaction's category: `PATCH /v1/transactions/{txn_id}` stores it with classifier `user`, it wins over any model and survives re-imports, and the change is audited as `CATEGORY_CHANGED`; the kind and amount never change, and no agent tool reaches it (ADR-023). Line corrections for unreconciled statements (ADR-021) are still to come | Ley 21.719 art. 6 | `test_g04_…`, `tests/application/test_ledger.py` |
 | `G07` | Bursts are rate limited: per caller and per client IP, one-minute windows, stricter on uploads (10), chat (20) and sign-in (10 per IP); over budget is 429 with `Retry-After` and reaches no use case (ADR-033) | API4:2023; LLM10 | `test_g07_…`, `tests/http/test_rate_limit.py` |
 | `G08` | CORS is closed by default: only the web app's origin (`http://localhost:3000`) unless `NL_CORS_ORIGINS` is set; `*` only when set explicitly | API8:2023 | `test_g08_…` |
 | `G09` | Every API response carries `X-Content-Type-Options: nosniff` and `Cache-Control: no-store` | ASVS V3; API8:2023 | `test_g09_…` |
@@ -98,11 +99,10 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `G01` | Authentication: identity is the `X-User-Id` header | API2:2023; Ley 21.719 art. 14 quinquies | Session or token auth; reject requests without credentials (401) |
 | `G02` | Export of all of a user's data | Ley 21.719 arts. 5, 9 | `GET /v1/me/export`, structured JSON |
 | `G03` | Deletion of a user's statements and transactions | Ley 21.719 art. 7 | `DELETE /v1/me/data`; decide what the audit trail keeps (legal-obligation basis) |
-| `G04` | Correction of records | Ley 21.719 art. 6 | ADR-021 and ADR-023 (`PATCH /v1/transactions/{id}`) |
 | `G05` | Opposition to and blocking of processing | Ley 21.719 arts. 8, 8 ter | `PUT /v1/me/processing` |
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
 
-The routes in G02–G05 are proposals; change the test with the API design. The plan to close G01–G07 and G11, step by step, is ADR-033.
+The routes in G02, G03 and G05 are proposals; change the test with the API design. The plan to close G01–G07 and G11, step by step, is ADR-033.
 
 ### Obligations reviewed but not testable as code
 

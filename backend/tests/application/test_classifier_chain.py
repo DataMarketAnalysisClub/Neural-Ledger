@@ -60,9 +60,9 @@ def test_all_unavailable_is_unavailable():
 def test_a_guess_that_names_its_own_source_keeps_it():
     class Sourced(Fixed):
         def classify(self, descriptions):
-            return tuple(CategoryGuess("dining", 0.9, "jev:jev-1.13.0") for _ in descriptions)
+            return tuple(CategoryGuess("dining", 0.9, "jev:jev-1.14-20261014") for _ in descriptions)
 
-    assert FallbackClassifier([Sourced("jev:jev-latest")]).classify(["x"])[0].source == "jev:jev-1.13.0"
+    assert FallbackClassifier([Sourced("jev:jev-latest")]).classify(["x"])[0].source == "jev:jev-1.14-20261014"
 
 
 def test_an_empty_chain_is_a_configuration_error():
@@ -76,6 +76,8 @@ def test_an_empty_chain_is_a_configuration_error():
 def test_jev_in_the_chain_is_live_mode_and_naive_bayes_alone_is_offline():
     assert Settings.from_env({}).mode == "offline"
     assert Settings.from_env({"NL_CLASSIFIER": "jev,naive_bayes"}).mode == "live"
+    # The Azure detector receives raw statement text before redaction: that is live too (and needs the live keys).
+    assert Settings.from_env({"NL_PII_DETECTOR": "azure"}).mode == "live"
 
 
 def test_default_never_builds_jev():
@@ -91,13 +93,13 @@ def _import_cartola(services, user="camila"):
 def test_jev_answers_and_each_transaction_records_it(monkeypatch):
     monkeypatch.setitem(container.CLASSIFIERS, "jev", lambda s: JevTransactionClassifier(AllDining()))
     services, _ = build(make_settings(classifiers=("jev", "naive_bayes")))
-    assert services.classifier.startswith("jev:jev-1.13.0+naive_bayes@")
+    assert services.classifier.startswith("jev:jev-1.14-20261014+naive_bayes@")
 
     (imported,) = _import_cartola(services).data.imports
-    assert imported.ledger.classifier == "jev:jev-1.13.0"  # only Jev answered
+    assert imported.ledger.classifier == "jev:jev-1.14-20261014"  # only Jev answered
     transactions = services.ledger.list_transactions("camila").data.transactions
     charges = [t for t in transactions if t.amount < 0]
-    assert charges and {t.classifier for t in charges} == {"jev:jev-1.13.0"} and {t.category for t in charges} == {"dining"}
+    assert charges and {t.classifier for t in charges} == {"jev:jev-1.14-20261014"} and {t.category for t in charges} == {"dining"}
     income = [t for t in transactions if t.amount > 0]
     assert income and {(t.category, t.classifier) for t in income} == {("income", "rule")}  # never asked
 
@@ -128,4 +130,4 @@ def test_health_reports_the_classifier_chain():
 
     services, _ = build(make_settings(classifiers=("jev", "naive_bayes")))
     body = TestClient(create_app(services)).get("/health").json()
-    assert body["classifier"].startswith("jev:jev-1.13.0+naive_bayes@") and body["mode"] == "live"
+    assert body["classifier"].startswith("jev:jev-1.14-20261014+naive_bayes@") and body["mode"] == "live"

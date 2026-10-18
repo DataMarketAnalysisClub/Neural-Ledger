@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemorySnapshotStore,
     InMemoryStatementStore,
     InMemoryTransactionStore,
+    InMemoryTransactionWrites,
     InMemoryUserAccountStore,
     InMemoryUserProfileStore,
 )
@@ -40,6 +42,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteSessionStore,
     SqliteStatementStore,
     SqliteTransactionStore,
+    SqliteTransactionWrites,
     SqliteUserAccountStore,
     SqliteUserProfileStore,
 )
@@ -72,6 +75,8 @@ from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
 from .config import DEV_SECRET, Settings
 from .contracts import load_tool_definitions
+
+logger = logging.getLogger(__name__)
 
 # Spending classifiers for imported statements, by NL_CLASSIFIER (comma-separated, tried in order: jev,naive_bayes).
 # To change the method, add an entry (any TransactionClassifier) and select it; to change the estimator, pass
@@ -167,10 +172,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
         statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
         transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
+        transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
         writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
+        transaction_writes = InMemoryTransactionWrites(transaction_store, audit_log)
         writable_profiles = InMemoryUserProfileStore()
 
     snapshots = InMemorySnapshotStore()
@@ -208,6 +215,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     decisions = DecisionService(models, AP_0_1)
 
     if s.llm == "anthropic":
+        # Deprecated, not refused: ADR-027 (OpenRouter as the only live provider) is still Proposed.
+        logger.warning("NL_LLM=anthropic is deprecated (ADR-027): use NL_LLM=openrouter; this provider will be removed")
         llm = FallbackLanguageModel([AnthropicLanguageModel(s.anthropic_api_key or "", s.resolved_llm_model), ScriptedLanguageModel()])
     elif s.llm == "openrouter":
         llm = FallbackLanguageModel([OpenRouterLanguageModel(s.openrouter_api_key or "", s.resolved_llm_model), ScriptedLanguageModel()])
@@ -230,7 +239,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
-    ledger = LedgerUseCases(transaction_store)
+    ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )

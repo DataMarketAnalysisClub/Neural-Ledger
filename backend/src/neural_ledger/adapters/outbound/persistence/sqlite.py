@@ -522,6 +522,17 @@ class SqliteTransactionStore:
         rows = self._db.fetchall("SELECT txn_id, payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,))
         return tuple(_posted_from(json.loads(self._cipher.open(payload, _transaction_aad(user_id, txn_id)))) for txn_id, payload in rows)
 
+    def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
+        row = self._db.fetchone("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id))
+        return None if row is None else self._open(user_id, txn_id, row[0])
+
+    def _open(self, user_id: str, txn_id: str, payload: str) -> PostedTransaction:
+        return _open_transaction(self._cipher, user_id, txn_id, payload)
+
+
+def _open_transaction(cipher: FieldCipher, user_id: str, txn_id: str, payload: str) -> PostedTransaction:
+    return _posted_from(json.loads(cipher.open(payload, _transaction_aad(user_id, txn_id))))
+
 
 class SqliteSavingsRuleStore:
     """Rules created by the simulated sandbox bank, durable across restarts like the audit log."""
@@ -722,6 +733,37 @@ class SqliteAccountWrites:
         ):
             raise IdCollision("generated identifier collision")
         cls._check_events(conn, events)
+
+
+def _check_transaction_change(expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> None:
+    owner = expected.user_id
+    if (owner, expected.transaction.txn_id) != (updated.user_id, updated.transaction.txn_id) or any(e.user_id != owner for e in events):
+        raise ValueError("transaction ownership mismatch")
+
+
+class SqliteTransactionWrites:
+    """A transaction change and its audit events in one SQLite transaction (ADR-023)."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def update_transaction(self, expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> bool:
+        _check_transaction_change(expected, updated, events)
+        user_id, txn_id = expected.user_id, expected.transaction.txn_id
+        # Raw connection only: the store and audit-log methods take db.lock, which this transaction already holds.
+        with _account_transaction(self._db) as conn:
+            row = conn.execute("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id)).fetchone()
+            if row is None or _open_transaction(self._cipher, user_id, txn_id, row[0]) != expected:
+                return False
+            SqliteAccountWrites._check_events(conn, events)
+            conn.execute(
+                "UPDATE transactions SET payload = ? WHERE user_id = ? AND txn_id = ?",
+                (self._cipher.seal(json.dumps(to_primitive(updated)), _transaction_aad(user_id, txn_id)), user_id, txn_id),
+            )
+            for event in events:
+                _append_audit(conn, event)
+            return True
 
 
 class SqliteAuditLog:
