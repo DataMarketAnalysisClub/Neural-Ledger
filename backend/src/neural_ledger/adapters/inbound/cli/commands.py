@@ -55,7 +55,7 @@ def export_audit(services: ApplicationServices, out: Path) -> int:
             handle.write(json.dumps(event.to_record(), ensure_ascii=False) + "\n")
     check = services.audit.verify()
     print(f"Wrote {len(events)} events to {out} (chain {'OK' if check.ok else 'BROKEN'})")
-    return 0
+    return 0 if check.ok else 1  # the file is written either way: a broken chain is evidence too
 
 
 def import_statement(services: ApplicationServices, path: Path, user_id: str, as_json: bool) -> int:
@@ -256,6 +256,8 @@ def main(
     sub.add_parser("demo", help="run the demo arc offline")
     export = sub.add_parser("demo-and-export", help="run the demo and export the audit log as JSONL evidence")
     export.add_argument("--out", type=Path, default=Path("../evidence/sandbox-logs/audit.jsonl"))
+    only = sub.add_parser("export-audit", help="export the audit log as JSONL without running anything first (incident response)")
+    only.add_argument("--out", type=Path, required=True)
     imp = sub.add_parser("import-statement", help="read a bank statement (Excel .xlsx, PDF or image), reconcile it and store it")
     imp.add_argument("file", type=Path)
     imp.add_argument("--user", default=None, help="owner of the statement (default: NL_PERSONA)")
@@ -302,5 +304,7 @@ def main(
         return list_statements(services, args.user or services.default_user)
     if args.command == "transactions":
         return list_transactions(services, args.user or services.default_user, args.json)
+    if args.command == "export-audit":
+        return export_audit(services, args.out)
     code = run_demo(services)
     return code or export_audit(services, args.out)
