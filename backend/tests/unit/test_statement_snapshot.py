@@ -56,11 +56,13 @@ def _month(year: int, month: int, opening: int, account_ref: str = "****1234") -
     )
 
 
-def _history(first: Month, months: int, opening: int = 900_000, user: str = USER) -> tuple[list[StoredStatement], list]:
+def _history(
+    first: Month, months: int, opening: int = 900_000, user: str = USER, account_ref: str = "****1234"
+) -> tuple[list[StoredStatement], list]:
     statements, posted, balance = [], [], opening
     for k in range(months):
         m = first.plus(k)
-        s = _month(m.year, m.month, balance)
+        s = _month(m.year, m.month, balance, account_ref)
         assert reconcile(s).issues == ()
         balance = s.summary.closing_balance
         stored = StoredStatement(f"stmt_{m}", user, datetime(2026, 10, 18, tzinfo=UTC), s, ())

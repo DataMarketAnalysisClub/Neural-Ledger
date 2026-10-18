@@ -6,9 +6,11 @@ built here, deterministically, from what reconciliation verified:
 - Only verified, final (not provisional) CLP statements of this user, and only their posted transactions.
 - `as_of` is the eve of the last payday the statements cover (the estimators accept no other day), and nothing
   after it is kept.
-- The history starts at the first payday they cover, so every pay cycle in it is full: a salary is paid on
-  payday and funds the cycle that starts there, so a cartola that starts on the 1st holds no salary for the
-  cycle it starts in.
+- The history starts at the first payday of the unbroken run of checking statements that reaches `as_of`, so
+  every pay cycle in it is full and none has a hole: a salary is paid on payday and funds the cycle that starts
+  there (a cartola that starts on the 1st holds no salary for the cycle it starts in), and a missing month would
+  read as a month without spending.
+- An account whose statements stop before the last pay cycle is left out: its balance would be stale.
 - Each account's balance is the one on `as_of`: its covering statement's opening balance plus the lines up to
   that day, which reconciliation already checked.
 - The holder's own money moving is a `transfer_own`: a line a layout marked by rule, and any line the user
@@ -26,16 +28,18 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date, timedelta
 
-from ..finance.paycycle import payday
+from ..finance.paycycle import cycle_of, cycle_start, payday
 from ..shared.errors import InsufficientData
 from ..shared.month import Month
 from ..statements.model import BankStatement, StoredStatement
 from .categorization import MOVEMENT, PostedTransaction
-from .entities import Account, IncomeProfile, IncomeType, LedgerSnapshot, Transaction, TransactionKind
+from .entities import Account, AccountType, IncomeProfile, IncomeType, LedgerSnapshot, Transaction, TransactionKind
 
 CURRENCY = "CLP"  # the financial core's parameters are calibrated in CLP
 LEDGER_VERSION = "statements"  # a label; the model's source version hashes the content
 PAYDAY_RULE = "last_business_day"
+# The accounts the salary and the history are read from; a card's billing periods do not follow pay cycles.
+CYCLE_ACCOUNTS = frozenset({AccountType.CHECKING, AccountType.SAVINGS})
 
 
 def build_ledger_snapshot(
@@ -47,8 +51,9 @@ def build_ledger_snapshot(
     ]
     if not usable:
         raise InsufficientData(("statements",), "import verified bank statements: the forecast needs at least 6 months of them")
-    as_of = _last_eve_of_payday(max(s.statement.period_end for s in usable))
-    start = _first_payday(min(s.statement.period_start for s in usable))
+    cycle_statements = [s.statement for s in usable if s.statement.account_type in CYCLE_ACCOUNTS] or [s.statement for s in usable]
+    as_of = _last_eve_of_payday(max(s.period_end for s in cycle_statements))
+    start = _first_payday(_unbroken_since(cycle_statements, as_of))
     if as_of < start:
         raise InsufficientData(("statements",), "the statements do not cover one full pay cycle yet (payday to payday)")
 
@@ -86,16 +91,39 @@ def _first_payday(start: date) -> date:
     return first if first >= start else payday(month.plus(1))
 
 
+def _unbroken_since(statements: Sequence[BankStatement], as_of: date) -> date:
+    """The latest start, over the accounts that reach `as_of`, of their run of back-to-back statements up to it."""
+    by_account: dict[str, list[BankStatement]] = defaultdict(list)
+    for s in statements:
+        by_account[f"{s.bank}:{s.account_ref}"].append(s)
+    starts = []
+    for own in by_account.values():
+        reaching = [s for s in own if s.period_start <= as_of <= s.period_end]
+        if not reaching:
+            continue  # stops before as_of: left out of the snapshot, so it cannot shorten the history
+        run_start = min(s.period_start for s in reaching)
+        while True:
+            before = [s for s in own if s.period_start < run_start and s.period_end >= run_start - timedelta(days=1)]
+            if not before:
+                break
+            run_start = min(s.period_start for s in before)
+        starts.append(run_start)
+    return max(starts) if starts else min(s.period_start for s in statements)
+
+
 def _accounts(usable: Sequence[StoredStatement], as_of: date) -> tuple[Account, ...]:
     by_account: dict[str, list[BankStatement]] = defaultdict(list)
     for s in usable:
         by_account[f"{s.statement.bank}:{s.statement.account_ref}"].append(s.statement)  # the id posting gives its lines
+    last_cycle_start = cycle_start(cycle_of(as_of))
     accounts = []
     for account_id, own in sorted(by_account.items()):
         covering = [s for s in own if s.period_start <= as_of]
         if not covering:
             continue  # the account starts after as_of: nothing of it is in the snapshot
         statement = max(covering, key=lambda s: s.period_start)
+        if statement.period_end < last_cycle_start:
+            continue  # not seen in the last pay cycle: its balance would be stale
         accounts.append(Account(account_id, statement.account_type, _balance_on(statement, as_of, account_id), CURRENCY))
     return tuple(accounts)
 

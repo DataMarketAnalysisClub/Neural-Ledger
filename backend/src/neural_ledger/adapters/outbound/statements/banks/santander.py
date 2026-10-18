@@ -26,9 +26,12 @@ from .base import Bank, column_index, day_month, parse_clp
 
 # The holder's own money on a Santander checking account (ADR-024): a transfer to their savings, a payment to their
 # card. Shared by the PDF and the .xlsx layouts, which print the same descriptions.
+# Anchored at the start, after the optional operation number the bank prints, so a merchant's text that merely
+# contains the words is not matched. Both directions: money to the savings account, and back from it.
+_OPERATION = r"^\s*(?:\d+\s+)?"
 SANTANDER_OWN_MONEY = (
-    re.compile(r"\btransf(?:erencia)?\s+a\s+(?:cuenta\s+)?ahorro\b", re.IGNORECASE),
-    re.compile(r"\bpago\s+(?:de\s+)?tarjeta\b", re.IGNORECASE),
+    re.compile(_OPERATION + r"transf(?:erencia)?\.?\s+(?:a|de|desde)\s+(?:cuenta\s+(?:de\s+)?)?ahorros?\b", re.IGNORECASE),
+    re.compile(_OPERATION + r"pago\s+(?:de\s+)?tarjeta\b", re.IGNORECASE),
 )
 
 _PERIOD = re.compile(r"(?P<account>\d[\d-]{6,}\d)\s+(?P<number>\d+)\s+(?P<start>\d{2}/\d{2}/\d{4})\s+(?P<end>\d{2}/\d{2}/\d{4})")

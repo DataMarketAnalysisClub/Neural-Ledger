@@ -118,6 +118,7 @@ _CARD_KINDS = {
     LineKind.REFUND: TransactionKind.REFUND,
     LineKind.FEE: TransactionKind.FEE,
     LineKind.PURCHASE: TransactionKind.PURCHASE,
+    LineKind.TRANSFER_OWN: TransactionKind.CARD_PAYMENT,  # on a card, the holder's own money moving is a payment to it
 }
 
 
