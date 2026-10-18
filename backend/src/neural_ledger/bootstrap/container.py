@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -72,6 +73,8 @@ from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
 from .config import DEV_SECRET, Settings
 from .contracts import load_tool_definitions
+
+logger = logging.getLogger(__name__)
 
 # Spending classifiers for imported statements, by NL_CLASSIFIER (comma-separated, tried in order: jev,naive_bayes).
 # To change the method, add an entry (any TransactionClassifier) and select it; to change the estimator, pass
@@ -208,6 +211,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     decisions = DecisionService(models, AP_0_1)
 
     if s.llm == "anthropic":
+        # Deprecated, not refused: ADR-027 (OpenRouter as the only live provider) is still Proposed.
+        logger.warning("NL_LLM=anthropic is deprecated (ADR-027): use NL_LLM=openrouter; this provider will be removed")
         llm = FallbackLanguageModel([AnthropicLanguageModel(s.anthropic_api_key or "", s.resolved_llm_model), ScriptedLanguageModel()])
     elif s.llm == "openrouter":
         llm = FallbackLanguageModel([OpenRouterLanguageModel(s.openrouter_api_key or "", s.resolved_llm_model), ScriptedLanguageModel()])

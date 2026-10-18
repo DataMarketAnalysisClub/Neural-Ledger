@@ -282,3 +282,10 @@ def test_container_honors_an_explicit_model_name():
 def test_a_missing_key_fails_loudly_at_startup():
     with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
         build(make_settings(llm="openrouter"))
+
+
+def test_anthropic_direct_still_works_and_warns_it_is_deprecated(caplog):
+    with caplog.at_level("WARNING", logger="neural_ledger.bootstrap.container"):
+        services, _ = build(make_settings(llm="anthropic", anthropic_api_key=SECRET))
+    assert services.language_model.startswith("anthropic:")
+    assert "NL_LLM=anthropic is deprecated (ADR-027)" in caplog.text and SECRET not in caplog.text

@@ -175,7 +175,7 @@ classDiagram
 | Mode | Settings | Use |
 |---|---|---|
 | Offline (default) | `NL_LLM=scripted`, `NL_DECISION_CHAIN=rules`, `NL_PII_DETECTOR=none` | CI, `docker compose up` without keys, demo recording, S10 |
-| Live | `NL_LLM=anthropic` (or another provider), `NL_DECISION_CHAIN=jev,rules` | The real demo; falls back to offline pieces on outages |
+| Live | `NL_LLM=openrouter` (ADR-027; `anthropic` is deprecated), `NL_DECISION_CHAIN=jev,rules` | The real demo; falls back to offline pieces on outages |
 | Azure redaction | `NL_PII_DETECTOR=azure` with `AZURE_LANGUAGE_ENDPOINT` and `AZURE_LANGUAGE_API_KEY` | Local tests with the team's key only: it sends statement text to Microsoft (`docs/SECURITY.md`) |
 | Deterministic | `NL_CLOCK=fixed`, `NL_IDS=sequential` | Reproducible recordings and evidence |
 | Demo identity (default) | `NL_AUTH=demo` | Local runs, tests, the recorded demo: `X-User-Id` header (or `NL_PERSONA`), read-only profiles, no auth routes. Never expose it publicly |

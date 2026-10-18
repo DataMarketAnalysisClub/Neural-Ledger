@@ -43,7 +43,7 @@ With the default settings no data leaves the server. Each provider below receive
 | Setting | Provider | What is sent |
 |---|---|---|
 | `NL_LLM=openrouter` | OpenRouter, which routes the request to the provider of the chosen model (default `anthropic/claude-haiku-5.5`) | The system prompt, the session's conversation history, your message, and the results of the tools the agent calls: financial figures, your profile (display name marked as untrusted text), pending actions and your audit events in the session. No agent tool returns statements or transactions. |
-| `NL_LLM=anthropic` | Anthropic, directly | The same. ADR-027 chose OpenRouter as the only live provider; the code still accepts this setting. |
+| `NL_LLM=anthropic` | Anthropic, directly | The same. ADR-027 chose OpenRouter as the only live provider; the code still accepts this setting and logs a deprecation warning at startup. |
 | `NL_DECISION_CHAIN` includes `jev` | Jev, through OpenRouter (or TypeSafe directly when only `TYPESAFE_API_KEY` is set) | Each chat message (cut at 4,000 characters), to classify intent and detect injection. For the risk-tolerance tool, the last 2,000 characters of your messages in the session. |
 | `NL_CLASSIFIER` includes `jev` | Jev, through OpenRouter or TypeSafe | The text of each charge after redaction, to pick a spending category. Never a deposit (`C13`, ADR-032). |
 | `NL_PII_DETECTOR=azure` | Microsoft (Azure AI Language) | The raw text of every imported statement line, before redaction, to find more personal data. Detection is synchronous and `loggingOptOut` is sent as true. |

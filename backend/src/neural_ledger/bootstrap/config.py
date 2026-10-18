@@ -27,7 +27,7 @@ def _find_dir(name: str) -> Path:
 class Settings:
     persona: str = "camila"
     model_source: str = "fixture"  # fixture (calibrated personas) | ledger (data/ledgers + stage-1 estimators)
-    llm: str = "scripted"  # scripted | anthropic | openrouter
+    llm: str = "scripted"  # scripted | openrouter | anthropic (deprecated, ADR-027: logs a warning)
     llm_model: str = ""  # empty = the provider's default (DEFAULT_LLM_MODELS)
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
