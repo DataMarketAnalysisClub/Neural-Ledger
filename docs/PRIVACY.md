@@ -16,7 +16,7 @@ The team that runs an instance is responsible for the data it processes. Fill th
 **Where.** Two storage modes, set by `NL_PERSISTENCE`:
 
 - `memory` (the default for `make api` and `make demo`): everything lives in the API process and is gone when it stops.
-- `sqlite` (Docker always uses it): one file at `NL_SQLITE_PATH`, by default `./var/neural_ledger.db` relative to where the API runs. In Docker it is `/app/var/neural_ledger.db` on the `ledger-data` volume. The file is not encrypted (`G11`).
+- `sqlite` (Docker always uses it): one file at `NL_SQLITE_PATH`, by default `./var/neural_ledger.db` relative to where the API runs, which is `backend/var/neural_ledger.db` with the `make` targets. In Docker it is `/app/var/neural_ledger.db` on the `ledger-data` volume. The file is not encrypted (`G11`).
 
 **How long.** There is no automatic retention period and nothing is deleted on a schedule. Data in SQLite stays until the operator deletes the database.
 
