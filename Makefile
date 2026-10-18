@@ -1,4 +1,4 @@
-.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest evidence api up cartola seed
+.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest evidence api up cartola seed reset
 
 PY ?= python3
 
@@ -45,6 +45,9 @@ cartola:            ## write random cartolas (.xlsx) to var/samples/ to upload o
 
 seed:               ## import random statements into the local SQLite database (then: NL_PERSISTENCE=sqlite make api)
 	cd backend && NL_PERSISTENCE=sqlite PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli seed --user $(PERSONA) --months $(or $(MONTHS),6) $(SEED_ARG)
+
+reset:              ## developer only: empty the local SQLite database in place (make reset YES=1 skips the prompt; then: make seed)
+	cd backend && NL_PERSISTENCE=sqlite PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli reset $(if $(YES),--yes)
 
 evidence:           ## demo + audit export + junit results of the FULL suite into evidence/
 	cd backend && NL_CLOCK=fixed NL_IDS=sequential PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli demo-and-export --out ../evidence/sandbox-logs/audit.jsonl

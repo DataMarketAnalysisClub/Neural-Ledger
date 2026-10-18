@@ -24,6 +24,7 @@ make api                           # dev server on :8000
 make evidence                      # audit log + full-suite test results into evidence/
 make cartola                       # random synthetic cartolas (.xlsx) in var/samples/, to upload in the app
 make seed                          # random statements imported into SQLite (then: NL_PERSISTENCE=sqlite make api)
+make reset                         # developer only: empty the local SQLite database in place, then make seed
 ```
 
 Synthetic data for demos and testing: `make cartola` writes random cartolas that reconcile, to upload like a real export; `make seed` (or `docker compose exec api neural-ledger seed --user camila`) imports months of them so the app opens with statements and transactions. Both go through the real import path. See [docs/runbooks/SYNTHETIC_DATA.md](docs/runbooks/SYNTHETIC_DATA.md).
