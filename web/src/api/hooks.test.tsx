@@ -40,7 +40,9 @@ function serve(input: RequestInfo | URL, init: RequestInit = {}): Response {
     return reply(204, null);
   }
   if (!owner) return reply(401, { status: "UNAUTHENTICATED", message: "authentication required" });
-  if (path === "/api/v1/me") return reply(200, { user_id: owner, data_source: "empty", expires_at: "2026-10-16T08:00:00Z" });
+  if (path === "/api/v1/me") {
+    return reply(200, { user_id: owner, data_source: (owned.get(owner) ?? 0) > 0 ? "statements" : "empty", expires_at: "2026-10-16T08:00:00Z" });
+  }
   if (path === "/api/v1/statements" && method === "POST") {
     const count = (owned.get(owner) ?? 0) + 1;
     owned.set(owner, count);
@@ -70,6 +72,7 @@ function Probe() {
   return (
     <div>
       <p>identity {identity.user_id}</p>
+      <p>source {auth.me?.data_source ?? "none"}</p>
       <p>{statements.data ? `statements ${statements.data.data?.length ?? 0}` : "statements loading"}</p>
       <button type="button" onClick={() => importer.mutate(file)}>import</button>
       {auth.mode === "accounts" && <button type="button" onClick={() => void auth.signout()}>sign out</button>}
@@ -141,6 +144,20 @@ describe("statement hooks in accounts mode", () => {
     await waitFor(() => expect(screen.getByText("statements 0")).toBeInTheDocument());
     expect(client.getQueryCache().findAll({ queryKey: ["usr_first"] })).toHaveLength(0);
     expect(owned.get("usr_first")).toBe(1);
+  });
+});
+
+describe("statement import and the account's data source", () => {
+  it("re-reads /v1/me after an import, so the financial screens open without a reload (ADR-029)", async () => {
+    mode = "accounts";
+    signedIn = "usr_first";
+    mount();
+    await waitFor(() => expect(screen.getByText("source empty")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "import" }));
+    await waitFor(() => expect(screen.getByText("source statements")).toBeInTheDocument());
+    expect(screen.getByText("identity usr_first")).toBeInTheDocument();  // the same session: nothing was signed out
+    expect(sent.filter((s) => s.path === "/api/v1/me").length).toBeGreaterThanOrEqual(2);
   });
 });
 
