@@ -422,4 +422,4 @@ def test_every_compliance_test_is_in_the_security_map():
     names = re.findall(r"^def (test_[cg]\d{2}_\w+)", Path(__file__).read_text(encoding="utf-8"), flags=re.M)
     security_md = (ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
     missing = [n for n in names if f"`{n.split('_')[1].upper()}`" not in security_md]
-    assert len(names) == 25 and missing == []
+    assert len(names) == 26 and missing == []
