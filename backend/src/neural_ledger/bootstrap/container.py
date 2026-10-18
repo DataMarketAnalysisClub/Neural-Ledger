@@ -62,6 +62,7 @@ from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
 from ..application.services.redaction import StatementRedactor
+from ..application.services.statement_model import FirstFoundModelSource, StatementModelSource
 from ..application.use_cases.accounts import DEMO_PERSONAS, AccountUseCases
 from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
@@ -69,7 +70,6 @@ from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
-from ..application.services.statement_model import FirstFoundModelSource, StatementModelSource
 from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
 from ..domain.finance.params import FC_0_1
