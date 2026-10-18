@@ -108,6 +108,20 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 
+# Literal statements per table (no SQL built from strings, ASVS V1). Whoever adds a table to _SCHEMA must add it here too.
+_RESET_SQL: dict[str, tuple[str, str]] = {
+    "proposals": ("SELECT COUNT(*) FROM proposals", "DELETE FROM proposals"),
+    "authorizations": ("SELECT COUNT(*) FROM authorizations", "DELETE FROM authorizations"),
+    "audit_events": ("SELECT COUNT(*) FROM audit_events", "DELETE FROM audit_events"),
+    "statements": ("SELECT COUNT(*) FROM statements", "DELETE FROM statements"),
+    "transactions": ("SELECT COUNT(*) FROM transactions", "DELETE FROM transactions"),
+    "savings_rules": ("SELECT COUNT(*) FROM savings_rules", "DELETE FROM savings_rules"),
+    "user_profiles": ("SELECT COUNT(*) FROM user_profiles", "DELETE FROM user_profiles"),
+    "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
+    "sessions": ("SELECT COUNT(*) FROM sessions", "DELETE FROM sessions"),
+}
+
+
 class SqliteDatabase:
     def __init__(self, path: str | Path) -> None:
         if str(path) != ":memory:":
@@ -126,6 +140,43 @@ class SqliteDatabase:
     def fetchall(self, sql: str, params: tuple = ()) -> list[tuple]:
         with self.lock:
             return self.connection.execute(sql, params).fetchall()
+
+    def _tables(self) -> list[str]:
+        rows = self.connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name").fetchall()
+        return [name for (name,) in rows]
+
+    def _known_tables(self) -> list[str]:
+        """The tables to empty; refuses a table that _RESET_SQL does not know, so none is ever skipped silently."""
+        present = self._tables()
+        unknown = [name for name in present if name not in _RESET_SQL]
+        if unknown:
+            raise RuntimeError(f"no reset statements for table(s) {', '.join(unknown)}: add them to _RESET_SQL")
+        return present
+
+    def counts(self) -> dict[str, int]:
+        """Rows per table (read-only)."""
+        with self.lock:
+            return {t: self.connection.execute(_RESET_SQL[t][0]).fetchone()[0] for t in self._known_tables()}
+
+    def reset(self) -> dict[str, int]:
+        """Delete every row of every table in one transaction and return the rows deleted per table.
+
+        The file and the schema stay, so a process holding the same database keeps working (the audit chain restarts from genesis).
+        """
+        with self.lock:
+            tables = self._known_tables()
+            self.connection.execute("BEGIN IMMEDIATE")
+            try:
+                deleted: dict[str, int] = {}
+                for table in tables:
+                    count_sql, delete_sql = _RESET_SQL[table]
+                    deleted[table] = self.connection.execute(count_sql).fetchone()[0]
+                    self.connection.execute(delete_sql)
+                self.connection.execute("COMMIT")
+            except BaseException:
+                self.connection.execute("ROLLBACK")
+                raise
+            return deleted
 
 
 def _profile_from(payload: dict) -> UserProfile:
