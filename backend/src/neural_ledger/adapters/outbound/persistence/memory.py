@@ -79,19 +79,6 @@ class InMemoryTransactionStore:
     def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
         return self._transactions.get((user_id, txn_id))
 
-    def update(self, expected: PostedTransaction, updated: PostedTransaction) -> bool:
-        _check_same_transaction(expected, updated)
-        key = (expected.user_id, expected.transaction.txn_id)
-        with self._lock:
-            if self._transactions.get(key) != expected:
-                return False
-            self._transactions[key] = updated
-            return True
-
-
-def _check_same_transaction(expected: PostedTransaction, updated: PostedTransaction) -> None:
-    if (expected.user_id, expected.transaction.txn_id) != (updated.user_id, updated.transaction.txn_id):
-        raise ValueError("transaction ownership mismatch")
 
 
 class InMemoryActionRepository:
@@ -269,6 +256,34 @@ class InMemorySessionStore:
                 return False
             self._sessions[digest] = replace(current, revoked_at=at)
             return True
+
+
+class InMemoryTransactionWrites:
+    """A transaction change and its audit events, both or neither: the events are sealed before the row changes."""
+
+    def __init__(self, transactions: InMemoryTransactionStore, audit: InMemoryAuditLog) -> None:
+        self._transactions = transactions
+        self._audit = audit
+
+    def update_transaction(self, expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> bool:
+        _check_transaction_change(expected, updated, events)
+        key = (expected.user_id, expected.transaction.txn_id)
+        with self._audit._lock, self._transactions._lock:
+            if self._transactions._transactions.get(key) != expected:
+                return False
+            existing = {event.draft.event_id for event in self._audit._events}
+            ids = [event.event_id for event in events]
+            if len(set(ids)) != len(ids) or existing.intersection(ids):
+                raise IdCollision("generated identifier collision")
+            self._audit.append_all(events)
+            self._transactions._transactions[key] = updated
+            return True
+
+
+def _check_transaction_change(expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> None:
+    owner = expected.user_id
+    if (owner, expected.transaction.txn_id) != (updated.user_id, updated.transaction.txn_id) or any(e.user_id != owner for e in events):
+        raise ValueError("transaction ownership mismatch")
 
 
 class InMemoryAccountWrites:

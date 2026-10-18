@@ -17,7 +17,7 @@ from ...domain.ledger.categorization import CATEGORIZATION_VERSION, MOVEMENT, Po
 from ...domain.ledger.entities import InstallmentInfo, TransactionKind
 from ...domain.shared.envelope import Envelope, Fact
 from ...domain.shared.hashing import content_id
-from ..ports import AuditLog, Clock, IdGenerator, TransactionStore
+from ..ports import Clock, IdGenerator, TransactionStore, TransactionWrites
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,9 +62,9 @@ class TransactionList:
 
 
 class LedgerUseCases:
-    def __init__(self, transactions: TransactionStore, audit: AuditLog, clock: Clock, ids: IdGenerator) -> None:
+    def __init__(self, transactions: TransactionStore, writes: TransactionWrites, clock: Clock, ids: IdGenerator) -> None:
         self._transactions = transactions
-        self._audit = audit
+        self._writes = writes
         self._clock = clock
         self._ids = ids
 
@@ -100,8 +100,6 @@ class LedgerUseCases:
         if updated is None:
             allowed = tuple(sorted(user_categories(current.transaction.kind)))
             return Envelope.invalid("category", allowed, params_version=CATEGORIZATION_VERSION, message=f"a {current.transaction.kind.value} can take only these categories")
-        if not self._transactions.update(current, updated):
-            return Envelope.invalid("transaction", (), params_version=CATEGORIZATION_VERSION, message="transaction changed; reload and retry")
         draft = AuditDraft(
             event_id=self._ids.new("evt"),
             timestamp=self._clock.now(),
@@ -113,11 +111,8 @@ class LedgerUseCases:
             detail=f"from={current.transaction.category} to={category} previous_classifier={current.classifier}",
             user_id=user_id,
         )
-        try:
-            self._audit.append(draft)
-        except BaseException:
-            self._transactions.update(updated, current)  # an unaudited change must not stay
-            raise
+        if not self._writes.update_transaction(current, updated, (draft,)):  # the change and its audit event, or neither
+            return Envelope.invalid("transaction", (), params_version=CATEGORIZATION_VERSION, message="transaction changed; reload and retry")
         return Envelope.success(
             _view(updated),
             params_version=CATEGORIZATION_VERSION,

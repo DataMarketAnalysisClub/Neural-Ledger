@@ -6,7 +6,12 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryStatementStore, InMemoryTransactionStore
+from neural_ledger.adapters.outbound.persistence.memory import (
+    InMemoryAuditLog,
+    InMemoryStatementStore,
+    InMemoryTransactionStore,
+    InMemoryTransactionWrites,
+)
 from neural_ledger.adapters.outbound.privacy.null import NullDetector
 from neural_ledger.adapters.outbound.system.clock import FixedClock
 from neural_ledger.adapters.outbound.system.ids import SequentialIds
@@ -79,7 +84,7 @@ def _parts(classifier, audit=None):
         clock,
         ids,
     )
-    return statements, LedgerUseCases(transactions, audit, clock, ids), audit, transactions
+    return statements, LedgerUseCases(transactions, InMemoryTransactionWrites(transactions, audit), clock, ids), audit, transactions
 
 
 def _build(classifier):
@@ -256,13 +261,13 @@ def test_another_users_transaction_is_not_found_and_not_changed():
 class _FailingAudit(InMemoryAuditLog):
     fail = False
 
-    def append(self, draft):
+    def append_all(self, drafts):
         if self.fail:
             raise RuntimeError("audit store down")
-        return super().append(draft)
+        return super().append_all(drafts)
 
 
-def test_a_change_that_cannot_be_audited_is_undone():
+def test_a_change_that_cannot_be_audited_is_never_written():
     audit = _FailingAudit()
     _, ledger, _, ids = _imported(audit)
     audit.fail = True

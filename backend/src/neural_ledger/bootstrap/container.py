@@ -28,6 +28,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemorySnapshotStore,
     InMemoryStatementStore,
     InMemoryTransactionStore,
+    InMemoryTransactionWrites,
     InMemoryUserAccountStore,
     InMemoryUserProfileStore,
 )
@@ -41,6 +42,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteSessionStore,
     SqliteStatementStore,
     SqliteTransactionStore,
+    SqliteTransactionWrites,
     SqliteUserAccountStore,
     SqliteUserProfileStore,
 )
@@ -170,10 +172,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
         statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
         transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
+        transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
         writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
+        transaction_writes = InMemoryTransactionWrites(transaction_store, audit_log)
         writable_profiles = InMemoryUserProfileStore()
 
     snapshots = InMemorySnapshotStore()
@@ -235,7 +239,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
-    ledger = LedgerUseCases(transaction_store, audit_log, clock, ids)
+    ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )

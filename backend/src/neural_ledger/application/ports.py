@@ -161,10 +161,16 @@ class TransactionStore(Protocol):
         """This user's transaction, or None: another user's id is not found either."""
         ...
 
-    def update(self, expected: PostedTransaction, updated: PostedTransaction) -> bool:
-        """Compare-and-set one transaction (ADR-023). False, with no write, if it is missing or no longer equals expected.
 
-        Raises ValueError if the two are not the same user's same transaction.
+@runtime_checkable
+class TransactionWrites(Protocol):
+    """Commit a user's change to a transaction and its audit drafts together, or leave both unchanged (ADR-023)."""
+
+    def update_transaction(self, expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> bool:
+        """Compare-and-set. False, with no writes, if the transaction is missing or no longer equals expected.
+
+        Raises ValueError if the two are not the same user's same transaction or an event belongs to another user,
+        and IdCollision on a reused event id; any exception also leaves no writes.
         """
         ...
 
