@@ -69,6 +69,7 @@ from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
+from ..application.services.statement_model import FirstFoundModelSource, StatementModelSource
 from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
 from ..domain.finance.params import FC_0_1
@@ -225,7 +226,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     else:
         raise ValueError(f"unknown NL_LLM {s.llm!r}")
 
-    financial = FinancialUseCases(source, snapshots, bank, profiles, FC_0_1)
+    # Personas keep their fixtures; every other user gets the model of their own statements (ADR-029).
+    accounts_source = StatementModelSource(statement_store, transaction_store, FC_0_1)
+    financial = FinancialUseCases(FirstFoundModelSource((source, accounts_source)), snapshots, bank, profiles, FC_0_1)
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
