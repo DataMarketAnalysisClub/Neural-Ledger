@@ -76,6 +76,8 @@ def test_an_empty_chain_is_a_configuration_error():
 def test_jev_in_the_chain_is_live_mode_and_naive_bayes_alone_is_offline():
     assert Settings.from_env({}).mode == "offline"
     assert Settings.from_env({"NL_CLASSIFIER": "jev,naive_bayes"}).mode == "live"
+    # The Azure detector receives raw statement text before redaction: that is live too (and needs the live keys).
+    assert Settings.from_env({"NL_PII_DETECTOR": "azure"}).mode == "live"
 
 
 def test_default_never_builds_jev():

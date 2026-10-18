@@ -38,7 +38,7 @@ To forecast your cash flow, simulate purchases, compute how much you can spend o
 
 ## Who receives data
 
-With the default settings no data leaves the server. Each provider below receives data only when its setting is on. `GET /health` shows which are on (`mode`, `language_model`, `decision_chain`, `classifier`, `pii_detector`).
+With the default settings no data leaves the server. Each provider below receives data only when its setting is on. `GET /health` shows which are on (`language_model`, `decision_chain`, `classifier`, `pii_detector`); `mode` is `live` as soon as any of them sends data out.
 
 | Setting | Provider | What is sent |
 |---|---|---|

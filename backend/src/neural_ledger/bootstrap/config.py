@@ -75,7 +75,13 @@ class Settings:
 
     @property
     def mode(self) -> str:
-        offline = self.llm == "scripted" and all(m == "rules" for m in self.decision_chain) and "jev" not in self.classifiers
+        """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories) or the Azure detector."""
+        offline = (
+            self.llm == "scripted"
+            and all(m == "rules" for m in self.decision_chain)
+            and "jev" not in self.classifiers
+            and self.pii_detector == "none"
+        )
         return "offline" if offline else "live"
 
     @classmethod
