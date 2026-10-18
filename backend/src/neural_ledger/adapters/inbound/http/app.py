@@ -49,6 +49,14 @@ def _envelope_response(envelope: Any) -> JSONResponse:
     return JSONResponse(payload, status_code=_STATUS_CODES.get(payload.get("status"), 200))
 
 
+def _found_response(envelope: Any, what: str) -> JSONResponse:
+    """404 when the one thing the route names is not the caller's or does not exist; both answer alike (C04)."""
+    payload = to_primitive(envelope)
+    if payload.get("status") == "INSUFFICIENT_DATA" and payload.get("missing") == [what]:
+        return JSONResponse(payload, status_code=404)
+    return _envelope_response(envelope)
+
+
 def _action_response(outcome: Any) -> JSONResponse:
     payload = to_primitive(outcome)
     payload["facts"] = to_primitive(outcome.facts())
@@ -428,7 +436,7 @@ def create_app(
 
     @app.get("/v1/statements/{statement_id}")
     def statement(statement_id: str, request: Request):
-        return _envelope_response(services.statements.get_statement(user(request), statement_id))
+        return _found_response(services.statements.get_statement(user(request), statement_id), "statement")
 
     @app.get("/v1/transactions")
     def transactions(request: Request):
@@ -441,7 +449,7 @@ def create_app(
         category = body.get("category")
         category = category if isinstance(category, str) else ""  # not a category: INVALID_INPUT with the allowed ones
         session_id = str(body.get("session_id") or "default")
-        return _envelope_response(services.ledger.set_category(user(request), session_id, txn_id, category))
+        return _found_response(services.ledger.set_category(user(request), session_id, txn_id, category), "transaction")
 
     # ---- audit --------------------------------------------------------------------------------
 

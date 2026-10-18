@@ -153,7 +153,7 @@ def test_c04_a_user_cannot_reach_another_users_financial_records(services):
     assert client.get("/v1/transactions", headers=as_diego).json()["data"]["transactions"] == []
     foreign = client.get(f"/v1/statements/{statement_id}", headers=as_diego)
     missing = client.get("/v1/statements/stmt_does_not_exist", headers=as_diego)
-    assert foreign.status_code == missing.status_code == 409
+    assert foreign.status_code == missing.status_code == 404
     assert foreign.json()["message"] == missing.json()["message"]
     assert all(e["user_id"] == "diego" for e in client.get("/v1/audit", headers=as_diego).json()["events"])
 

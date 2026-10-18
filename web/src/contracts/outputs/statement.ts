@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of GET /v1/statements/{id}: one imported bank statement with its lines. Descriptions are untrusted third-party text, with personal data replaced at import by placeholders (ADR-028). Money is integer minor units of `currency` (CLP: pesos; USD: cents); signs are the holder's: charges negative, money in positive, and a credit card's debt (opening and closing balance) negative.
+ * data of GET /v1/statements/{id}: one imported bank statement with its lines. A statement that is not the caller's, or does not exist, is 404 with an INSUFFICIENT_DATA envelope (missing ["statement"]), the same for both. Descriptions are untrusted third-party text, with personal data replaced at import by placeholders (ADR-028). Money is integer minor units of `currency` (CLP: pesos; USD: cents); signs are the holder's: charges negative, money in positive, and a credit card's debt (opening and closing balance) negative.
  */
 export interface Statement {
   statement: Summary;

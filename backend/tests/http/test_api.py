@@ -79,7 +79,7 @@ def test_statement_upload_list_and_detail(client):
     assert detail["data"]["lines"][0]["description"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
 
     other = client.get(f"/v1/statements/{summary['statement_id']}", headers={"X-User-Id": "diego"})
-    assert other.status_code == 409 and client.get("/v1/statements", headers={"X-User-Id": "diego"}).json()["data"] == []
+    assert other.status_code == 404 and client.get("/v1/statements", headers={"X-User-Id": "diego"}).json()["data"] == []
 
 
 def test_imported_statement_reaches_the_transaction_ledger(client):
@@ -140,4 +140,5 @@ def test_the_user_sets_a_category_over_http(client):
     refused = client.patch(path, json={"category": "approved"}, headers=camila)
     assert refused.status_code == 422 and refused.json()["field"] == "category" and "movement" in refused.json()["allowed"]
     assert client.patch(path, json={"category": ["dining"]}, headers=camila).status_code == 422
-    assert client.patch(path, json={"category": "dining"}, headers={"X-User-Id": "diego"}).status_code == 409
+    assert client.patch(path, json={"category": "dining"}, headers={"X-User-Id": "diego"}).status_code == 404
+    assert client.patch("/v1/transactions/txn_nope", json={"category": "dining"}, headers=camila).status_code == 404
