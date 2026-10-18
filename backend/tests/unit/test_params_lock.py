@@ -1,8 +1,8 @@
 """Parameter lock: the numbers behind a params_version never change silently.
 
 If this fails, a value in domain/finance/params.py changed. Either revert it, or bump
-`version` (fc-0.1 -> fc-0.2), record the new fingerprint below, and log the team decision in
-docs/DECISIONS.md. The golden answers E01-E14 belong to fc-0.1.
+`version` (e.g. fc-0.2 -> fc-0.3), record the new fingerprint below, and log the team decision in
+docs/DECISIONS.md. The golden answers E01-E14 were set under fc-0.1 and hold unchanged through fc-0.3.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from neural_ledger.domain.finance.params import FC_0_1
 LOCKED = {
     "fc-0.1": "6d825a8367ab0c8c435f6207f833993648d6dba1fb497e8acfafa8e51eac4325",
     "fc-0.2": "3404ab82f69f4107063e79f88d83ddeab4feccfd4761b5cfb0c98bfab08ae4ef",  # any installment count from 1 to 48 (ADR-034)
+    "fc-0.3": "d952766e5478a69c47dacbd9f0bbd92292a2423fe7659d228c5e65183910953e",  # a single charge (1 cuota) carries no interest (ADR-034)
 }
 
 

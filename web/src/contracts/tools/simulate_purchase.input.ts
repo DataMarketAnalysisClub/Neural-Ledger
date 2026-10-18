@@ -9,12 +9,12 @@ export interface SimulatePurchaseInput {
    */
   amount: number;
   /**
-   * Number of cuotas; 1 means paid in one charge (no cuotas).
+   * Number of cuotas; 1 means paid in one charge (sin cuotas), which carries no interest whatever the rate.
    */
   installments: number;
   first_installment_month?: string;
   /**
-   * Monthly interest rate as a fraction, e.g. 0.025.
+   * Monthly interest rate as a fraction, e.g. 0.025. It prices counts of 2 or more cuotas, including the alternatives; a single charge pays none.
    */
   monthly_rate?: number;
   include_plan?: "none" | "recommended" | "active";

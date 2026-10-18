@@ -99,7 +99,7 @@ def test_results_carry_labels_sizes_and_diagnostics(results):
     assert results["label"] == bt.LABEL
     assert any("clustered by seed" in note for note in results["notes"])
     assert results["seeds"]["n"] == 2
-    assert results["versions"]["params"] == "fc-0.2"
+    assert results["versions"]["params"] == "fc-0.3"
     diagnostics = results["diagnostics"]
     assert {"non_ok_envelopes", "commitment_set_mismatches", "missing_category_trials", "estimates"} <= set(diagnostics)
     assert diagnostics["estimates"] == {"freelance.A": 8, "freelance.B": 2, "salaried.A": 8, "salaried.B": 2}

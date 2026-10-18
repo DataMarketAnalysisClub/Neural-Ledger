@@ -40,4 +40,12 @@ export interface PurchaseSimulation {
     total_cost: number;
     total_interest: number;
   }[];
+  /**
+   * The offer's monthly rate, given or the assumed default: what any count of 2 or more cuotas pays, including the alternatives. A single charge (1 cuota) pays no interest whatever it is (fc-0.3).
+   */
+  offer_rate?: number;
+  /**
+   * True when the offer gave no rate and the default was used.
+   */
+  offer_rate_assumed?: boolean;
 }
