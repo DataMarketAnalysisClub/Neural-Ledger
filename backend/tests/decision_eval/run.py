@@ -70,13 +70,13 @@ def evaluate(model: DecisionModel, examples: list[dict], *, notes: bool, reverse
         started = time.perf_counter()
         try:
             answers = model.judge(example["text"], (intent_q, INJECTION_QUESTION))
-            row["seconds"] = time.perf_counter() - started
+            row["seconds"] = round(time.perf_counter() - started, 3)  # ms: long floats look like card numbers to C07
             intent, injection = answers["intent"], answers["injection"]
             row |= {"got": intent.label, "confidence": intent.confidence, "p_injection": injection.probability("yes"), "source": intent.source}
             if reverse:
                 row["got_reversed"] = model.judge(example["text"], (reversed_q,))["intent"].label
         except DecisionModelUnavailable as exc:
-            row |= {"error": str(exc)[:200], "seconds": time.perf_counter() - started}
+            row |= {"error": str(exc)[:200], "seconds": round(time.perf_counter() - started, 3)}
         rows.append(row)
     return rows
 
