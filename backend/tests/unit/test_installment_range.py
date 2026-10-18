@@ -1,4 +1,4 @@
-"""ADR-032 (fc-0.2): any installment count from 1 (no cuotas) to max_installments is valid."""
+"""ADR-034 (fc-0.2): any installment count from 1 (no cuotas) to max_installments is valid."""
 
 from __future__ import annotations
 

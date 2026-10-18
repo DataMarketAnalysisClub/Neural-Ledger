@@ -17,7 +17,7 @@ from neural_ledger.domain.finance.params import FC_0_1
 
 LOCKED = {
     "fc-0.1": "6d825a8367ab0c8c435f6207f833993648d6dba1fb497e8acfafa8e51eac4325",
-    "fc-0.2": "3404ab82f69f4107063e79f88d83ddeab4feccfd4761b5cfb0c98bfab08ae4ef",  # any installment count from 1 to 48 (ADR-032)
+    "fc-0.2": "3404ab82f69f4107063e79f88d83ddeab4feccfd4761b5cfb0c98bfab08ae4ef",  # any installment count from 1 to 48 (ADR-034)
 }
 
 
