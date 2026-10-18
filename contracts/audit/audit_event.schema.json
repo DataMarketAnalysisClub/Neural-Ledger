@@ -12,7 +12,7 @@
     "session_id": {"type": "string"},
     "user_id": {"type": ["string", "null"], "description": "Owner of the event. Audit reads are scoped to it; null for system-wide events."},
     "actor": {"enum": ["user", "agent", "system"]},
-    "kind": {"enum": ["DECISION", "TOOL_CALL", "CLARIFICATION_REQUESTED", "INJECTION_FLAGGED", "OUT_OF_SCOPE", "VERIFICATION_FAILED", "PROPOSAL_CREATED", "ACTION_CONFIRMED", "EXECUTION_STARTED", "ACTION_EXECUTED", "ACTION_FAILED", "ACTION_BLOCKED", "STATEMENT_IMPORTED", "PROFILE_UPDATED", "USER_REGISTERED", "SESSION_STARTED", "SESSION_ENDED"]},
+    "kind": {"enum": ["DECISION", "TOOL_CALL", "CLARIFICATION_REQUESTED", "INJECTION_FLAGGED", "OUT_OF_SCOPE", "VERIFICATION_FAILED", "PROPOSAL_CREATED", "ACTION_CONFIRMED", "EXECUTION_STARTED", "ACTION_EXECUTED", "ACTION_FAILED", "ACTION_BLOCKED", "STATEMENT_IMPORTED", "CATEGORY_CHANGED", "PROFILE_UPDATED", "USER_REGISTERED", "SESSION_STARTED", "SESSION_ENDED"]},
     "user_intent": {"type": ["string", "null"]},
     "intent_confidence": {"type": ["number", "null"]},
     "tool_requested": {"type": ["string", "null"]},

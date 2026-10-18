@@ -76,6 +76,23 @@ class InMemoryTransactionStore:
         mine = [p for (owner, _), p in self._transactions.items() if owner == user_id]
         return tuple(sorted(mine, key=lambda p: (p.transaction.date, p.statement_id, p.line_index)))
 
+    def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
+        return self._transactions.get((user_id, txn_id))
+
+    def update(self, expected: PostedTransaction, updated: PostedTransaction) -> bool:
+        _check_same_transaction(expected, updated)
+        key = (expected.user_id, expected.transaction.txn_id)
+        with self._lock:
+            if self._transactions.get(key) != expected:
+                return False
+            self._transactions[key] = updated
+            return True
+
+
+def _check_same_transaction(expected: PostedTransaction, updated: PostedTransaction) -> None:
+    if (expected.user_id, expected.transaction.txn_id) != (updated.user_id, updated.transaction.txn_id):
+        raise ValueError("transaction ownership mismatch")
+
 
 class InMemoryActionRepository:
     def __init__(self) -> None:

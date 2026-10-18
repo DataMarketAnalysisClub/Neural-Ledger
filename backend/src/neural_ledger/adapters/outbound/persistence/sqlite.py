@@ -522,6 +522,28 @@ class SqliteTransactionStore:
         rows = self._db.fetchall("SELECT txn_id, payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,))
         return tuple(_posted_from(json.loads(self._cipher.open(payload, _transaction_aad(user_id, txn_id)))) for txn_id, payload in rows)
 
+    def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
+        row = self._db.fetchone("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id))
+        return None if row is None else self._open(user_id, txn_id, row[0])
+
+    def update(self, expected: PostedTransaction, updated: PostedTransaction) -> bool:
+        if (expected.user_id, expected.transaction.txn_id) != (updated.user_id, updated.transaction.txn_id):
+            raise ValueError("transaction ownership mismatch")
+        user_id, txn_id = expected.user_id, expected.transaction.txn_id
+        aad = _transaction_aad(user_id, txn_id)
+        with self._db.lock:
+            row = self._db.connection.execute("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id)).fetchone()
+            if row is None or self._open(user_id, txn_id, row[0]) != expected:
+                return False
+            self._db.connection.execute(
+                "UPDATE transactions SET payload = ? WHERE user_id = ? AND txn_id = ?",
+                (self._cipher.seal(json.dumps(to_primitive(updated)), aad), user_id, txn_id),
+            )  # autocommit (isolation_level=None); the lock makes the read and the write one step
+            return True
+
+    def _open(self, user_id: str, txn_id: str, payload: str) -> PostedTransaction:
+        return _posted_from(json.loads(self._cipher.open(payload, _transaction_aad(user_id, txn_id))))
+
 
 class SqliteSavingsRuleStore:
     """Rules created by the simulated sandbox bank, durable across restarts like the audit log."""

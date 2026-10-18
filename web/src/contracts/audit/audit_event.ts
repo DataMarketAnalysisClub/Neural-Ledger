@@ -27,6 +27,7 @@ export interface AuditEvent {
     | "ACTION_FAILED"
     | "ACTION_BLOCKED"
     | "STATEMENT_IMPORTED"
+    | "CATEGORY_CHANGED"
     | "PROFILE_UPDATED"
     | "USER_REGISTERED"
     | "SESSION_STARTED"

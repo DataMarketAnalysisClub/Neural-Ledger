@@ -435,6 +435,14 @@ def create_app(
         """The transaction ledger built from verified imported statements, with spend per category."""
         return _envelope_response(services.ledger.list_transactions(user(request)))
 
+    @app.patch("/v1/transactions/{txn_id}")
+    def set_category(txn_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        """ADR-023, G04: the user sets a transaction's category. The UI path only: no agent tool reaches it."""
+        category = body.get("category")
+        category = category if isinstance(category, str) else ""  # not a category: INVALID_INPUT with the allowed ones
+        session_id = str(body.get("session_id") or "default")
+        return _envelope_response(services.ledger.set_category(user(request), session_id, txn_id, category))
+
     # ---- audit --------------------------------------------------------------------------------
 
     @app.get("/v1/audit")

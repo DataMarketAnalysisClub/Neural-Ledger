@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..agent.questions import ChoiceQuestion
 from ..shared.hashing import content_id
 from ..statements.model import LineKind, StatementLine, StoredStatement
 from .entities import AccountType, InstallmentInfo, Transaction, TransactionKind
 
-CATEGORIZATION_VERSION = "cat-0.3"  # posting rules + vocabulary + category question; outputs carry it as params_version
+CATEGORIZATION_VERSION = "cat-0.4"  # posting rules + vocabulary + category question + user categories; outputs carry it as params_version
 
 # Spending categories a classifier may choose. The first six are the personas' categories.
 CATEGORY_OPTIONS = ("groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other")
@@ -50,6 +50,7 @@ UNCATEGORIZED = "uncategorized"
 # Naive Bayes over 8 classes gives ~0.2 to merchants it has never seen and 0.7+ to ones it has.
 MIN_CATEGORY_CONFIDENCE = 0.5
 RULE = "rule"  # classifier name recorded when a rule, not a model, chose the category
+USER = "user"  # classifier name recorded when the user chose the category (ADR-023); it wins over any model
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +81,30 @@ class PostedTransaction:
     @property
     def categorized(self) -> bool:
         return self.transaction.category != UNCATEGORIZED
+
+
+# What the user may set, by kind (ADR-023, ADR-024). The kind and the amount come from the statement and never
+# change: a deposit can be income or the holder's own money, a card payment is always the holder's own money
+# (counting it as spending would count the cuotas twice), and any charge can take a spending category or Movimiento.
+_USER_CATEGORIES = {
+    TransactionKind.INCOME: frozenset({INCOME, MOVEMENT}),
+    TransactionKind.CARD_PAYMENT: frozenset({MOVEMENT}),
+}
+_USER_SPENDING_CATEGORIES = CATEGORIES | {MOVEMENT}
+
+
+def user_categories(kind: TransactionKind) -> frozenset[str]:
+    return _USER_CATEGORIES.get(kind, _USER_SPENDING_CATEGORIES)
+
+
+def relabel(posted: PostedTransaction, category: str) -> PostedTransaction | None:
+    """The transaction with the user's category, or None if its kind cannot take that category.
+
+    Only the label changes, with classifier "user" and no confidence; the amount, the kind and the source line stay.
+    """
+    if category not in user_categories(posted.transaction.kind):
+        return None
+    return replace(posted, transaction=replace(posted.transaction, category=category), classifier=USER, confidence=None)
 
 
 def accept(guess: CategoryGuess | None, min_confidence: float = MIN_CATEGORY_CONFIDENCE) -> str:

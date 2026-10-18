@@ -230,7 +230,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
-    ledger = LedgerUseCases(transaction_store)
+    ledger = LedgerUseCases(transaction_store, audit_log, clock, ids)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )

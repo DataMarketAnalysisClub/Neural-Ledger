@@ -15,6 +15,7 @@ from neural_ledger.application.services.posting import LedgerPosting
 from neural_ledger.application.services.redaction import StatementRedactor
 from neural_ledger.application.use_cases.ledger import LedgerUseCases
 from neural_ledger.application.use_cases.statements import StatementUseCases
+from neural_ledger.domain.audit.events import verify_chain
 from neural_ledger.domain.ledger.categorization import CategoryGuess
 from neural_ledger.domain.shared.envelope import Status
 from neural_ledger.domain.statements.model import BankStatement, DailyBalance, StatementLine, StatementSummary
@@ -66,19 +67,24 @@ class _Classifier:
         return out
 
 
-def _build(classifier):
-    transactions = InMemoryTransactionStore()
+def _parts(classifier, audit=None):
+    transactions, audit, ids = InMemoryTransactionStore(), audit or InMemoryAuditLog(), SequentialIds()
     clock = FixedClock(datetime(2026, 10, 29, tzinfo=UTC))
     statements = StatementUseCases(
         _Reader(),
         StatementRedactor(NullDetector()),
         InMemoryStatementStore(),
         LedgerPosting(classifier, transactions),
-        InMemoryAuditLog(),
+        audit,
         clock,
-        SequentialIds(),
+        ids,
     )
-    return statements, LedgerUseCases(transactions)
+    return statements, LedgerUseCases(transactions, audit, clock, ids), audit, transactions
+
+
+def _build(classifier):
+    statements, ledger, _, _ = _parts(classifier)
+    return statements, ledger
 
 
 def test_import_posts_classified_charges_and_income_into_the_ledger():
@@ -112,7 +118,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
         "camila.spending.CLP.uncategorized": 6_000,
         "camila.income.CLP": 900_000,
     }
-    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.3"
+    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.4"
 
 
 def test_ledger_is_scoped_to_its_user():
@@ -160,3 +166,107 @@ def test_classifier_is_chosen_by_setting_and_unknown_names_fail_at_startup():
     assert {"naive_bayes", "jev"} <= set(CLASSIFIERS)
     with pytest.raises(ValueError, match="NL_CLASSIFIER"):
         build(make_settings(classifiers=("jev", "magic")))
+
+
+# ---- the user sets a category (ADR-023, G04) -----------------------------------------------------
+
+
+def _imported(audit=None):
+    statements, ledger, audit, transactions = _parts(_Classifier(), audit)
+    statements.import_statement("camila", b"%PDF")
+    return statements, ledger, audit, {t.amount: t.txn_id for t in ledger.list_transactions("camila").data.transactions}
+
+
+def test_the_users_category_wins_is_audited_and_moves_the_totals():
+    _, ledger, audit, ids = _imported()
+    changed = ledger.set_category("camila", "web-1", ids[-5_000], "dining")
+
+    assert changed.status is Status.OK and changed.params_version == "cat-0.4"
+    assert (changed.data.category, changed.data.classifier, changed.data.confidence, changed.data.amount, changed.data.kind) == (
+        "dining", "user", None, -5_000, "purchase",  # only the label changes; amount and kind come from the statement
+    )
+    listed = ledger.list_transactions("camila").data
+    assert [(t.category, t.spent) for t in listed.spending] == [("groceries", 50_000), ("dining", 5_000), ("uncategorized", 1_000)]
+    (event,) = [e.draft for e in audit.events() if e.draft.kind.value == "CATEGORY_CHANGED"]
+    assert (event.actor.value, event.user_id, event.session_id, event.forecast_snapshot_id) == ("user", "camila", "web-1", ids[-5_000])
+    assert event.detail == "from=uncategorized to=dining previous_classifier=keywords@test"
+    assert verify_chain(audit.events()).ok
+
+
+def test_the_users_category_survives_a_reimport():
+    statements, ledger, _, ids = _imported()
+    ledger.set_category("camila", "s", ids[-30_000], "shopping")
+    statements.import_statement("camila", b"%PDF")  # the classifier says groceries again
+    (txn,) = [t for t in ledger.list_transactions("camila").data.transactions if t.amount == -30_000]
+    assert (txn.category, txn.classifier) == ("shopping", "user")
+
+
+def test_a_movimiento_is_neither_spending_nor_income():
+    _, ledger, _, ids = _imported()
+    assert ledger.set_category("camila", "s", ids[-30_000], "movement").ok
+    assert ledger.set_category("camila", "s", ids[900_000], "movement").ok  # money in from the holder's own account
+    listed = ledger.list_transactions("camila")
+    assert [(t.category, t.spent) for t in listed.data.spending] == [("groceries", 20_000), ("uncategorized", 6_000)]
+    assert listed.data.income == ()
+    assert "camila.income.CLP" not in {f.key for f in listed.facts}
+
+
+@pytest.mark.parametrize(
+    ("amount", "category", "allowed"),
+    [
+        (900_000, "groceries", ("income", "movement")),  # a deposit is not spending
+        (-30_000, "income", ("dining", "entertainment", "groceries", "health", "movement", "other", "shopping", "transport", "utilities")),
+        (-30_000, "uncategorized", None),
+        (-30_000, "approved", None),
+        (-30_000, "", None),
+    ],
+)
+def test_a_category_the_kind_cannot_take_is_refused_and_nothing_changes(amount, category, allowed):
+    _, ledger, audit, ids = _imported()
+    before, events = ledger.list_transactions("camila"), len(audit.events())
+    refused = ledger.set_category("camila", "s", ids[amount], category)
+    assert refused.status is Status.INVALID_INPUT and refused.field == "category"
+    if allowed is not None:
+        assert refused.allowed == allowed
+    assert ledger.list_transactions("camila") == before and len(audit.events()) == events
+
+
+def test_a_card_payment_is_always_a_movimiento():
+    from dataclasses import replace
+
+    from neural_ledger.domain.ledger.categorization import relabel, user_categories
+    from neural_ledger.domain.ledger.entities import TransactionKind
+
+    assert user_categories(TransactionKind.CARD_PAYMENT) == frozenset({"movement"})
+    _, ledger, _, ids = _imported()
+    posted = ledger._transactions.get("camila", ids[-30_000])
+    payment = replace(posted, transaction=replace(posted.transaction, kind=TransactionKind.CARD_PAYMENT, category="movement"))
+    assert relabel(payment, "other") is None  # as spending it would count the cuotas twice
+
+
+def test_another_users_transaction_is_not_found_and_not_changed():
+    _, ledger, audit, ids = _imported()
+    events = len(audit.events())
+    missing = ledger.set_category("diego", "s", ids[-30_000], "dining")
+    assert missing.status is Status.INSUFFICIENT_DATA and missing.missing == ("transaction",)
+    assert ledger.set_category("camila", "s", "txn_nope", "dining").status is Status.INSUFFICIENT_DATA
+    assert ledger.list_transactions("camila").data.transactions[0].category == "groceries" and len(audit.events()) == events
+
+
+class _FailingAudit(InMemoryAuditLog):
+    fail = False
+
+    def append(self, draft):
+        if self.fail:
+            raise RuntimeError("audit store down")
+        return super().append(draft)
+
+
+def test_a_change_that_cannot_be_audited_is_undone():
+    audit = _FailingAudit()
+    _, ledger, _, ids = _imported(audit)
+    audit.fail = True
+    with pytest.raises(RuntimeError):
+        ledger.set_category("camila", "s", ids[-30_000], "dining")
+    (txn,) = [t for t in ledger.list_transactions("camila").data.transactions if t.amount == -30_000]
+    assert (txn.category, txn.classifier) == ("groceries", "keywords@test")

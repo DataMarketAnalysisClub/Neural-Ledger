@@ -266,3 +266,25 @@ def test_transactions_survive_a_restart(tmp_path):
     SqliteTransactionStore(db, TEST_CIPHER).add(_posted())
     db.connection.close()
     assert SqliteTransactionStore(SqliteDatabase(path), TEST_CIPHER).for_user("camila") == _posted()
+
+
+def test_transaction_get_and_compare_and_set_update(transaction_store):
+    from neural_ledger.domain.ledger.categorization import relabel
+
+    posted = _posted()
+    transaction_store.add(posted)
+    first = posted[0]
+    assert transaction_store.get("camila", first.transaction.txn_id) == first
+    assert transaction_store.get("diego", first.transaction.txn_id) is None  # another user's id is not found
+
+    mine = relabel(first, "dining")
+    assert transaction_store.update(first, mine) is True
+    assert transaction_store.get("camila", first.transaction.txn_id) == mine
+    assert transaction_store.update(first, relabel(first, "health")) is False  # stale: it no longer equals expected
+    assert transaction_store.get("camila", first.transaction.txn_id) == mine
+    assert transaction_store.for_user("camila") == (mine, posted[1])  # order and the other row unchanged
+
+    theirs = _posted(user_id="diego")[0]
+    assert transaction_store.update(theirs, relabel(theirs, "dining")) is False  # never stored for diego
+    with pytest.raises(ValueError):
+        transaction_store.update(mine, relabel(posted[1], "movement"))  # not the same transaction

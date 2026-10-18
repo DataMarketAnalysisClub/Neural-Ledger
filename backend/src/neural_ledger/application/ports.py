@@ -157,6 +157,17 @@ class TransactionStore(Protocol):
         """Oldest first: by date, then statement line."""
         ...
 
+    def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
+        """This user's transaction, or None: another user's id is not found either."""
+        ...
+
+    def update(self, expected: PostedTransaction, updated: PostedTransaction) -> bool:
+        """Compare-and-set one transaction (ADR-023). False, with no write, if it is missing or no longer equals expected.
+
+        Raises ValueError if the two are not the same user's same transaction.
+        """
+        ...
+
 
 @runtime_checkable
 class SnapshotStore(Protocol):

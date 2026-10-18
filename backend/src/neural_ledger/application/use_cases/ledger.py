@@ -1,7 +1,9 @@
-"""Read the transaction ledger built from imported statements, with spend totals per category.
+"""Read the transaction ledger built from imported statements, with spend totals per category, and let the user
+set a transaction's category (ADR-023).
 
-Totals are computed here from stored integers; the category labels came from a classifier and
-were gated by the domain. Merchant text leaves this layer wrapped as untrusted text.
+Totals are computed here from stored integers; the category labels came from a classifier and were gated by
+the domain, or from the user. Merchant text leaves this layer wrapped as untrusted text. Setting a category is
+a UI route only, never an agent tool.
 """
 
 from __future__ import annotations
@@ -10,11 +12,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from ...domain.agent.untrusted import wrap_untrusted
-from ...domain.ledger.categorization import CATEGORIZATION_VERSION, PostedTransaction
+from ...domain.audit.events import Actor, AuditDraft, AuditKind
+from ...domain.ledger.categorization import CATEGORIZATION_VERSION, MOVEMENT, PostedTransaction, relabel, user_categories
 from ...domain.ledger.entities import InstallmentInfo, TransactionKind
 from ...domain.shared.envelope import Envelope, Fact
 from ...domain.shared.hashing import content_id
-from ..ports import TransactionStore
+from ..ports import AuditLog, Clock, IdGenerator, TransactionStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,14 +62,18 @@ class TransactionList:
 
 
 class LedgerUseCases:
-    def __init__(self, transactions: TransactionStore) -> None:
+    def __init__(self, transactions: TransactionStore, audit: AuditLog, clock: Clock, ids: IdGenerator) -> None:
         self._transactions = transactions
+        self._audit = audit
+        self._clock = clock
+        self._ids = ids
 
     def list_transactions(self, user_id: str) -> Envelope[TransactionList]:
         posted = self._transactions.for_user(user_id)
-        # Card payments are the holder's own money moving (category "movement"): neither spending nor income.
-        spending = _totals((p for p in posted if p.transaction.kind in SPENDING_KINDS), sign=-1)
-        income = _totals((p for p in posted if p.transaction.kind is TransactionKind.INCOME), sign=1)
+        # Movimientos are the holder's own money moving (card payments by rule, anything else the user marks, ADR-024):
+        # neither spending nor income.
+        spending = _totals((p for p in posted if p.transaction.kind in SPENDING_KINDS and not _movement(p)), sign=-1)
+        income = _totals((p for p in posted if p.transaction.kind is TransactionKind.INCOME and not _movement(p)), sign=1)
         facts = [Fact(f"{user_id}.transactions", len(posted), "count", "transactions in the ledger from imported statements")]
         for t in spending:
             facts.append(Fact(f"{user_id}.spending.{t.currency}.{t.category}", t.spent, t.currency, f"sum of {t.count} charges"))
@@ -81,7 +88,49 @@ class LedgerUseCases:
         )
 
 
+    def set_category(self, user_id: str, session_id: str, txn_id: str, category: str) -> Envelope[TransactionView]:
+        """The user's category wins over any model and survives re-imports, which keep a stored category.
+
+        The kind and amount never change; a category the kind cannot take is INVALID_INPUT with the allowed ones.
+        """
+        current = self._transactions.get(user_id, txn_id)
+        if current is None:
+            return Envelope.insufficient(("transaction",), params_version=CATEGORIZATION_VERSION, message="no such transaction for this user")
+        updated = relabel(current, category)
+        if updated is None:
+            allowed = tuple(sorted(user_categories(current.transaction.kind)))
+            return Envelope.invalid("category", allowed, params_version=CATEGORIZATION_VERSION, message=f"a {current.transaction.kind.value} can take only these categories")
+        if not self._transactions.update(current, updated):
+            return Envelope.invalid("transaction", (), params_version=CATEGORIZATION_VERSION, message="transaction changed; reload and retry")
+        draft = AuditDraft(
+            event_id=self._ids.new("evt"),
+            timestamp=self._clock.now(),
+            session_id=session_id,
+            actor=Actor.USER,
+            kind=AuditKind.CATEGORY_CHANGED,
+            forecast_snapshot_id=txn_id,
+            policy_version=CATEGORIZATION_VERSION,
+            detail=f"from={current.transaction.category} to={category} previous_classifier={current.classifier}",
+            user_id=user_id,
+        )
+        try:
+            self._audit.append(draft)
+        except BaseException:
+            self._transactions.update(updated, current)  # an unaudited change must not stay
+            raise
+        return Envelope.success(
+            _view(updated),
+            params_version=CATEGORIZATION_VERSION,
+            snapshot_id=content_id("txn", user_id, txn_id, category),
+            as_of=updated.transaction.date.isoformat(),
+        )
+
+
 SPENDING_KINDS = frozenset({TransactionKind.PURCHASE, TransactionKind.FEE, TransactionKind.REFUND})
+
+
+def _movement(p: PostedTransaction) -> bool:
+    return p.transaction.category == MOVEMENT
 
 
 def _totals(posted, sign: int) -> tuple[CategoryTotalView, ...]:
