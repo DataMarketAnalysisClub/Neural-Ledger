@@ -29,3 +29,13 @@ test("New conversation sends a new session_id, empties the log and scopes the au
   await expect.poll(() => rows.count()).toBeLessThan(all); // only the second conversation's events
   expect(await rows.count()).toBeGreaterThan(0);
 });
+
+test("long tables scroll inside their box: the page never grows past the app", async ({ page }) => {
+  for (const path of ["/audit", "/statements"]) {
+    await page.goto(path);
+    if (path === "/statements") await page.getByRole("radio", { name: "Transactions" }).check({ force: true });
+    await expect(page.locator("main")).not.toContainText("Loading");
+    const [doc, app] = await page.evaluate(() => [document.documentElement.scrollHeight, document.getElementById("root")!.scrollHeight]);
+    expect(doc).toBeLessThanOrEqual(app);
+  }
+});

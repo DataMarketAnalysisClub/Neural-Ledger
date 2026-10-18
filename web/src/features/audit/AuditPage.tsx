@@ -3,7 +3,7 @@ import { CheckCircle, LinkSimple, LinkBreak, Prohibit } from "@phosphor-icons/re
 import { useAudit, useFinancialState, usePersona, useVerifyChain } from "@/api/hooks";
 import type { AuditEvent } from "@/api/client";
 import { VerdictBanner } from "@/components/actions";
-import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, Surface, cn } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, ScrollBox, Section, cn, stickyHead } from "@/components/ui";
 import { formatDate, shortHash } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
 
@@ -123,10 +123,10 @@ export function AuditPage() {
         {shown.length === 0 ? (
           <EmptyState title={t("audit.empty")} />
         ) : (
-          <Surface className="overflow-x-auto">
+          <ScrollBox label={t("audit.scrollBox")}>
             <table className="w-full min-w-[760px] text-sm">
               <caption className="sr-only">{t("nav.audit")}</caption>
-              <thead>
+              <thead className={stickyHead}>
                 <tr className="border-b border-line text-left text-xs text-ink-3">
                   <th scope="col" className="w-16 px-5 py-3 font-medium">
                     {t("audit.columns.sequence")}
@@ -192,7 +192,7 @@ export function AuditPage() {
                 })}
               </tbody>
             </table>
-          </Surface>
+          </ScrollBox>
         )}
       </Section>
     </>

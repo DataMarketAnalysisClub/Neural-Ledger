@@ -83,12 +83,8 @@ def validate_purchase(
 ) -> None:
     if isinstance(amount, bool) or not isinstance(amount, int) or not 1 <= amount <= params.max_purchase_amount:
         raise InvalidInput("amount", f"amount must be an integer from 1 to {params.max_purchase_amount}")
-    if installments not in params.allowed_installments:
-        raise InvalidInput(
-            "installments",
-            "installments must be one of the allowed counts",
-            tuple(str(n) for n in params.allowed_installments),
-        )
+    if isinstance(installments, bool) or not isinstance(installments, int) or not 1 <= installments <= params.max_installments:
+        raise InvalidInput("installments", f"installments must be an integer from 1 to {params.max_installments}")
     if first < model.first_cycle:
         raise InvalidInput("first_installment_month", f"first installment cannot be before {model.first_cycle}")
 
@@ -202,7 +198,7 @@ def _alternatives(
             break
     # (b) another installment count that fits, lowest total interest first
     fitting = []
-    for n in params.allowed_installments:
+    for n in params.suggested_installments:
         if n == q.installments:
             continue
         candidate = quote(q.principal, n, q.monthly_rate, rate_assumed=q.rate_assumed)

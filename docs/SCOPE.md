@@ -331,7 +331,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 
 - **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Implemented: commitments (4.1), income (4.2), spend (4.3) over pay cycles. It reproduces `data/personas/camila.json` and `diego.json` field by field from `data/ledgers/*.json`, and E01–E14 pass on the estimated models. Switch the app with `NL_MODEL_SOURCE=ledger` (default stays `fixture`). Implementation choices: F9–F15.
 - **Stage 2, projection** (model → answers): implemented in `domain/finance/` as a reference for Role A to own, review or replace. Trough recurrence `B_m = B_(m-1) + I − K − V − R − P − S`; protected surplus = minimum conservative headroom; rule sizing `R = floor_10k(share × min A over [s, s+5])` with H5; cuota `c = P·r/(1−(1+r)^−n)`; capacity = weakest band.
-- **Parameters** `fc-0.1` live in `domain/finance/params.py`. Changing one means a new version, which the audit log records.
+- **Parameters** `fc-0.2` live in `domain/finance/params.py` (`fc-0.1` plus any installment count from 1 to 48, ADR-034). Changing one means a new version, which the audit log records.
 - **All 14 golden answers (E01–E14) reproduce** on fixture and ledger sources. Unit invariant, malformed-ledger/robustness and hypothesis property suites guard the implementation; ADR-014 retains two strict counterexample xfails and two non-strict xpasses. The opt-in synthetic backtest (F16-F17) is implementation validation only; see `docs/FINANCIAL_CORE.md` and `docs/BACKTEST.md`.
 
 ## 9. What the review found

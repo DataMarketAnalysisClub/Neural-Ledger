@@ -171,7 +171,7 @@ def test_tool_fact_matrix_and_forwarded_warnings(source, persona):
     assert {"RATE_ASSUMED", "FIRST_INSTALLMENT_ASSUMED"} <= codes
     if persona == "camila":
         assert "PROFILE_CAPPED" in codes
-    assert _check(financial.simulate_purchase(persona, 400_000, 7)) == set()
+    assert _check(financial.simulate_purchase(persona, 400_000, 49)) == set()
     assert _check(financial.forecast("nobody")) == set()
 
 
@@ -226,7 +226,7 @@ def test_error_field_patterns_have_real_producers():
             assert envelope.field
             fields.add(envelope.field)
     services, _ = build(make_settings())
-    fields.add(services.financial.simulate_purchase("camila", 400_000, 7).field)
+    fields.add(services.financial.simulate_purchase("camila", 400_000, 49).field)
     try:
         parse_ledger(None)
     except InvalidInput as exc:

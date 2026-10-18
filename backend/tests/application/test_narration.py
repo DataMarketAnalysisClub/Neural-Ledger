@@ -25,7 +25,7 @@ CALLS = [
     ("derive_permitted_profile", {"tolerance": "aggressive"}),
     ("compute_savings_plan", {"permitted_profile": "aggressive"}),
     ("get_pending_actions", {}),
-    ("simulate_purchase", {"amount": 400000, "installments": 7}),
+    ("simulate_purchase", {"amount": 400000, "installments": 49}),
 ]
 
 

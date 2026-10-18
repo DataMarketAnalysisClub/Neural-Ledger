@@ -17,6 +17,7 @@ from neural_ledger.domain.finance.params import FC_0_1
 
 LOCKED = {
     "fc-0.1": "6d825a8367ab0c8c435f6207f833993648d6dba1fb497e8acfafa8e51eac4325",
+    "fc-0.2": "3404ab82f69f4107063e79f88d83ddeab4feccfd4761b5cfb0c98bfab08ae4ef",  # any installment count from 1 to 48 (ADR-034)
 }
 
 
@@ -38,7 +39,7 @@ def test_the_version_label_is_not_part_of_the_fingerprint():
         {"seasonal_factor_max": FC_0_1.seasonal_factor_max + Fraction(1, 10**12)},
         {"profile_share": (Fraction(2, 5), Fraction(3, 5), Fraction(4, 5) + Fraction(1, 10**9))},
         {"essential_categories": FC_0_1.essential_categories | {"dining"}},
-        {"allowed_installments": (*FC_0_1.allowed_installments, 36)},
+        {"suggested_installments": (*FC_0_1.suggested_installments, 36)},
         {"income_cv_ddof": 0},
     ],
     ids=lambda c: next(iter(c)),
