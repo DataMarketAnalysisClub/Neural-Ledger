@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from neural_ledger.adapters.outbound.persistence.field_cipher import FieldCipher
 from neural_ledger.adapters.outbound.persistence.memory import (
     InMemoryActionRepository,
     InMemoryAuditLog,
@@ -30,6 +31,7 @@ from neural_ledger.domain.actions.terms import (
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, verify_chain
 
 NOW = datetime(2026, 10, 29, 15, 0, tzinfo=UTC)
+TEST_CIPHER = FieldCipher(bytes(range(32)))
 TERMS = ActionTerms(ActionType.CREATE_SAVINGS_RULE, 100_000, "CLP", Frequency.MONTHLY, "checking", "sandbox_savings", date(2027, 1, 1))
 
 
@@ -117,7 +119,7 @@ def statement_store(request, tmp_path):
 
     if request.param == "memory":
         return InMemoryStatementStore()
-    return SqliteStatementStore(SqliteDatabase(tmp_path / "test.db"))
+    return SqliteStatementStore(SqliteDatabase(tmp_path / "test.db"), TEST_CIPHER)
 
 
 def _stored(statement_id: str = "stmt_1", user_id: str = "camila"):
@@ -208,7 +210,7 @@ def transaction_store(request, tmp_path):
 
     if request.param == "memory":
         return InMemoryTransactionStore()
-    return SqliteTransactionStore(SqliteDatabase(tmp_path / "test.db"))
+    return SqliteTransactionStore(SqliteDatabase(tmp_path / "test.db"), TEST_CIPHER)
 
 
 def _posted(user_id: str = "camila"):
@@ -261,6 +263,6 @@ def test_transactions_survive_a_restart(tmp_path):
 
     path = tmp_path / "ledger.db"
     db = SqliteDatabase(path)
-    SqliteTransactionStore(db).add(_posted())
+    SqliteTransactionStore(db, TEST_CIPHER).add(_posted())
     db.connection.close()
-    assert SqliteTransactionStore(SqliteDatabase(path)).for_user("camila") == _posted()
+    assert SqliteTransactionStore(SqliteDatabase(path), TEST_CIPHER).for_user("camila") == _posted()

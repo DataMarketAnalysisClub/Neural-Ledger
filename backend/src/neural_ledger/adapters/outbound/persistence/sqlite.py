@@ -46,6 +46,7 @@ from ....domain.statements.model import (
 )
 from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import QuestionnaireAnswer, UserProfile
+from .field_cipher import FieldCipher
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -415,26 +416,42 @@ def _stored_statement_from(payload: dict) -> StoredStatement:
 
 
 class SqliteStatementStore:
-    def __init__(self, db: SqliteDatabase) -> None:
+    """Payloads are sealed with the data key (G11); ids and the owner stay in clear for lookups."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def add(self, stored: StoredStatement) -> bool:
+        payload = self._cipher.seal(json.dumps(to_primitive(stored)), _statement_aad(stored.user_id, stored.statement_id))
         with self._db.lock:
             cursor = self._db.connection.execute(
                 "INSERT OR IGNORE INTO statements (statement_id, user_id, payload) VALUES (?, ?, ?)",
-                (stored.statement_id, stored.user_id, json.dumps(to_primitive(stored))),
+                (stored.statement_id, stored.user_id, payload),
             )
             return cursor.rowcount == 1
 
     def get(self, user_id: str, statement_id: str) -> StoredStatement | None:
-        row = self._db.connection.execute(
-            "SELECT payload FROM statements WHERE user_id = ? AND statement_id = ?", (user_id, statement_id)
-        ).fetchone()
-        return _stored_statement_from(json.loads(row[0])) if row else None
+        row = self._db.fetchone(
+            "SELECT user_id, statement_id, payload FROM statements WHERE user_id = ? AND statement_id = ?", (user_id, statement_id)
+        )
+        return self._open(row) if row else None
 
     def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
-        rows = self._db.connection.execute("SELECT payload FROM statements WHERE user_id = ? ORDER BY sequence", (user_id,)).fetchall()
-        return tuple(_stored_statement_from(json.loads(r[0])) for r in rows)
+        rows = self._db.fetchall("SELECT user_id, statement_id, payload FROM statements WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(self._open(r) for r in rows)
+
+    def _open(self, row: tuple) -> StoredStatement:
+        user_id, statement_id, payload = row
+        return _stored_statement_from(json.loads(self._cipher.open(payload, _statement_aad(user_id, statement_id))))
+
+
+def _statement_aad(user_id: str, statement_id: str) -> str:
+    return f"statements|{user_id}|{statement_id}"
+
+
+def _transaction_aad(user_id: str, txn_id: str) -> str:
+    return f"transactions|{user_id}|{txn_id}"
 
 
 def _installment_info_from(payload: dict | None) -> InstallmentInfo | None:
@@ -472,11 +489,22 @@ def _posted_from(payload: dict) -> PostedTransaction:
 
 
 class SqliteTransactionStore:
-    def __init__(self, db: SqliteDatabase) -> None:
+    """Payloads are sealed with the data key (G11); the owner, id and posting date stay in clear for lookups and order."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def add(self, posted: Sequence[PostedTransaction]) -> int:
-        rows = [(p.transaction.txn_id, p.user_id, p.transaction.date.isoformat(), json.dumps(to_primitive(p))) for p in posted]
+        rows = [
+            (
+                p.transaction.txn_id,
+                p.user_id,
+                p.transaction.date.isoformat(),
+                self._cipher.seal(json.dumps(to_primitive(p)), _transaction_aad(p.user_id, p.transaction.txn_id)),
+            )
+            for p in posted
+        ]
         with self._db.lock:
             before = self._db.connection.total_changes
             self._db.connection.execute("BEGIN")
@@ -491,10 +519,8 @@ class SqliteTransactionStore:
             return self._db.connection.total_changes - before
 
     def for_user(self, user_id: str) -> tuple[PostedTransaction, ...]:
-        rows = self._db.connection.execute(
-            "SELECT payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,)
-        ).fetchall()
-        return tuple(_posted_from(json.loads(r[0])) for r in rows)
+        rows = self._db.fetchall("SELECT txn_id, payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,))
+        return tuple(_posted_from(json.loads(self._cipher.open(payload, _transaction_aad(user_id, txn_id)))) for txn_id, payload in rows)
 
 
 class SqliteSavingsRuleStore:

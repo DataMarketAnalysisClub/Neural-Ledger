@@ -36,6 +36,7 @@ class Settings:
     jev_model: str = "jev-1.13.0"  # pinned: the jev-latest alias moves when TypeSafe ships a release
     persistence: str = "memory"  # memory | sqlite
     sqlite_path: str = "./var/neural_ledger.db"
+    data_key: str | None = None  # G11: 64 hex chars sealing SQLite payloads; offline without it, a key file next to the database
     clock: str = "system"  # system | fixed (tests and recorded demos)
     fixed_now: str = "2026-10-29T12:00:00-03:00"
     ids: str = "uuid"  # uuid | sequential
@@ -45,6 +46,7 @@ class Settings:
     # The web app reaches the API through a same-origin proxy (nginx at /api in Docker, the Vite dev proxy),
     # so CORS only matters for a UI served from another origin. "*" only from an explicit NL_CORS_ORIGINS=*.
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
+    rate_limit: bool = True  # G07: 429 over the per-caller and per-IP budgets in adapters/inbound/http/rate_limit.py
     ocr_model_dir: str | None = None  # EasyOCR weights; None = ~/.EasyOCR/model (scans and photos only)
     classifiers: tuple[str, ...] = ("naive_bayes",)  # spending categories, tried in order, e.g. ("jev", "naive_bayes"); see CLASSIFIERS
     pii_detector: str = "none"  # none | azure: a second layer after the redaction rules; see DETECTORS in container.py
@@ -98,6 +100,7 @@ class Settings:
             jev_model=get("NL_JEV_MODEL", cls.jev_model),
             persistence=get("NL_PERSISTENCE", cls.persistence),
             sqlite_path=get("NL_SQLITE_PATH", cls.sqlite_path),
+            data_key=e.get("NL_DATA_KEY") or None,
             clock=get("NL_CLOCK", cls.clock),
             fixed_now=get("NL_FIXED_NOW", cls.fixed_now),
             ids=get("NL_IDS", cls.ids),
@@ -105,6 +108,7 @@ class Settings:
             data_dir=Path(e["NL_DATA_DIR"]) if e.get("NL_DATA_DIR") else None,
             contracts_dir=Path(e["NL_CONTRACTS_DIR"]) if e.get("NL_CONTRACTS_DIR") else None,
             cors_origins=tuple(o.strip() for o in get("NL_CORS_ORIGINS", "http://localhost:3000").split(",")),
+            rate_limit=get("NL_RATE_LIMIT", "on").lower() not in ("off", "false", "0"),
             ocr_model_dir=e.get("NL_OCR_MODEL_DIR") or None,
             classifiers=classifiers or cls.classifiers,
             pii_detector=get("NL_PII_DETECTOR", cls.pii_detector),
