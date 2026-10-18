@@ -20,6 +20,8 @@ export interface AuthContextValue {
   readonly signin: (input: SigninInput) => Promise<void>;
   readonly explore: (persona: "camila" | "diego") => Promise<void>;
   readonly signout: () => Promise<void>;
+  /** Re-read /v1/me for the same session, e.g. after an import changed the account's data source (ADR-029). */
+  readonly refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -84,6 +86,18 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     await accountsApi.signout();
     await transition(false);
   }, [transition]);
+  const refreshMe = useCallback(async () => {
+    if (mode !== "accounts") return;
+    const started = generation.current;
+    try {
+      const me = await accountsApi.me();
+      // Only if no sign-in, sign-out or switch happened meanwhile, and it is still the same account.
+      setSession((current) => started === generation.current && current.status === "authenticated" && current.me.user_id === me.user_id
+        ? { status: "authenticated", me } : current);
+    } catch {
+      // Keep the current state: the next request that needs a session reports the problem.
+    }
+  }, [mode]);
   const retry = useCallback(() => {
     generation.current += 1;
     setSession({ status: "loading" });
@@ -95,8 +109,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     mode, me: session.status === "authenticated" ? session.me : null,
     pending: health.isPending || (mode === "accounts" && session.status === "loading"),
     error: health.error ?? (session.status === "error" ? session.error : null),
-    retry, signup, signin, explore, signout,
-  }), [mode, session, health.isPending, health.error, retry, signup, signin, explore, signout]);
+    retry, signup, signin, explore, signout, refreshMe,
+  }), [mode, session, health.isPending, health.error, retry, signup, signin, explore, signout, refreshMe]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
