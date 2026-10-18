@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient
 from neural_ledger.adapters.inbound.http.app import create_app
 from neural_ledger.bootstrap.config import DEV_SECRET, Settings
 from neural_ledger.bootstrap.container import build
+from neural_ledger.domain.audit.events import AuditKind
 from neural_ledger.domain.shared.serialization import to_primitive
 from tests.conftest import make_settings
 
@@ -345,9 +346,20 @@ def test_g03_a_user_can_delete_their_data(services):
     assert ("DELETE", "/v1/me/data") in _routes(services)
 
 
-@gap("no correction of a transaction (ADR-021, ADR-023). Ley 21.719 art. 6 (rectificación)")
 def test_g04_a_user_can_correct_their_records(services):
+    """Ley 21.719 art. 6 (rectificación). Built for categories (ADR-023): PATCH /v1/transactions/{txn_id}, audited
+    as a user action. Line corrections for unreconciled statements (ADR-021) are still to come."""
     assert any(method == "PATCH" and path.startswith("/v1/transactions/") for method, path in _routes(services))
+    assert "CATEGORY_CHANGED" in {kind.value for kind in AuditKind}
+
+
+def test_g04_no_agent_tool_can_set_a_category():
+    """ADR-023: a category is the user's correction, so it is set only through the UI route. The catalog never
+    reaches LedgerUseCases.set_category, and no tool contract offers it."""
+    catalog = (Path(__file__).parents[2] / "src/neural_ledger/application/catalog.py").read_text()
+    assert "set_category" not in catalog and "LedgerUseCases" not in catalog
+    tools = Path(__file__).parents[3] / "contracts/tools"
+    assert not [f.name for f in tools.glob("*.json") if "categor" in f.name]
 
 
 @gap("no way to oppose or block processing. Ley 21.719 arts. 8 (oposición) and 8 ter (bloqueo)")
