@@ -21,7 +21,7 @@ from ..shared.hashing import content_id
 from ..statements.model import LineKind, StatementLine, StoredStatement
 from .entities import AccountType, InstallmentInfo, Transaction, TransactionKind
 
-CATEGORIZATION_VERSION = "cat-0.4"  # posting rules + vocabulary + category question + user categories; outputs carry it as params_version
+CATEGORIZATION_VERSION = "cat-0.5"  # posting rules (own money by rule) + vocabulary + category question + user categories; outputs carry it as params_version
 
 # Spending categories a classifier may choose. The first six are the personas' categories.
 CATEGORY_OPTIONS = ("groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other")
@@ -133,10 +133,21 @@ def transaction_kind(account_type: AccountType, line: StatementLine) -> Transact
 _RULE_CATEGORIES = {TransactionKind.INCOME: INCOME, TransactionKind.CARD_PAYMENT: MOVEMENT}
 
 
+def _rule_category(account_type: AccountType, line: StatementLine) -> str | None:
+    """The category a rule gives this line, or None if a classifier chooses it.
+
+    The layout's own-money mark (ADR-024) wins over the sign: money to the holder's savings or card is a Movimiento,
+    never spending, and money back from their own account is not income.
+    """
+    if line.kind is LineKind.TRANSFER_OWN:
+        return MOVEMENT
+    return _RULE_CATEGORIES.get(transaction_kind(account_type, line))
+
+
 def classifiable(stored: StoredStatement) -> tuple[StatementLine, ...]:
     """The lines whose category a classifier chooses; the others get theirs by rule."""
     s = stored.statement
-    return tuple(line for line in s.lines if transaction_kind(s.account_type, line) not in _RULE_CATEGORIES)
+    return tuple(line for line in s.lines if _rule_category(s.account_type, line) is None)
 
 
 def post_statement(
@@ -162,8 +173,9 @@ def post_statement(
     posted = []
     for line in s.lines:
         kind = transaction_kind(s.account_type, line)
-        if kind in _RULE_CATEGORIES:
-            category, method, confidence = _RULE_CATEGORIES[kind], RULE, None
+        rule = _rule_category(s.account_type, line)
+        if rule is not None:
+            category, method, confidence = rule, RULE, None
         else:
             guess = guesses.get(line.index)
             category = accept(guess, min_confidence)

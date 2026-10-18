@@ -24,12 +24,20 @@ from .....domain.statements.model import BankStatement, DailyBalance, StatementL
 from ..ocr_tabular import Table, TableError, TableSpec, norm_text
 from .base import Bank, column_index, day_month, parse_clp
 
+# The holder's own money on a Santander checking account (ADR-024): a transfer to their savings, a payment to their
+# card. Shared by the PDF and the .xlsx layouts, which print the same descriptions.
+SANTANDER_OWN_MONEY = (
+    re.compile(r"\btransf(?:erencia)?\s+a\s+(?:cuenta\s+)?ahorro\b", re.IGNORECASE),
+    re.compile(r"\bpago\s+(?:de\s+)?tarjeta\b", re.IGNORECASE),
+)
+
 _PERIOD = re.compile(r"(?P<account>\d[\d-]{6,}\d)\s+(?P<number>\d+)\s+(?P<start>\d{2}/\d{2}/\d{4})\s+(?P<end>\d{2}/\d{2}/\d{4})")
 _COLUMNS = ("fecha", "numero", "suc", "descripcion", "cheques", "depositos", "saldo")
 
 
 class SantanderCuentaMatica(Bank):
     code = "santander_cl_cuentamatica"
+    own_money = SANTANDER_OWN_MONEY
     name = "Banco Santander Chile · CuentaMática"
     currency = "CLP"
     table = TableSpec(
@@ -92,6 +100,7 @@ class SantanderCuentaMatica(Bank):
                         reference=cell["numero"] or None,
                         branch=cell["suc"] or None,
                         confidence=confidence,
+                        kind=self.line_kind(description),
                     )
                 )
         if not lines:

@@ -123,7 +123,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
         "camila.spending.CLP.uncategorized": 6_000,
         "camila.income.CLP": 900_000,
     }
-    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.4"
+    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.5"
 
 
 def test_ledger_is_scoped_to_its_user():
@@ -186,7 +186,7 @@ def test_the_users_category_wins_is_audited_and_moves_the_totals():
     _, ledger, audit, ids = _imported()
     changed = ledger.set_category("camila", "web-1", ids[-5_000], "dining")
 
-    assert changed.status is Status.OK and changed.params_version == "cat-0.4"
+    assert changed.status is Status.OK and changed.params_version == "cat-0.5"
     assert (changed.data.category, changed.data.classifier, changed.data.confidence, changed.data.amount, changed.data.kind) == (
         "dining", "user", None, -5_000, "purchase",  # only the label changes; amount and kind come from the statement
     )

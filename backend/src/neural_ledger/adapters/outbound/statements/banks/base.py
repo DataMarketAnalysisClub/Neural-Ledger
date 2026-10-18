@@ -29,7 +29,7 @@ from decimal import Decimal, InvalidOperation
 from typing import ClassVar
 
 from .....domain.ledger.entities import AccountType
-from .....domain.statements.model import BankStatement
+from .....domain.statements.model import BankStatement, LineKind
 from ..ocr_tabular import HeaderNotFound, Page, Table, TableError, TableSpec, norm_text, rebuild
 from ..spreadsheet import Sheet
 
@@ -42,6 +42,15 @@ class Layout(ABC):
     name: ClassVar[str]
     currency: ClassVar[str] = "CLP"
     account_type: ClassVar[AccountType] = AccountType.CHECKING
+
+    # Descriptions that are the holder's own money moving (ADR-024): to their savings, to their card. Matched on
+    # the description as printed, case-insensitive. Only what the bank prints for the holder's own products: a
+    # transfer to a third party stays spending.
+    own_money: ClassVar[tuple[re.Pattern[str], ...]] = ()
+
+    def line_kind(self, description: str) -> LineKind | None:
+        """TRANSFER_OWN for an own-money line, else None (the sign decides)."""
+        return LineKind.TRANSFER_OWN if any(p.search(description) for p in self.own_money) else None
 
     @abstractmethod
     def recognizes(self, first_page_text: str) -> bool:
