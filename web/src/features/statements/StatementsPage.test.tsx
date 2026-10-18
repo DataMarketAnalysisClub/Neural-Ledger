@@ -147,10 +147,10 @@ describe("StatementsPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("The file is larger than 15 MB");
   });
 
-  it("tells an account without financial data that imports build its ledger only, never projections", () => {
-    auth = signedIn("empty");
+  it.each(["empty", "statements"])("tells an account (%s) that enough statements become its own forecast (ADR-029)", (source) => {
+    auth = signedIn(source);
     render(<StatementsPage />);
-    expect(screen.getByText(/build this account's transaction ledger only\. They add no projections/)).toBeInTheDocument();
+    expect(screen.getByText(/build this account's transaction ledger\. With at least 6 full pay cycles/)).toBeInTheDocument();
     expect(screen.queryByText(/still use the demo scenario/)).toBeNull();
     expect(screen.queryByText(/Demo personas are shared/)).toBeNull();
   });

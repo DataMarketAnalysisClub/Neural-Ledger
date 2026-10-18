@@ -1,11 +1,12 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { PersonaProvider } from "@/api/hooks";
 import { AppShell } from "@/app/AppShell";
-import { Button, EmptyState, ErrorState, Loading, PageHeader } from "@/components/ui";
+import { FinancialRoute } from "@/app/FinancialRoute";
+import { EmptyState, ErrorState, Loading, PageHeader } from "@/components/ui";
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
 import { t } from "@/i18n";
 
@@ -34,23 +35,6 @@ const queryClient = new QueryClient({
     mutations: { retry: false },
   },
 });
-
-/** In accounts mode only a read-only demo persona has financial data; every other account stays empty. */
-function FinancialRoute({ children }: { readonly children: React.ReactNode }) {
-  const auth = useAuth();
-  const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
-  const persona = auth.me?.data_source === "persona";
-  if (auth.mode === "accounts" && (!persona || isMock)) {
-    return <>
-      <PageHeader title={t("profile.emptyTitle")} subtitle={t("profile.emptyDetail")} />
-      <EmptyState title={persona ? t("auth.mock") : t("profile.emptyTitle")}
-        action={<Button asChild variant="primary"><Link to="/profile">{t("profile.openProfile")}</Link></Button>}>
-        {persona ? t("profile.mockFinancial") : t("profile.capacityMissing")}
-      </EmptyState>
-    </>;
-  }
-  return children;
-}
 
 /**
  * Statements are the signed-in account's own ledger, open to every account (an empty one included) through its own
