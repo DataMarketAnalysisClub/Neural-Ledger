@@ -42,11 +42,12 @@ def _month(year: int, month: int, opening: int) -> BankStatement:
     planned += [(date(year, month, d), "Compra Nacional VD LIDER", -GROCERIES, None) for d in (3, 10, 17, 24)]
     planned += [(pay, "REMUNERACION EMPRESA", SALARY, None), (pay, "Transf a Ahorro", -SAVINGS, LineKind.TRANSFER_OWN)]
     planned.sort(key=lambda p: (p[0], p[2] < 0))
-    lines, balances, balance = [], [], opening
+    lines, end_of_day, balance = [], {}, opening
     for i, (on, text, amount, kind) in enumerate(planned):
         balance += amount
         lines.append(StatementLine(i, on, text, amount, kind=kind))
-        balances.append(DailyBalance(on, balance))
+        end_of_day[on] = balance  # the bank prints one balance per day, after its last movement
+    balances = [DailyBalance(on, value) for on, value in sorted(end_of_day.items())]
     debits = -sum(line.amount for line in lines if line.amount < 0)
     credits = sum(line.amount for line in lines if line.amount > 0)
     return BankStatement(
