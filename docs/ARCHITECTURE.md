@@ -97,11 +97,10 @@ On a checking account deposits are `income` by rule and charges are `purchase`, 
 - **A chain:** `NL_CLASSIFIER=jev,naive_bayes` tries them in order; the first that answers categorizes the whole statement (`application/services/classifier_fallback.py`) and each transaction records which one did. Measure a new classifier on `tests/category_eval` before putting it first.
 - **Better categories:** add labelled rows to `adapters/outbound/classifier/training/categories.csv` (`description,category`, labels from `CATEGORIES`). The classifier's name changes with the data, so old and new categorizations stay distinguishable. Never add rows from a real statement: the repository is public. The rows go through the same redaction rules as imported lines, so the model learns `Transf a [PERSON]`, never a name; a rules change renames the model too.
 
-Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet.
+Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet. The user can set a category (`PATCH /v1/transactions/{txn_id}`, ADR-023): it is stored with classifier `user`, so it wins over any model, and a transaction the user marks `movement` leaves the spending and income totals.
 
 **Decided, not built yet** (see `docs/DECISIONS.md`):
 - ADR-021: unreconciled statements go to the user for manual correction and are posted either way, flagged.
-- ADR-023: categories can be changed by the user.
 - ADR-024: new category `movement` ("Movimiento") for own transfers, card payments and investments.
 
 Open issues: O-1 (re-read treated as a duplicate) and O-2 (vocabulary, training data, re-categorization).

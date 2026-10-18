@@ -66,7 +66,7 @@ Ley 21.719 gives you rights over your data (arts. 5–9). The software supports 
 | Right | Article | In the software today | Meanwhile |
 |---|---|---|---|
 | A copy of all your data (access, portability) | arts. 5, 9 | Partly: `GET /v1/statements`, `/v1/transactions` and `/v1/audit` show your statements, transactions and audit events. No full export (`G02`). | The team exports it by hand. |
-| Correction | art. 6 | No (`G04`) | The team corrects it by hand. |
+| Correction | art. 6 | Partly: you can change the category of any transaction, and the change is recorded (`G04`). Correcting a statement line's amount, date or description is not built yet (ADR-021). | The team corrects a line by hand. |
 | Deletion | art. 7 | No per-user deletion (`G03`) | The operator can delete the whole database: the file at `NL_SQLITE_PATH` (and any `-wal` and `-shm` files next to it), or `docker compose down --volumes` in Docker. This removes every user's data, the audit trail and the sandbox bank. Removing one user's audit events would break the hash chain; what the trail keeps after a deletion request is an open decision (`G03`). |
 | Opposition and blocking | arts. 8, 8 ter | No (`G05`) | Stop uploading statements and ask the team. |
 
