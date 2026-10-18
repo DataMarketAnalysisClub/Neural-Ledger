@@ -80,7 +80,7 @@ def score(examples: list[dict], guesses) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", choices=("naive_bayes", "jev", "chain"), default="naive_bayes")
-    parser.add_argument("--model-id", default="jev-1.13.0", help="Jev version (pinned; see ADR-026)")
+    parser.add_argument("--model-id", default="jev-1.14-20261014", help="Jev version (pinned; see ADR-026)")
     parser.add_argument("--out", type=Path, default=None, help="write the full report as JSON")
     args = parser.parse_args(argv)
 

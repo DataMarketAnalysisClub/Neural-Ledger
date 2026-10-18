@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", choices=("rules", "jev"), required=True)
     parser.add_argument("--provider", choices=tuple(PROVIDERS), default="openrouter", help="where Jev is called (default: OpenRouter)")
-    parser.add_argument("--model-id", default="jev-latest", help="Jev model or alias (pin jev-1.13.0 for a repeatable run)")
+    parser.add_argument("--model-id", default="jev-latest", help="Jev model or alias (pin jev-1.14-20261014 for a repeatable run, ADR-026)")
     parser.add_argument("--no-notes", action="store_true", help="send option names only, without the per-option descriptions")
     parser.add_argument("--reverse-options", action="store_true", help="also ask with the options in reverse order (position bias)")
     parser.add_argument("--limit", type=int, default=0, help="only the first N examples")

@@ -10,7 +10,7 @@ asked in parallel. Answers are cached for the life of the process, so re-importi
 merchants asks again only for new text. The first failure (no key, network, HTTP or a malformed answer)
 cancels the rest and raises ClassifierUnavailable, so a fallback classifier answers the whole statement.
 
-Every guess carries the answering model ("jev:jev-1.13.0") as its source, recorded on the transaction.
+Every guess carries the answering model ("jev:jev-1.14-20261014") as its source, recorded on the transaction.
 """
 
 from __future__ import annotations

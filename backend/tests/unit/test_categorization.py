@@ -74,9 +74,9 @@ def test_transaction_ids_are_stable_and_scoped_to_the_user():
 
 def test_each_transaction_records_the_model_that_answered_its_line():
     """A fallback chain may answer one line with Jev and the next with naive Bayes: each keeps its own source."""
-    guesses = {0: CategoryGuess("groceries", 0.9, source="jev:jev-1.13.0"), 1: CategoryGuess("shopping", 0.8)}
-    posted = post_statement(_stored(), guesses, "jev:jev-1.13.0+naive_bayes@abc")
-    assert [p.classifier for p in posted] == ["jev:jev-1.13.0", "jev:jev-1.13.0+naive_bayes@abc", RULE]
+    guesses = {0: CategoryGuess("groceries", 0.9, source="jev:jev-1.14-20261014"), 1: CategoryGuess("shopping", 0.8)}
+    posted = post_statement(_stored(), guesses, "jev:jev-1.14-20261014+naive_bayes@abc")
+    assert [p.classifier for p in posted] == ["jev:jev-1.14-20261014", "jev:jev-1.14-20261014+naive_bayes@abc", RULE]
 
 
 def test_category_question_offers_exactly_the_vocabulary_with_a_note_each():
