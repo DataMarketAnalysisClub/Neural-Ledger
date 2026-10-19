@@ -7,18 +7,20 @@
   "tags": ["inversiones", "riesgo", "mercados"],
   "related": ["risk_and_return", "diversification", "bond", "mutual_fund", "etf"],
   "sources": [
+    {"title": "Stocks, bonds, mutual funds, and diversification (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:investments-retirement/xa6995ea67a8e9fdd:risk-and-return/a/stocks-bonds-mutual-funds-and-diversification", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
+    {"title": "How to buy stocks (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:investments-retirement/xa6995ea67a8e9fdd:risk-and-return/a/how-to-buy-stocks", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
     {"title": "Stock (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Stock", "license": "reference only (own words)"},
     {"title": "CMF Chile", "url": "https://www.cmfchile.cl", "license": "reference only (own words)"}
   ],
   "numbers": []
 }
 ---
-Una acción es una parte de la propiedad de una empresa. Si tienes una, tienes derecho a una porción de las utilidades y de los activos de la compañía, y normalmente a votar en algunas decisiones importantes.
+Una acción, también llamada título accionario, es una parte de la propiedad de una empresa. Quien la tiene participa de una porción de las utilidades y del patrimonio de la compañía y, por lo general, puede votar en ciertas decisiones. Se puede ganar con una acción de dos formas: cuando su precio sube y se vende por sobre lo que costó, y con los dividendos que algunas empresas reparten de sus utilidades.
 
-El precio de una acción sube o baja según lo que compradores y vendedores esperan de la empresa y del mercado en general. Algunas empresas reparten parte de sus utilidades como dividendos, pero no están obligadas a hacerlo, así que el ingreso que entrega una acción puede variar o detenerse.
+Los dividendos no están asegurados. La empresa puede pagarlos, cambiar el monto o dejar de hacerlo, así que el ingreso que entrega una acción puede variar. El precio, por su parte, refleja lo que compradores y vendedores esperan del negocio y del mercado, y puede moverse por razones ajenas a la empresa, como noticias o cambios en las tasas de interés.
 
-El riesgo principal es que el precio baje, a veces con fuerza, y que nunca se recupere. Si la empresa quiebra, los accionistas cobran después de los acreedores, como los bancos que prestaron plata, así que muchas veces reciben poco o nada. Además, el precio puede moverse por razones ajenas al negocio, como noticias o cambios en las tasas de interés.
+El riesgo principal es que el precio baje, a veces con fuerza, y que nunca se recupere. Si la empresa quiebra, los acreedores, como los bancos que le prestaron, cobran antes que los accionistas, así que muchas veces los dueños recuperan poco o nada. Por eso las acciones suelen estar entre las inversiones de mayor riesgo.
 
-En Chile, las acciones de empresas que cotizan en bolsa se compran y venden a través de corredoras, y la CMF supervisa el mercado de valores. Tener una sola acción concentra tu exposición en una empresa, por eso mucha gente piensa en repartir su dinero en más de una inversión.
+En Chile, las acciones de empresas que cotizan en bolsa se compran y venden a través de corredoras, y la CMF supervisa el mercado de valores. Tener una sola acción concentra tu exposición en una empresa, por eso mucha gente piensa en repartir su dinero entre varias inversiones.
 
 Esto es información general, no una recomendación.
