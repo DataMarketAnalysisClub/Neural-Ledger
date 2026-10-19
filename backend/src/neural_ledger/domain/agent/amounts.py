@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from ..finance.paycycle import payday
+from ..memory.catalog import MAX_SALARY_NET
 from ..shared.month import Month
 
 _NUMBER = re.compile(
@@ -76,7 +77,6 @@ def written_amounts(text: str) -> frozenset[int]:
 
 # ---- a salary said in chat (ADR-047) --------------------------------------------------------------------------
 
-MAX_SALARY = 100_000_000  # CLP; mirrors contracts/memory/memory_value.schema.json (salary_net.amount.maximum)
 
 _MONTHS = {
     "enero": 1, "january": 1, "febrero": 2, "february": 2, "marzo": 3, "march": 3, "abril": 4, "april": 4,
@@ -113,7 +113,7 @@ def parse_income_statement(text: str, today: date) -> IncomeStatement:
     """Read the user's current message only: never earlier messages, never anything a model wrote."""
     candidates: list[int] = []
     for n in extract_numbers(text):
-        if n.is_percent or n.value != int(n.value) or not 1 <= n.value <= MAX_SALARY:
+        if n.is_percent or n.value != int(n.value) or not 1 <= n.value <= MAX_SALARY_NET:
             continue
         if int(n.value) not in candidates:
             candidates.append(int(n.value))
