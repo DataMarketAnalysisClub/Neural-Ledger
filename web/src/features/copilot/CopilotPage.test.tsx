@@ -4,8 +4,6 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { CopilotPage } from "./CopilotPage";
 
-Element.prototype.scrollIntoView = vi.fn(); // jsdom has no layout
-
 let sessionId = "ui-camila-first";
 const newSession = vi.fn(() => {
   sessionId = "ui-camila-second";
