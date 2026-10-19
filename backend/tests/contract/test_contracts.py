@@ -192,3 +192,13 @@ def test_redaction_placeholders_match_the_domain_codes():
 def test_account_references_must_be_masked(relative, pointer, masked, raw):
     account = _part(relative, pointer)
     assert account.is_valid(masked) and not account.is_valid(raw)
+
+
+def test_action_terms_list_every_domain_action():
+    from neural_ledger.domain.actions.terms import ActionType
+
+    terms = json.loads((CONTRACTS / "actions/action_terms.schema.json").read_text())
+    execute = json.loads((CONTRACTS / "tools/execute_sandbox_action.input.schema.json").read_text())
+    actions = {a.value for a in ActionType}
+    assert set(terms["properties"]["action"]["enum"]) == actions
+    assert set(execute["properties"]["requested_terms"]["properties"]["action"]["enum"]) == actions

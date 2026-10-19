@@ -6,7 +6,7 @@
 export interface ExecuteSandboxActionInput {
   authorization_id: string;
   requested_terms?: {
-    action: "create_savings_rule";
+    action: "create_savings_rule" | "set_liquidity_floor";
     amount: number;
     currency: string;
     frequency: "monthly";

@@ -2,20 +2,21 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/actions/action_terms.schema.json",
   "title": "ActionTerms",
-  "description": "The confirmation contract (Spec v0 section 5). The UI shows exactly these terms and execution must match them exactly. The amount always comes from a stored plan snapshot, never from model text.",
+  "description": "The confirmation contract (Spec v0 section 5). The UI shows exactly these terms and execution must match them exactly. The amount comes from a stored plan snapshot (create_savings_rule) or from the user's own message (set_liquidity_floor, ADR-037), never from model text. A set_liquidity_floor moves no money: source and destination are both the account it protects (checking).",
   "type": "object",
   "required": ["action", "amount", "currency", "frequency", "source_account", "destination", "effective_date"],
   "properties": {
-    "action": {"enum": ["create_savings_rule"]},
+    "action": {"enum": ["create_savings_rule", "set_liquidity_floor"]},
     "amount": {"type": "integer", "minimum": 1},
     "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
     "frequency": {"enum": ["monthly"]},
     "source_account": {"type": "string", "examples": ["checking"]},
-    "destination": {"type": "string", "examples": ["sandbox_savings"]},
+    "destination": {"type": "string", "examples": ["sandbox_savings", "checking"]},
     "effective_date": {"type": "string", "format": "date"}
   },
   "additionalProperties": false,
   "examples": [
-    {"action": "create_savings_rule", "amount": 100000, "currency": "CLP", "frequency": "monthly", "source_account": "checking", "destination": "sandbox_savings", "effective_date": "2027-01-01"}
+    {"action": "create_savings_rule", "amount": 100000, "currency": "CLP", "frequency": "monthly", "source_account": "checking", "destination": "sandbox_savings", "effective_date": "2027-01-01"},
+    {"action": "set_liquidity_floor", "amount": 100000, "currency": "CLP", "frequency": "monthly", "source_account": "checking", "destination": "checking", "effective_date": "2026-10-01"}
   ]
 }

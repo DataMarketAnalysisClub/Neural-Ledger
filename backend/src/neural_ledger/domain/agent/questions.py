@@ -16,6 +16,7 @@ class Intent(str, Enum):
     FORECAST = "forecast"
     PROTECTED_SURPLUS = "protected_surplus"
     SAVINGS_PLAN = "savings_plan"
+    SET_LIQUIDITY_FLOOR = "set_liquidity_floor"
     EXECUTE_ACTION = "execute_action"
     EXPLAIN = "explain"
     OUT_OF_SCOPE = "out_of_scope"
@@ -67,6 +68,7 @@ INTENT_QUESTION = ChoiceQuestion(
         "Asks how the coming months or the balance will look, or when money gets tight",
         "Asks how much money is free to spend now after commitments and reserve",
         "Asks to build or size a plan to save toward a goal or to rebuild the reserve",
+        "Asks to set or change the minimum balance (floor, piso, saldo mínimo) the account must keep every month",
         "Tells the assistant to carry out or confirm an action it proposed, such as creating a rule or moving money",
         "Asks what a term means, or how or why the assistant produced an answer",
         "Asks about something other than the user's own cash flow: investing, taxes, general knowledge, writing",
