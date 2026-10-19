@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of GET /v1/receipts (ADR-038): the user's receipts in import order, personal data removed.
+ * data of GET /v1/receipts (ADR-039): the user's receipts in import order, personal data removed.
  */
 export type Receipts = Receipt[];
 

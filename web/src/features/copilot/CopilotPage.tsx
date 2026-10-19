@@ -53,7 +53,7 @@ interface Message {
   text: string;
   reply?: ChatReply;
   attachment?: Attachment;
-  /** A file dropped on the copilot (ADR-038): its workflow, once the API answers. The file stays for a retry. */
+  /** A file dropped on the copilot (ADR-039): its workflow, once the API answers. The file stays for a retry. */
   document?: { name: string; file?: File; result?: DocumentIngest; error?: unknown };
 }
 
@@ -687,7 +687,7 @@ function needsFix(r: ReceiptView): boolean {
 }
 
 /**
- * The user's correction of a receipt (ADR-038). Opens by itself when something is missing; otherwise behind a button.
+ * The user's correction of a receipt (ADR-039). Opens by itself when something is missing; otherwise behind a button.
  * What the user types goes to the API as typed; nothing here computes or guesses a value.
  */
 function ReceiptFix({ receipt, currency, onCorrected }: { receipt: ReceiptView; currency: string; onCorrected: (r: ReceiptView) => void }) {
@@ -799,7 +799,7 @@ function stepValue(result: DocumentIngest, step: DocumentIngest["steps"][number]
 const EXPENSE_CATEGORIES = ["groceries", "dining", "transport", "health", "shopping", "utilities", "entertainment", "other"] as const;
 
 /**
- * An expense the copilot prepared from what the user said (ADR-038). The amount is shown as prepared and is not
+ * An expense the copilot prepared from what the user said (ADR-039). The amount is shown as prepared and is not
  * editable here; the user completes what the copilot could not tell (cash or card, the category) and confirms.
  * Nothing is stored until they do.
  */

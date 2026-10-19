@@ -414,7 +414,7 @@ function receiptState(r: Receipts[number]): ReceiptState {
 
 const RECEIPT_TONE = { counted: "positive", matched: "neutral", outside: "neutral", unverified: "warning" } as const;
 
-/** Receipts added on the copilot (ADR-038), as the API keeps them: personal data removed, the store's name untrusted. */
+/** Receipts added on the copilot (ADR-039), as the API keeps them: personal data removed, the store's name untrusted. */
 function ReceiptsView() {
   const receipts = useReceipts();
   if (receipts.isError) return <ErrorState error={receipts.error} onRetry={() => void receipts.refetch()} />;

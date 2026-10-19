@@ -63,7 +63,7 @@ class ChatReply:
     pending_proposal: Proposal | None
     actions: tuple[ActionOutcome, ...]
     blocked_reason: str | None
-    pending_expense: dict | None = None  # an expense prepared from what the user said, for them to confirm (ADR-038)
+    pending_expense: dict | None = None  # an expense prepared from what the user said, for them to confirm (ADR-039)
 
 
 class ChatUseCase:

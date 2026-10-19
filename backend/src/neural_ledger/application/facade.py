@@ -56,4 +56,4 @@ class ApplicationServices:
     accounts: AccountUseCases | None = None  # accounts mode only
     profile_editing: ProfileEditing | None = None  # accounts mode only: profile writes are user-only HTTP flows
     persistence: str = "memory"  # memory | sqlite: `neural-ledger seed` refuses to seed a store that is gone at exit
-    documents: DocumentUseCases | None = None  # files dropped on the copilot: statements and receipts (ADR-038)
+    documents: DocumentUseCases | None = None  # files dropped on the copilot: statements and receipts (ADR-039)

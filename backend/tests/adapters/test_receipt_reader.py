@@ -1,4 +1,4 @@
-"""ADR-038: reading a boleta from its print (text layer or OCR lines) and from its SII stamp (PDF417 + TED)."""
+"""ADR-039: reading a boleta from its print (text layer or OCR lines) and from its SII stamp (PDF417 + TED)."""
 
 from __future__ import annotations
 

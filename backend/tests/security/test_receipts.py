@@ -1,4 +1,4 @@
-"""ADR-038: a receipt is hostile input like a cartola. Its text is data, its personal data never stored, and nothing a
+"""ADR-039: a receipt is hostile input like a cartola. Its text is data, its personal data never stored, and nothing a
 model says about it sets an amount, a route or a permission."""
 
 from __future__ import annotations

@@ -55,7 +55,7 @@ def test_naive_bayes_baseline():
 
 
 def test_the_receipt_set_is_well_formed_and_covers_every_category():
-    """Store names as receipts print them (ADR-038): the set the classifiers are compared on for receipts."""
+    """Store names as receipts print them (ADR-039): the set the classifiers are compared on for receipts."""
     receipts = load_examples(EXAMPLES_DIR / "receipts.jsonl")
     assert len({e["text"] for e in receipts}) == len(receipts) >= 50
     assert set(Counter(e["category"] for e in receipts)) == CATEGORIES and min(Counter(e["category"] for e in receipts).values()) >= 6

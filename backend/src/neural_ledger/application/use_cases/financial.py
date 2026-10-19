@@ -330,7 +330,7 @@ class FinancialUseCases:
         return self._run(user_id, body)
 
     def spending_check(self, user_id: str, logged: Sequence[LoggedSpend], today: date) -> Envelope[SpendingCheck]:
-        """Logged spending against the conservative forecast's assumption for the first cycle (ADR-038)."""
+        """Logged spending against the conservative forecast's assumption for the first cycle (ADR-039)."""
 
         def body(model: FinancialModel) -> Envelope[SpendingCheck]:
             surplus = protected_surplus(model, self._params_for(model), 6).protected_surplus

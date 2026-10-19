@@ -45,7 +45,7 @@ def _signup(new_client, email: str, name: str):
     response = client.post("/v1/auth/signup", json={"email": email, "password": PASSWORD, "display_name": name, "sandbox_acknowledged": True})
     assert response.status_code == 201, response.text
     assert client.post("/v1/statements", content=santander_xlsx()).json()["status"] == "OK"
-    assert client.post("/v1/documents", content=boleta_pdf()).json()["status"] == "OK"  # a receipt too (ADR-038)
+    assert client.post("/v1/documents", content=boleta_pdf()).json()["status"] == "OK"  # a receipt too (ADR-039)
     return client, response.json()["user_id"]
 
 
