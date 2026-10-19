@@ -44,6 +44,7 @@ export const zh: Messages = {
     until: "至 {month}",
     ongoing: "持续中",
     askCopilot: "询问智能助手",
+    minus: "负 {amount}",
   },
   errors: {
     network: "API 没有响应。请确认它正在 8000 端口运行，然后重试。",

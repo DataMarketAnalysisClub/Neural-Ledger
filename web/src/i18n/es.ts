@@ -44,6 +44,7 @@ export const es: Messages = {
     until: "hasta {month}",
     ongoing: "Vigente",
     askCopilot: "Preguntar al copiloto",
+    minus: "menos {amount}",
   },
   errors: {
     network: "La API no respondió. Revisa que esté corriendo en el puerto 8000 y vuelve a intentarlo.",

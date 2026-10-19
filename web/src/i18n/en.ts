@@ -46,6 +46,7 @@ export const en = {
     until: "until {month}",
     ongoing: "Ongoing",
     askCopilot: "Ask the copilot",
+    minus: "minus {amount}",
   },
   errors: {
     network: "The API did not answer. Check that it is running on port 8000, then try again.",

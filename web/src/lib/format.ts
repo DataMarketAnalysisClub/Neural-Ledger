@@ -4,7 +4,7 @@
  * code; the only arithmetic here is shifting the decimal point for display.
  */
 
-import { dateLocale } from "@/i18n";
+import { dateLocale, t } from "@/i18n";
 
 const MINUS = "−"; // a real minus sign, not a hyphen
 
@@ -66,8 +66,8 @@ export function shortHash(hash: string, head = 6, tail = 4): string {
   return hash.length <= head + tail + 1 ? hash : `${hash.slice(0, head)}…${hash.slice(-tail)}`;
 }
 
-/** Words for screen readers where the visual uses a sign: "minus CLP 18,995". */
+/** Words for screen readers where the visual uses a sign: "minus CLP 18,995", in the UI language. */
 export function moneyForSpeech(minorUnits: number, currency: string): string {
   const text = formatMoney(Math.abs(minorUnits), currency);
-  return minorUnits < 0 ? `minus ${text}` : text;
+  return minorUnits < 0 ? t("common.minus", { amount: text }) : text;
 }
