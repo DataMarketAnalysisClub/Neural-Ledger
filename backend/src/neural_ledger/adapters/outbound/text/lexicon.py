@@ -11,8 +11,26 @@ from ....domain.agent.questions import Intent
 from ....domain.agent.verification import extract_numbers
 from ....domain.shared.month import Month
 
+# Asking what an investing term means is education (ADR-039); asking what to buy or invest in is advice.
+_DEFINITION = r"(?:what (?:is|are)|what's|what does|qu[eé] (?:es|son|significa)|expl[ií]ca\w*|explain|define|definici[oó]n|meaning of|significado)"
+_INVESTING_TERM = (
+    r"(?:stocks?|shares?|bonds?|etfs?|mutual funds?|index funds?|crypto\w*|bitcoin|ethereum|acci[oó]n|acciones|bonos?|"
+    r"fondos? mutuos?|fondos? de inversi[oó]n|apv|ahorro previsional|cripto\w*|dep[oó]sitos? a plazo|afp|"
+    r"diversifica\w*|invest(?:ing|ment|ments)?|inversi[oó]n\w*|invierto|invert\w*)"
+)
+_ADVICE = (
+    r"(?:should|would you|recommend\w*|best|worth|good (?:idea|investment|time)|buy|sell|invest in|put my|which|"
+    r"deber[ií]a|conviene|recomi[eé]nd\w*|recomendar\w*|mejor|vale la pena|compr\w*|vend\w*|invierto|invertir en|meto|"
+    r"cu[aá]l(?:es)?)"
+)
+EDUCATION_QUESTION = re.compile(rf"^(?!.*\b{_ADVICE}\b)(?=.*\b{_DEFINITION}\b).*\b{_INVESTING_TERM}\b", re.I | re.S)
+INVESTMENT_ADVICE = re.compile(rf"^(?=.*\b{_ADVICE}\b).*\b{_INVESTING_TERM}\b", re.I | re.S)
+
 # Order = precedence when several intents match.
 INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
+    # First: "¿qué acción compro?" is advice, refused; then "¿qué es un ETF?" is a definition, explained (ADR-039).
+    (Intent.OUT_OF_SCOPE, INVESTMENT_ADVICE),
+    (Intent.EXPLAIN, EDUCATION_QUESTION),
     (Intent.OUT_OF_SCOPE, re.compile(
         r"\b(stocks?|shares|acciones|crypto\w*|bitcoin|btc|ethereum|cripto\w*|forex|trading|invest(?:ing|ment|ments)?|"
         r"invert\w*|inversi[oó]n\w*|tax(?:es)?|impuestos?)\b", re.I)),
