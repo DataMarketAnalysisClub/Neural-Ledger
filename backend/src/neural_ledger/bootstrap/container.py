@@ -15,6 +15,8 @@ from ..adapters.outbound.decision.rules import RulesDecisionModel
 from ..adapters.outbound.email.domains import DisposableEmailBlocklist, DnsEmailDomainCheck
 from ..adapters.outbound.fixtures.ledger_source import LedgerModelSource
 from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
+from ..adapters.outbound.knowledge.corpus_loader import load_cards
+from ..adapters.outbound.knowledge.lexical import LexicalKnowledgeBase
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
 from ..adapters.outbound.llm.openrouter import OpenRouterLanguageModel
 from ..adapters.outbound.llm.scripted import ScriptedLanguageModel
@@ -64,9 +66,10 @@ from ..adapters.outbound.system.signer import HmacSigner
 from ..adapters.outbound.system.tokens import SecretsTokens
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices, AuthConfig
-from ..application.ports import EmailDomainCheck, PersonalDataDetector, TransactionClassifier
+from ..application.ports import EmailDomainCheck, KnowledgeBase, PersonalDataDetector, TransactionClassifier
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
+from ..application.services.knowledge_fallback import FallbackKnowledgeBase
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
 from ..application.services.redaction import StatementRedactor
@@ -81,6 +84,7 @@ from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
 from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
+from ..domain.education.concepts import ConceptCard
 from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
 from . import data_key
@@ -95,6 +99,22 @@ logger = logging.getLogger(__name__)
 CLASSIFIERS: dict[str, Callable[[Settings], TransactionClassifier]] = {
     "naive_bayes": lambda s: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
     "jev": lambda s: JevTransactionClassifier(_jev(s)),
+}
+
+
+
+def _chroma(s: Settings, cards: tuple[ConceptCard, ...]) -> KnowledgeBase:
+    from ..adapters.outbound.knowledge.chroma import ChromaKnowledgeBase  # imports nothing optional; chromadb loads at first search
+
+    return ChromaKnowledgeBase(cards, s.kb_dir, s.kb_embedding_model)
+
+
+# Concept-card indexes for explanations, by NL_KNOWLEDGE_BASE (comma-separated, tried in order: chroma,lexical), ADR-039.
+# lexical is BM25 in the standard library (offline, the default); chroma needs the `rag` extra and downloads the
+# embedding model into NL_KB_DIR at first use. To add a method, implement KnowledgeBase and add an entry here.
+KNOWLEDGE_BASES: dict[str, Callable[[Settings, tuple[ConceptCard, ...]], KnowledgeBase]] = {
+    "lexical": lambda s, cards: LexicalKnowledgeBase(cards),
+    "chroma": _chroma,
 }
 
 # Personal-data detectors, by NL_PII_DETECTOR: a second layer after the domain rules on every imported statement
@@ -114,6 +134,7 @@ class Adapters:
     actions_repo: InMemoryActionRepository | SqliteActionRepository
     audit_log: InMemoryAuditLog | SqliteAuditLog
     source: PersonaFixtureSource | LedgerModelSource
+    knowledge_base: KnowledgeBase | None = None
 
 
 # NL_EMAIL_CHECKS, applied in order at sign-up: disposable (offline blocklist) and dns (the domain receives mail).
@@ -279,6 +300,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     chain = [CLASSIFIERS[name](s) for name in s.classifiers]
     classifier = chain[0] if len(chain) == 1 else FallbackClassifier(chain)
     posting = LedgerPosting(classifier, transaction_store)
+    unknown = [name for name in s.knowledge_bases if name not in KNOWLEDGE_BASES]
+    if unknown:
+        raise ValueError(f"unknown NL_KNOWLEDGE_BASE {', '.join(unknown)!r} (known: {', '.join(KNOWLEDGE_BASES)})")
+    cards = load_cards()
+    kb_chain = [KNOWLEDGE_BASES[name](s, cards) for name in s.knowledge_bases]
+    knowledge_base = kb_chain[0] if len(kb_chain) == 1 else FallbackKnowledgeBase(kb_chain)
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
@@ -316,7 +343,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         persistence=s.persistence,
         documents=documents,
     )
-    return services, Adapters(clock, bank, actions_repo, audit_log, source)
+    return services, Adapters(clock, bank, actions_repo, audit_log, source, knowledge_base)
 
 
 def build_services(settings: Settings | None = None) -> ApplicationServices:
