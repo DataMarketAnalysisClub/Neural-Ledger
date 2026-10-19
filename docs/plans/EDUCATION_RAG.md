@@ -94,7 +94,7 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - Retrieval eval (52 questions, 70 cards): lexical recall@3 1.0, MRR 0.979; Chroma recall@3 0.979, MRR 0.944 (`evidence/rag_eval/`).
 - Score thresholds differ by method: lexical about 0.45, Chroma about 0.30 (off-topic max 0.379 and 0.23).
 - `rag` extra adds about 340 MB to site-packages plus the 240 MB model.
-- [ ] Chroma miss: "how much money do I really have available" → add an alias to `protected_surplus`
+- [x] Chroma miss: "how much money do I really have available" → paraphrased aliases on `protected_surplus`; Chroma recall@3 now 1.0
 
 ## Risks
 
