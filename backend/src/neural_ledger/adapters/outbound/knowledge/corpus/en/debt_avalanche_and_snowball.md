@@ -7,7 +7,8 @@
   "tags": ["debt", "repayment", "planning"],
   "related": ["revolving_credit", "minimum_payment", "interest_rate", "liquidity", "net_income"],
   "sources": [
-    {"title": "Debt snowball method (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Debt_snowball_method", "license": "reference only (own words)"}
+    {"title": "Debt snowball method (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Debt_snowball_method", "license": "reference only (own words)"},
+    {"title": "Debt and debt repayment (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:loans-and-debt/xa6995ea67a8e9fdd:debt/a/debt-repayment", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"}
   ],
   "numbers": []
 }
