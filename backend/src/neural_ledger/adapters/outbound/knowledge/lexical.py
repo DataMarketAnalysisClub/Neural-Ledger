@@ -67,13 +67,14 @@ class LexicalKnowledgeBase:
         if not words or k <= 0:
             return ()
         ceiling = sum(self._idf.get(w, self._unseen_idf) for w in words)
-        scored = [(min(1.0, self._bm25(i, words) / ceiling), i) for i in range(len(self._cards))]
-        matches = [(s, i) for s, i in scored if s > 0]
+        scored = [(self._bm25(i, words), i) for i in range(len(self._cards))]
+        matches = [(raw, i) for raw, i in scored if raw > 0]
         if lang in LANGUAGES:
-            preferred = [(s, i) for s, i in matches if self._cards[i].lang == lang]
+            preferred = [(raw, i) for raw, i in matches if self._cards[i].lang == lang]
             matches = preferred or matches
+        # Rank by the raw score: several cards can reach the capped score of 1 and must still come out best first.
         matches.sort(key=lambda m: (-m[0], self._cards[m[1]].id))
-        return tuple(Passage(self._cards[i], self._cards[i].body, s) for s, i in matches[:k])
+        return tuple(Passage(self._cards[i], self._cards[i].body, min(1.0, raw / ceiling)) for raw, i in matches[:k])
 
     def _bm25(self, i: int, words: set[str]) -> float:
         bag, norm = self._bags[i], K1 * (1 - B + B * self._lengths[i] / self._avg_length)
