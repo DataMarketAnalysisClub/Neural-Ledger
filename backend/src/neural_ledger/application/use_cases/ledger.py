@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from ...domain.agent.untrusted import wrap_untrusted
 from ...domain.audit.events import Actor, AuditDraft, AuditKind
-from ...domain.ledger.categorization import CATEGORIZATION_VERSION, MOVEMENT, PostedTransaction, relabel, user_categories
+from ...domain.ledger.categorization import CATEGORIZATION_VERSION, OWN_MONEY, SAVINGS, PostedTransaction, relabel, user_categories
 from ...domain.ledger.entities import InstallmentInfo, TransactionKind
 from ...domain.shared.envelope import Envelope, Fact
 from ...domain.shared.hashing import content_id
@@ -50,7 +50,7 @@ class InstallmentView:
 class CategoryTotalView:
     category: str
     currency: str
-    spent: int  # spending: charges and fees less refunds, positive when money went out; income: deposits
+    spent: int  # spending: charges and fees less refunds, positive when money went out; income: deposits; savings: net set aside
     count: int
 
 
@@ -59,6 +59,7 @@ class TransactionList:
     transactions: tuple[TransactionView, ...]
     spending: tuple[CategoryTotalView, ...]  # by currency, then largest spend first
     income: tuple[CategoryTotalView, ...]  # one row per currency, category "income"
+    savings: tuple[CategoryTotalView, ...]  # one row per currency, category "savings": money set aside less money back
 
 
 class LedgerUseCases:
@@ -70,17 +71,20 @@ class LedgerUseCases:
 
     def list_transactions(self, user_id: str) -> Envelope[TransactionList]:
         posted = self._transactions.for_user(user_id)
-        # Movimientos are the holder's own money moving (card payments by rule, anything else the user marks, ADR-024):
-        # neither spending nor income.
-        spending = _totals((p for p in posted if p.transaction.kind in SPENDING_KINDS and not _movement(p)), sign=-1)
-        income = _totals((p for p in posted if p.transaction.kind is TransactionKind.INCOME and not _movement(p)), sign=1)
+        # Movimientos and Ahorro are the holder's own money moving (card payments and savings lines by rule, anything else
+        # the user marks, ADR-024, ADR-036): neither spending nor income. Savings are reported on their own, net.
+        spending = _totals((p for p in posted if p.transaction.kind in SPENDING_KINDS and not _own_money(p)), sign=-1)
+        income = _totals((p for p in posted if p.transaction.kind is TransactionKind.INCOME and not _own_money(p)), sign=1)
+        savings = _totals((p for p in posted if p.transaction.category == SAVINGS), sign=-1)
         facts = [Fact(f"{user_id}.transactions", len(posted), "count", "transactions in the ledger from imported statements")]
         for t in spending:
             facts.append(Fact(f"{user_id}.spending.{t.currency}.{t.category}", t.spent, t.currency, f"sum of {t.count} charges"))
         for t in income:
             facts.append(Fact(f"{user_id}.income.{t.currency}", t.spent, t.currency, f"sum of {t.count} deposits"))
+        for t in savings:
+            facts.append(Fact(f"{user_id}.savings.{t.currency}", t.spent, t.currency, f"set aside less withdrawn, {t.count} lines"))
         return Envelope.success(
-            TransactionList(tuple(_view(p) for p in posted), spending, income),
+            TransactionList(tuple(_view(p) for p in posted), spending, income, savings),
             params_version=CATEGORIZATION_VERSION,
             snapshot_id=content_id("txns", user_id, [(p.transaction.txn_id, p.transaction.category) for p in posted]),
             as_of=max((p.transaction.date.isoformat() for p in posted), default=""),
@@ -124,8 +128,8 @@ class LedgerUseCases:
 SPENDING_KINDS = frozenset({TransactionKind.PURCHASE, TransactionKind.FEE, TransactionKind.REFUND})
 
 
-def _movement(p: PostedTransaction) -> bool:
-    return p.transaction.category == MOVEMENT
+def _own_money(p: PostedTransaction) -> bool:
+    return p.transaction.category in OWN_MONEY
 
 
 def _totals(posted, sign: int) -> tuple[CategoryTotalView, ...]:

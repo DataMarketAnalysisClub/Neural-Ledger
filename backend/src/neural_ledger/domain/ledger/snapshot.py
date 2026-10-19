@@ -14,7 +14,8 @@ built here, deterministically, from what reconciliation verified:
 - Each account's balance is the one on `as_of`: its covering statement's opening balance plus the lines up to
   that day, which reconciliation already checked.
 - The holder's own money moving is a `transfer_own`: a line a layout marked by rule, and any line the user
-  labelled `movement` (ADR-023, ADR-024). A card payment stays a card payment. Everything else keeps its kind.
+  labelled `movement` or `savings` (ADR-023, ADR-024, ADR-036). A card payment stays a card payment. Everything
+  else keeps its kind.
 - Statements do not say whether income is a salary, so the profile is salaried with no contracted net: the
   estimators then use percentiles and warn CONTRACT_UNKNOWN.
 
@@ -32,7 +33,7 @@ from ..finance.paycycle import cycle_of, cycle_start, payday
 from ..shared.errors import InsufficientData
 from ..shared.month import Month
 from ..statements.model import BankStatement, StoredStatement
-from .categorization import MOVEMENT, PostedTransaction
+from .categorization import OWN_MONEY, PostedTransaction
 from .entities import Account, AccountType, IncomeProfile, IncomeType, LedgerSnapshot, Transaction, TransactionKind
 
 CURRENCY = "CLP"  # the financial core's parameters are calibrated in CLP
@@ -141,6 +142,6 @@ def _balance_on(statement: BankStatement, as_of: date, account_id: str) -> int:
 
 
 def _kind_for_the_estimators(txn: Transaction) -> Transaction:
-    if txn.category == MOVEMENT and txn.kind is not TransactionKind.CARD_PAYMENT:
+    if txn.category in OWN_MONEY and txn.kind is not TransactionKind.CARD_PAYMENT:
         return replace(txn, kind=TransactionKind.TRANSFER_OWN)
     return txn
