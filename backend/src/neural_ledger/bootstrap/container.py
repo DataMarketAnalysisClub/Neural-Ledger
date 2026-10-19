@@ -64,7 +64,7 @@ from ..adapters.outbound.system.signer import HmacSigner
 from ..adapters.outbound.system.tokens import SecretsTokens
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices, AuthConfig
-from ..application.ports import EmailDomainCheck, PersonalDataDetector, TransactionClassifier
+from ..application.ports import EmailDomainCheck, KnowledgeBase, PersonalDataDetector, TransactionClassifier
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
@@ -76,11 +76,13 @@ from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.documents import DocumentUseCases
+from ..application.use_cases.education import EducationUseCases
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
 from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
+from ..domain.education.concepts import Passage
 from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
 from . import data_key
@@ -114,6 +116,18 @@ class Adapters:
     actions_repo: InMemoryActionRepository | SqliteActionRepository
     audit_log: InMemoryAuditLog | SqliteAuditLog
     source: PersonaFixtureSource | LedgerModelSource
+
+
+class _EmptyKnowledgeBase:
+    """No concept cards yet: every explanation is INSUFFICIENT_DATA (placeholder until KNOWLEDGE_BASES, WP2)."""
+
+    name = "none"
+
+    def search(self, query: str, lang: str, k: int) -> tuple[Passage, ...]:
+        return ()
+
+
+EDUCATION_MIN_SCORE = 0.2  # a passage below this relevance is not an explanation; tune on tests/rag_eval (ADR-039)
 
 
 # NL_EMAIL_CHECKS, applied in order at sign-up: disposable (offline blocklist) and dns (the domain receives mail).
@@ -289,8 +303,10 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
         financial, audit_log, clock, ids, snapshots,
     )
+    knowledge_base: KnowledgeBase = _EmptyKnowledgeBase()  # replaced by KNOWLEDGE_BASES (WP2)
+    education = EducationUseCases(knowledge_base, EDUCATION_MIN_SCORE, profiles)
     registry = build_registry(
-        financial, actions, profile_uc, audit_uc, documents, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
+        financial, actions, profile_uc, audit_uc, documents, education, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
     chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
 
