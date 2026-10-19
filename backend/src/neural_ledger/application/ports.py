@@ -8,6 +8,7 @@ wired only in neural_ledger.bootstrap.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -187,6 +188,10 @@ class SnapshotStore(Protocol):
 
     def get(self, snapshot_id: str, user_id: str) -> object | None: ...
 
+    def forget(self, user_id: str) -> int:
+        """Drop every snapshot of this user (account deletion). Returns how many."""
+        ...
+
 
 @runtime_checkable
 class ActionRepository(Protocol):
@@ -235,6 +240,10 @@ class ConversationStore(Protocol):
     def history(self, user_id: str, session_id: str) -> tuple[Entry, ...]: ...
 
     def append(self, user_id: str, session_id: str, entries: Sequence[Entry], keep_last: int) -> None: ...
+
+    def forget(self, user_id: str) -> int:
+        """Drop every conversation of this user (account deletion). Returns how many sessions."""
+        ...
 
 
 @runtime_checkable
@@ -301,6 +310,24 @@ class SessionStore(Protocol):
 
 class IdCollision(Exception):
     """A generated identifier already exists; no account mutation was committed."""
+
+
+@dataclass(frozen=True, slots=True)
+class ErasureReport:
+    counts: Mapping[str, int]  # rows deleted per table
+    erased_events: int  # audit events turned into tombstones
+
+
+@runtime_checkable
+class AccountErasure(Protocol):
+    """Delete everything a user owns, in one atomic step (Ley 21.719 art. 7, G03)."""
+
+    def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
+        """Delete the user's statements, transactions, savings rules, proposals and authorizations and, unless
+        keep_account (a demo persona's reset), their sessions, profile and account. Every audit event of the user
+        becomes a tombstone (domain/audit/events.py), then `event` is appended with its detail replaced by
+        erasure_detail(), which commits to exactly those tombstones. Any exception leaves no writes."""
+        ...
 
 
 @runtime_checkable

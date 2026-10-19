@@ -19,6 +19,7 @@ from ..adapters.outbound.llm.openrouter import OpenRouterLanguageModel
 from ..adapters.outbound.llm.scripted import ScriptedLanguageModel
 from ..adapters.outbound.persistence.field_cipher import FieldCipher
 from ..adapters.outbound.persistence.memory import (
+    InMemoryAccountErasure,
     InMemoryAccountWrites,
     InMemoryActionRepository,
     InMemoryAuditLog,
@@ -34,6 +35,7 @@ from ..adapters.outbound.persistence.memory import (
 )
 from ..adapters.outbound.persistence.overlay import PersonaOverlayProfileStore
 from ..adapters.outbound.persistence.sqlite import (
+    SqliteAccountErasure,
     SqliteAccountWrites,
     SqliteActionRepository,
     SqliteAuditLog,
@@ -210,12 +212,17 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             account_store: InMemoryUserAccountStore | SqliteUserAccountStore = SqliteUserAccountStore(db, cipher)
             session_store: InMemorySessionStore | SqliteSessionStore = SqliteSessionStore(db)
             writes: InMemoryAccountWrites | SqliteAccountWrites = SqliteAccountWrites(db, cipher)
+            erasure: InMemoryAccountErasure | SqliteAccountErasure = SqliteAccountErasure(db, cipher)
         else:
             account_store, session_store = InMemoryUserAccountStore(), InMemorySessionStore()
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
+            erasure = InMemoryAccountErasure(
+                account_store, session_store, profiles, audit_log, statement_store, transaction_store, rule_store, actions_repo
+            )
         accounts = AccountUseCases(
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
             demo_personas=frozenset(auth.demo_personas), transactions=transaction_store,
+            erasure=erasure, forget=(conversations, snapshots),  # in-memory state the erasure transaction cannot reach
         )
         profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
 

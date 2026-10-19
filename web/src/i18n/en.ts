@@ -650,6 +650,21 @@ export const en = {
     mockFinancial: "The local accounts mock does not provide financial projections. Connect the accounts backend to explore those screens.",
     openProfile: "Open profile",
     importStatements: "Import statements",
+    deletion: {
+      title: "Delete account",
+      description: "Deletes your account and everything it holds: imported statements, transactions, questionnaire answers, proposals, savings rules and every session. Your audit events are erased; the audit chain keeps only their place. This cannot be undone.",
+      start: "Delete account",
+      confirmLabel: "Type DELETE or your email to confirm",
+      password: "Your password",
+      submit: "Delete my account permanently",
+      cancel: "Cancel",
+      resetTitle: "Reset demo data",
+      resetDescription: "Demo personas are shared and never deleted. Resetting removes the statements, transactions, proposals and savings rules stored for this persona, for every visitor. The synthetic profile stays.",
+      resetStart: "Reset demo data",
+      resetConfirmLabel: "Type RESET to confirm",
+      resetSubmit: "Reset this persona's data",
+      resetDone: "Demo data reset. {count} audit events erased.",
+    },
   },
 } as const;
 

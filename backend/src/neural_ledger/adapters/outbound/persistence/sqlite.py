@@ -11,12 +11,12 @@ import sqlite3
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from ....application.ports import IdCollision
+from ....application.ports import ErasureReport, IdCollision
 from ....domain.actions.terms import (
     ActionTerms,
     ActionType,
@@ -26,7 +26,7 @@ from ....domain.actions.terms import (
     ProposalStatus,
     SavingsRule,
 )
-from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
+from ....domain.audit.events import ERASED_SESSION, ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
 from ....domain.finance.profile import RiskProfile
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
@@ -766,6 +766,12 @@ class SqliteSavingsRuleStore:
         row = self._db.fetchone("SELECT COUNT(*) FROM savings_rules")
         return row[0] if row else 0
 
+    def next_number(self) -> int:
+        row = self._db.fetchone(
+            "SELECT COALESCE(MAX(CAST(substr(rule_id, 6) AS INTEGER)), 0) FROM savings_rules WHERE rule_id LIKE 'rule\\_%' ESCAPE '\\'"
+        )
+        return (row[0] if row else 0) + 1
+
     def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
         rows = self._db.fetchall("SELECT rule_id, payload FROM savings_rules WHERE user_id = ? ORDER BY sequence", (user_id,))
         return tuple(_rule_from(json.loads(self._cipher.open(payload, _aad("savings_rules", user_id, rule_id)))) for rule_id, payload in rows)
@@ -1007,6 +1013,54 @@ class SqliteTransactionWrites:
             for event in events:
                 _append_audit(conn, self._cipher, event)
             return True
+
+
+# Literal statements per table that holds a user's rows (no SQL built from strings, ASVS V1). Whoever adds a table
+# with a user_id must add it here: tests/security/test_account_deletion.py scans every table for the deleted user.
+_ERASE_SQL: dict[str, str] = {
+    "statements": "DELETE FROM statements WHERE user_id = ?",
+    "transactions": "DELETE FROM transactions WHERE user_id = ?",
+    "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
+    "proposals": "DELETE FROM proposals WHERE user_id = ?",
+    "authorizations": "DELETE FROM authorizations WHERE user_id = ?",
+}
+_ERASE_ACCOUNT_SQL: dict[str, str] = {  # not for a demo persona's reset: the persona and its visitors' sessions stay
+    "sessions": "DELETE FROM sessions WHERE user_id = ?",
+    "user_profiles": "DELETE FROM user_profiles WHERE user_id = ?",
+    "user_accounts": "DELETE FROM user_accounts WHERE user_id = ?",
+}
+
+
+class SqliteAccountErasure:
+    """Account deletion in one SQLite transaction: rows deleted (secure_delete overwrites them), audit events of the
+    user turned into tombstones, the erasure event appended; then the WAL is checkpointed and truncated, so no old
+    page image of the user's rows stays in it."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
+        with _account_transaction(self._db) as conn:
+            SqliteAccountWrites._check_events(conn, (event,))
+            statements = {**_ERASE_SQL, **({} if keep_account else _ERASE_ACCOUNT_SQL)}
+            counts = {table: conn.execute(sql, (user_id,)).rowcount for table, sql in statements.items()}
+            rows = conn.execute("SELECT sequence, event_id, user_id, record FROM audit_events WHERE user_id = ? ORDER BY sequence", (user_id,)).fetchall()
+            erased: list[int] = []
+            for sequence, event_id, owner, record in rows:
+                original = AuditEvent.from_record(_open_record(self._cipher, (event_id, owner, record)))
+                if original.draft.kind in ERASURE_KINDS:
+                    continue
+                tomb = tombstone(original, event.event_id, event.timestamp)
+                conn.execute(
+                    "UPDATE audit_events SET user_id = NULL, session_id = ?, record = ? WHERE sequence = ?",
+                    (ERASED_SESSION, self._cipher.seal(json.dumps(tomb.to_record()), _aad("audit_events", None, event_id)), sequence),
+                )
+                erased.append(sequence)
+            _append_audit(conn, self._cipher, replace(event, detail=erasure_detail(erased, counts)))
+        with self._db.lock:
+            self._db.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return ErasureReport(counts, len(erased))
 
 
 class SqliteAuditLog:

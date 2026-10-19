@@ -270,6 +270,29 @@ def create_app(
         response.headers.append("set-cookie", cleared_cookie(secure(request)))
         return response
 
+    @app.delete("/v1/account")
+    async def delete_account(request: Request):
+        """G03 (Ley 21.719 art. 7): the signed-in account and everything it owns, or a demo persona's reset.
+        An account sends its password and confirm=DELETE (or its email); a persona sends confirm=RESET."""
+        if accounts is None:
+            return not_found()
+        current = session(request)
+        body = await _json_object(request)
+        _only(body, ("confirm",), ("password",))
+        outcome = await run_in_threadpool(accounts.delete_account, current, _text(body, "password"), _text(body, "confirm"))
+        if outcome.status in (AccountStatus.DELETED, AccountStatus.RESET) and outcome.erased is not None:
+            response = JSONResponse({
+                "status": outcome.status.value, "erased": dict(outcome.erased.counts), "audit_events_erased": outcome.erased.erased_events,
+            })
+            if outcome.status is AccountStatus.DELETED:
+                response.headers.append("set-cookie", cleared_cookie(secure(request)))  # its session row is gone too
+            return response
+        if outcome.status is AccountStatus.INVALID_INPUT:
+            return _auth_error("INVALID_INPUT", outcome.message or "invalid input", outcome.field or "body")
+        if outcome.status is AccountStatus.INVALID_CREDENTIALS:
+            return _auth_error("INVALID_CREDENTIALS", "invalid credentials")
+        return not_found()
+
     @app.get("/v1/me")
     def me(request: Request):
         if accounts is None:

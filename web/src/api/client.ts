@@ -45,7 +45,7 @@ export class ApiError extends Error {
 interface RequestOptions {
   user?: PersonaId;
   identity?: ApiIdentity;
-  method?: "GET" | "POST" | "PUT" | "PATCH";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   query?: Record<string, string | number | undefined | null>;
 }

@@ -12,6 +12,8 @@ SCHEMAS = (
     "auth/session.schema.json",
     "auth/me.schema.json",
     "auth/error.schema.json",
+    "auth/account_deletion_request.schema.json",
+    "auth/account_deletion.schema.json",
     "profile/profile_update.schema.json",
 )
 

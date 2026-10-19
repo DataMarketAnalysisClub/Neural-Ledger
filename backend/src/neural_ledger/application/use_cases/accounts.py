@@ -10,15 +10,28 @@ so neither the answer nor its timing says whether an email has an account.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
+from typing import Protocol
 
-from ...domain.audit.events import Actor, AuditDraft, AuditKind
+from ...domain.audit.events import ERASED_SESSION, Actor, AuditDraft, AuditKind
 from ...domain.shared.errors import InvalidInput
 from ...domain.user.account import SESSION_PREFIX, USER_PREFIX, Session, UserAccount, normalize_email, token_digest, validate_password
 from ...domain.user.profile import UserProfile
-from ..ports import AccountWrites, Clock, IdGenerator, PasswordHasher, SessionStore, TokenGenerator, TransactionStore, UserAccountStore
+from ..ports import (
+    AccountErasure,
+    AccountWrites,
+    Clock,
+    ErasureReport,
+    IdGenerator,
+    PasswordHasher,
+    SessionStore,
+    TokenGenerator,
+    TransactionStore,
+    UserAccountStore,
+)
 
 
 class AccountStatus(str, Enum):
@@ -27,6 +40,8 @@ class AccountStatus(str, Enum):
     EMAIL_TAKEN = "EMAIL_TAKEN"
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
     NOT_FOUND = "NOT_FOUND"
+    DELETED = "DELETED"  # the account and everything it owned are gone
+    RESET = "RESET"  # a demo persona's stored data is gone; the persona stays
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,10 +58,11 @@ class AccountOutcome:
     session: IssuedSession | None = None
     field: str | None = None
     message: str | None = None
+    erased: ErasureReport | None = None  # DELETED and RESET only
 
     @property
     def ok(self) -> bool:
-        return self.status is AccountStatus.OK
+        return self.status in (AccountStatus.OK, AccountStatus.DELETED, AccountStatus.RESET)
 
 
 INVALID_CREDENTIALS = AccountOutcome(AccountStatus.INVALID_CREDENTIALS, message="invalid credentials")
@@ -59,6 +75,17 @@ DEMO_PERSONAS: tuple[str, ...] = ("camila", "diego")
 # The sandbox notice a new account acknowledges at sign-up (no real statements, no personal data). Bump it when
 # the notice's wording changes, so USER_REGISTERED records which one the user accepted.
 SANDBOX_NOTICE = "sandbox-1"
+
+# What the user types to confirm, besides the password: DELETE (or the account's email) to delete an account,
+# RESET to reset a shared demo persona, which has no password and is never deleted.
+DELETE_CONFIRMATION = "DELETE"
+RESET_CONFIRMATION = "RESET"
+
+
+class Forgettable(Protocol):
+    """A store that keeps per-user state outside the erasure transaction (conversations, snapshots: memory only)."""
+
+    def forget(self, user_id: str) -> int: ...
 
 
 class AccountUseCases:
@@ -74,11 +101,15 @@ class AccountUseCases:
         *,
         demo_personas: frozenset[str] = frozenset(),
         transactions: TransactionStore | None = None,
+        erasure: AccountErasure | None = None,
+        forget: Sequence[Forgettable] = (),
     ) -> None:
         if not demo_personas <= frozenset(DEMO_PERSONAS):
             raise ValueError("demo sessions open only the allowlisted personas")
         self._demo_personas = frozenset(demo_personas)
         self._transactions = transactions  # only to tell an account with imported statements from an empty one
+        self._erasure = erasure
+        self._forget = tuple(forget)
         self._accounts = accounts
         self._sessions = sessions
         self._writes = writes
@@ -180,6 +211,42 @@ class AccountUseCases:
             return AccountOutcome(AccountStatus.NOT_FOUND, field="user_id", message="no account for this user")
         return AccountOutcome(AccountStatus.OK)
 
+    def delete_account(self, session: Session, password: str | None, confirm: str | None) -> AccountOutcome:
+        """Delete the caller's account and everything it owns, or reset a demo persona (G03, Ley 21.719 art. 7).
+
+        An account needs its password again and the confirmation DELETE (or its email); every session ends,
+        since their rows go with it. A demo persona has no password and is shared by every visitor: it is never
+        deleted, only reset (statements, transactions, rules, proposals and audit events erased; the fixture and
+        the visitors' sessions stay) with the confirmation RESET. Either way the erasure is one audited event with
+        no user id that commits to the audit events it erased."""
+        if self._erasure is None:
+            return AccountOutcome(AccountStatus.NOT_FOUND, field="user_id", message="account deletion is not available")
+        user_id = session.user_id
+        account = self._accounts.get(user_id)
+        if account is None:
+            if user_id not in self._demo_personas:
+                return AccountOutcome(AccountStatus.NOT_FOUND, field="user_id", message="no account for this user")
+            if confirm != RESET_CONFIRMATION:
+                return AccountOutcome(AccountStatus.INVALID_INPUT, field="confirm", message=f"type {RESET_CONFIRMATION} to reset the demo data")
+            return AccountOutcome(AccountStatus.RESET, erased=self._erase(user_id, AuditKind.DEMO_DATA_RESET, keep_account=True))
+        if not _confirms(confirm, account.email):
+            return AccountOutcome(AccountStatus.INVALID_INPUT, field="confirm", message=f"type {DELETE_CONFIRMATION} or your email to confirm")
+        if not self._hasher.verify(password if isinstance(password, str) else "", account.password_hash):
+            return INVALID_CREDENTIALS
+        return AccountOutcome(AccountStatus.DELETED, erased=self._erase(user_id, AuditKind.ACCOUNT_DELETED, keep_account=False))
+
+    def _erase(self, user_id: str, kind: AuditKind, *, keep_account: bool) -> ErasureReport:
+        assert self._erasure is not None
+        # No user id and no session on the event: after a deletion nothing may point at the user any more.
+        event = AuditDraft(
+            event_id=self._ids.new("evt"), timestamp=self._clock.now(), session_id=ERASED_SESSION,
+            user_id=None, actor=Actor.USER, kind=kind,
+        )
+        report = self._erasure.erase(user_id, keep_account=keep_account, event=event)
+        for store in self._forget:
+            store.forget(user_id)
+        return report
+
     def _new_session(self, user_id: str, now: datetime) -> tuple[str, Session]:
         token = self._tokens.new_token()
         session = Session.open(self._ids.new(SESSION_PREFIX), user_id, token_digest(token), now)
@@ -190,3 +257,14 @@ class AccountUseCases:
             event_id=self._ids.new("evt"), timestamp=now, session_id=session_ref,
             user_id=user_id, actor=Actor.USER, kind=kind, detail=detail,
         )
+
+
+def _confirms(confirm: str | None, email: str) -> bool:
+    if not isinstance(confirm, str):
+        return False
+    if confirm.strip() == DELETE_CONFIRMATION:
+        return True
+    try:
+        return normalize_email(confirm) == email
+    except InvalidInput:
+        return False
