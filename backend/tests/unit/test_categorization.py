@@ -12,6 +12,7 @@ from neural_ledger.domain.ledger.categorization import (
     INCOME,
     MOVEMENT,
     RULE,
+    SAVINGS,
     UNCATEGORIZED,
     CategoryGuess,
     accept,
@@ -82,7 +83,13 @@ def test_each_transaction_records_the_model_that_answered_its_line():
 def test_category_question_offers_exactly_the_vocabulary_with_a_note_each():
     assert set(CATEGORY_QUESTION.options) == CATEGORIES and len(CATEGORY_QUESTION.options) == len(CATEGORIES)
     assert len(CATEGORY_QUESTION.notes) == len(CATEGORY_QUESTION.options) and all(CATEGORY_QUESTION.notes)
-    assert not {INCOME, MOVEMENT, UNCATEGORIZED} & set(CATEGORY_QUESTION.options)  # rules decide those, never a model
+    assert not {INCOME, MOVEMENT, SAVINGS, UNCATEGORIZED} & set(CATEGORY_QUESTION.options)  # rules decide those, never a model
+
+
+def test_a_model_cannot_label_a_line_savings():
+    """ADR-036: 'savings' takes a line out of the forecast's spending, so only a layout rule or the user sets it."""
+    assert accept(CategoryGuess(SAVINGS, 1.0)) == UNCATEGORIZED
+    assert accept(CategoryGuess(MOVEMENT, 1.0)) == UNCATEGORIZED
 
 
 def test_missing_guess_leaves_the_charge_uncategorized():

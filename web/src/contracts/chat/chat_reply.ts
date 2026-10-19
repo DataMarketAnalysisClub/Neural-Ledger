@@ -11,6 +11,7 @@ export interface ChatReply {
     | "forecast"
     | "protected_surplus"
     | "savings_plan"
+    | "set_liquidity_floor"
     | "execute_action"
     | "explain"
     | "out_of_scope"
@@ -118,10 +119,10 @@ export interface ActionOutcome {
   requested_amount?: number | null;
 }
 /**
- * The confirmation contract (Spec v0 section 5). The UI shows exactly these terms and execution must match them exactly. The amount always comes from a stored plan snapshot, never from model text.
+ * The confirmation contract (Spec v0 section 5). The UI shows exactly these terms and execution must match them exactly. The amount comes from a stored plan snapshot (create_savings_rule) or from the user's own message (set_liquidity_floor, ADR-037), never from model text. A set_liquidity_floor moves no money: source and destination are both the account it protects (checking).
  */
 export interface ActionTerms {
-  action: "create_savings_rule";
+  action: "create_savings_rule" | "set_liquidity_floor";
   amount: number;
   currency: string;
   frequency: "monthly";

@@ -1,8 +1,8 @@
 # Privacy policy
 
-Last updated: 2026-10-16.
+Last updated: 2026-10-19.
 
-**Status.** Neural Ledger is a sandbox built for FinTechathon 2026. By default it runs on synthetic data (the personas Camila and Diego, and generated cartolas) and moves no real money. It is not a production service and it is not financial advice. This page describes what the software in this repository does with personal data, so that a team that deploys it can publish it, and it lists what is not built yet. It does not say the app complies with the law. Ley 19.628 as amended by Ley 21.719 is in force from 2026-12-01; the compliance map in [SECURITY.md](SECURITY.md) lists this policy under art. 14 ter (`G12`). This is engineering documentation for counsel to review, not legal advice.
+**Status.** Neural Ledger is a sandbox built for FinTechathon 2026. Anyone can create an account on a public demo, and the sign-up page asks every new user to acknowledge that it is a sandbox: **do not upload real bank statements or enter real personal data**. The acknowledgement is recorded. By default it runs on synthetic data (the personas Camila and Diego, and generated cartolas) and moves no real money. It is not a production service and it is not financial advice. This page describes what the software in this repository does with personal data, so that a team that deploys it can publish it, and it lists what is not built yet. It does not say the app complies with the law. Ley 19.628 as amended by Ley 21.719 is in force from 2026-12-01; the compliance map in [SECURITY.md](SECURITY.md) lists this policy under art. 14 ter (`G12`). This is engineering documentation for counsel to review, not legal advice.
 
 ## Who is responsible
 
@@ -16,21 +16,20 @@ The team that runs an instance is responsible for the data it processes. Fill th
 **Where.** Two storage modes, set by `NL_PERSISTENCE`:
 
 - `memory` (the default for `make api` and `make demo`): everything lives in the API process and is gone when it stops.
-- `sqlite` (Docker always uses it): one file at `NL_SQLITE_PATH`, by default `./var/neural_ledger.db` relative to where the API runs, which is `backend/var/neural_ledger.db` with the `make` targets. In Docker it is `/app/var/neural_ledger.db` on the `ledger-data` volume. The file is not encrypted (`G11`).
+- `sqlite` (Docker always uses it): one file at `NL_SQLITE_PATH`, by default `./var/neural_ledger.db` relative to where the API runs, which is `backend/var/neural_ledger.db` with the `make` targets. In Docker it is `/app/var/neural_ledger.db` on the `ledger-data` volume. Everything personal in it is encrypted with AES-256-GCM (`G11`): statements, transactions, profiles and questionnaire answers, accounts (the email is kept only as a keyed hash for sign-in), proposals, authorizations, savings rules and the audit trail. Ids and dates used to find and order rows stay readable. The key is kept apart from the file; on a server, as a Docker secret outside the data volume ([SECURITY.md](SECURITY.md), "Data at rest and key management").
 
-**How long.** There is no automatic retention period and nothing is deleted on a schedule. Data in SQLite stays until the operator deletes the database.
+**How long.** There is no automatic retention period and nothing is deleted on a schedule. Data stays until you delete your account (below) or the operator deletes the database.
 
 | Data | What is kept | Where |
 |---|---|---|
 | Bank statements (cartolas) you import | Bank, period, each line's date, amount, kind, cuotas and description, daily balances, totals and, for credit cards, the amount due, minimum, due date and credit limit. Personal data is removed at import, before anything is stored (ADR-028): names, RUTs, account and card numbers, emails and phones become placeholders such as `[PERSON]` and `[ID]`, and the account keeps its last 4 digits (`****3456`). Merchants, employer and payee names, amounts and dates stay. The uploaded file is read in memory and never written to disk. | Storage mode |
 | Transaction ledger | Each line of a verified statement: date, signed amount, redacted description, kind, spending category, the model that chose it and its confidence, the masked account | Storage mode |
-| Profile and questionnaire | Today these are the synthetic persona records (display name, language, declared risk tolerance), loaded at start and read-only through the API. Editing a profile and storing questionnaire answers (ADR-030) is not wired yet. | Memory only |
+| Account | Email and a scrypt hash of the password (never the password), creation time, whether you chose sample data. The email is stored encrypted and found through a keyed hash. | Storage mode |
+| Profile and questionnaire | Display name, language, the questionnaire answers and the tolerance derived from them. The personas Camila and Diego are synthetic, read-only fixtures. | Storage mode |
 | Conversation history | Your chat messages (cut at 4,000 characters), the agent's replies and the tool results in between, the last 40 entries per user and chat session | Memory only, also in SQLite mode; gone when the API restarts |
 | Savings proposals, authorizations and sandbox savings rules | Amount, currency, frequency, sandbox source and destination accounts, start date, status, expiry, the signature of the confirmed terms, user and session ids. No real bank is involved. | Storage mode |
-| Audit trail | A hash-chained record of what happened: event kind, classified intent and confidence, decision model answers, tool name, a hash of its parameters, permission tier, authorization id, result, block reason, model version, a short detail, user and session ids. It holds no holder names, RUTs, emails or card numbers (`C10`); a statement import records counts (`redacted=<n> detector=<name>`), never text. Events cannot be edited or removed without breaking the chain. | Storage mode |
-| Technical data | The user id sent in the `X-User-Id` header. The web app keeps a chat session id in the browser's `sessionStorage`; it sets no cookies. The API server (uvicorn) writes one line per request to standard output: client address, request line and status. Docker keeps it with the container's logs. | Server and browser |
-
-The SQLite schema also has tables for accounts and sign-in sessions (email, scrypt password hash, a digest of the session token). Sign-up and sign-in are not wired to the API yet, so these tables stay empty.
+| Audit trail | A hash-chained record of what happened: event kind, classified intent and confidence, decision model answers, tool name, a hash of its parameters, permission tier, authorization id, result, block reason, model version, a short detail, user and session ids, and at sign-up the version of the sandbox notice you acknowledged. It holds no holder names, RUTs, emails or card numbers (`C10`); a statement import records counts (`redacted=<n> detector=<name>`), never text. Events cannot be edited without breaking the chain; when you delete your account they are erased and only their place in the chain stays. | Storage mode |
+| Technical data | In accounts mode, a session cookie (`nl_session`, HttpOnly, 12 hours) whose token is stored only as a digest. In demo mode, the user id sent in the `X-User-Id` header. The web app keeps a chat session id in the browser's `sessionStorage`. The API server (uvicorn) writes one line per request to standard output: client address, request line and status. Docker keeps it with the container's logs. | Server and browser |
 
 ## Why
 
@@ -54,9 +53,9 @@ These providers are outside Chile, so turning any of them on is an international
 
 [SECURITY.md](SECURITY.md) describes the controls and the tests behind them: redaction at import (S15), permission tiers, signed, single-use authorizations that only the user can confirm (the agent has no confirm tool), the hash-chained audit trail, closed CORS (`G08`), `nosniff` and `no-store` headers (`G09`), and a live mode that refuses the development signing secret (`G10`). Known gaps:
 
-- **No authentication (`G01`).** Identity is the `X-User-Id` header. Anyone who can reach the API can read any user's statements and transactions: amounts, dates, merchants, categories and a masked account.
-- **The SQLite file is not encrypted (`G11`).**
-- **No rate limiting (`G07`).**
+- **Demo mode has no authentication (`G01`).** In demo mode (local runs) identity is the `X-User-Id` header and anyone who can reach the API can read any user's statements and transactions. Docker and the public demo run in accounts mode: sign-up, sign-in and a session cookie.
+- **Sign-up is open on the public demo.** The sandbox notice asks you not to upload real data, but nothing can stop it; whatever you upload is encrypted at rest and you can delete it.
+- **The demo personas are shared.** A statement uploaded while exploring as Camila or Diego is visible to every other visitor of that persona until someone resets it.
 - **Redaction is rule-based and written for Chilean cartolas.** A name outside a transfer line (`PAGO A <name>`) stays unless a detector is on. Statements stored before `st-0.2` keep their raw text until the database is deleted.
 
 ## Your rights
@@ -67,14 +66,14 @@ Ley 21.719 gives you rights over your data (arts. 5–9). The software supports 
 |---|---|---|---|
 | A copy of all your data (access, portability) | arts. 5, 9 | Partly: `GET /v1/statements`, `/v1/transactions` and `/v1/audit` show your statements, transactions and audit events. No full export (`G02`). | The team exports it by hand. |
 | Correction | art. 6 | Partly: you can change the category of any transaction, and the change is recorded (`G04`). Correcting a statement line's amount, date or description is not built yet (ADR-021). | The team corrects a line by hand. |
-| Deletion | art. 7 | No per-user deletion (`G03`) | The operator can delete the whole database: the file at `NL_SQLITE_PATH` (and any `-wal` and `-shm` files next to it), or `docker compose down --volumes` in Docker. This removes every user's data, the audit trail and the sandbox bank. Removing one user's audit events would break the hash chain; what the trail keeps after a deletion request is an open decision (`G03`). |
+| Deletion | art. 7 | Yes (`G03`): **Profile → Delete account**, with your password and the word DELETE (or your email). It deletes your account, profile, questionnaire answers, statements, transactions, proposals, authorizations, savings rules and every session at once. Your audit events are erased: the chain keeps only their place and one deletion event with counts, without your id. | If you lost your password, the team deletes the account by hand. |
 | Opposition and blocking | arts. 8, 8 ter | No (`G05`) | Stop uploading statements and ask the team. |
 
 **Consent.** Statements are processed when you upload them, without a recorded, purpose-specific consent (`G06`, art. 12).
 
 ## What is not built yet
 
-Authentication (`G01`), the rights above (`G02`–`G05`), recorded consent (`G06`), rate limiting (`G07`), encryption at rest (`G11`), the documented safeguards for transfers abroad (art. 27), the impact assessment (art. 15 ter) and an age check (art. 16 quáter; users are assumed to be adults).
+Authentication in demo mode (`G01`), export, opposition and blocking (`G02`, `G05`), recorded consent (`G06`), the documented safeguards for transfers abroad (art. 27), the impact assessment (art. 15 ter) and an age check (art. 16 quáter; users are assumed to be adults).
 
 ## Breaches
 

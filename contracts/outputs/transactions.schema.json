@@ -7,7 +7,8 @@
   "required": [
     "transactions",
     "spending",
-    "income"
+    "income",
+    "savings"
   ],
   "properties": {
     "transactions": {
@@ -140,14 +141,21 @@
     },
     "spending": {
       "type": "array",
-      "description": "Purchases and fees less refunds, per currency and category, largest first. Movimientos (card payments, and anything the user marks movement) are excluded.",
+      "description": "Purchases and fees less refunds, per currency and category, largest first. The holder's own money is excluded: Movimientos (card payments, and anything the user marks movement) and Ahorro (savings lines, ADR-036).",
       "items": {
         "$ref": "#/$defs/total"
       }
     },
     "income": {
       "type": "array",
-      "description": "Deposits per currency (category \"income\").",
+      "description": "Deposits per currency (category \"income\"), without the holder's own money (movement, savings).",
+      "items": {
+        "$ref": "#/$defs/total"
+      }
+    },
+    "savings": {
+      "type": "array",
+      "description": "Money set aside in the holder's savings or investment products less money back from them, per currency (category \"savings\", ADR-036). Neither spending nor income. Set by a layout rule or by the user, never by a model.",
       "items": {
         "$ref": "#/$defs/total"
       }
@@ -167,6 +175,7 @@
         "other",
         "income",
         "movement",
+        "savings",
         "uncategorized"
       ]
     },
@@ -187,7 +196,7 @@
         },
         "spent": {
           "type": "integer",
-          "description": "Spending: charges and fees less refunds (negative only if refunds exceed charges). Income: deposits."
+          "description": "Spending: charges and fees less refunds (negative only if refunds exceed charges). Income: deposits. Savings: set aside less withdrawn (negative if more came back than went in)."
         },
         "count": {
           "type": "integer",

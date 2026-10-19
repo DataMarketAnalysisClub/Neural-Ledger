@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
-import { accountsApi, type Me, type SigninInput, type SignupInput } from "@/api/accounts";
+import { accountsApi, type AccountDeletion, type AccountDeletionInput, type Me, type SigninInput, type SignupInput } from "@/api/accounts";
 import { useHealth } from "@/api/hooks";
 
 type Session =
@@ -20,6 +20,8 @@ export interface AuthContextValue {
   readonly signin: (input: SigninInput) => Promise<void>;
   readonly explore: (persona: "camila" | "diego") => Promise<void>;
   readonly signout: () => Promise<void>;
+  /** Delete the account (then signed out, every cached query dropped) or reset a demo persona (cache refreshed). */
+  readonly deleteAccount: (input: AccountDeletionInput) => Promise<AccountDeletion>;
   /** Re-read /v1/me for the same session, e.g. after an import changed the account's data source (ADR-029). */
   readonly refreshMe: () => Promise<void>;
 }
@@ -86,6 +88,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     await accountsApi.signout();
     await transition(false);
   }, [transition]);
+  const deleteAccount = useCallback(async (input: AccountDeletionInput) => {
+    const result = await accountsApi.deleteAccount(input);
+    if (result.status === "DELETED") await transition(false);
+    else await client.invalidateQueries({ predicate: (query) => query.queryKey[0] !== "health" });
+    return result;
+  }, [transition, client]);
   const refreshMe = useCallback(async () => {
     if (mode !== "accounts") return;
     const started = generation.current;
@@ -109,8 +117,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode }) {
     mode, me: session.status === "authenticated" ? session.me : null,
     pending: health.isPending || (mode === "accounts" && session.status === "loading"),
     error: health.error ?? (session.status === "error" ? session.error : null),
-    retry, signup, signin, explore, signout, refreshMe,
-  }), [mode, session, health.isPending, health.error, retry, signup, signin, explore, signout, refreshMe]);
+    retry, signup, signin, explore, signout, deleteAccount, refreshMe,
+  }), [mode, session, health.isPending, health.error, retry, signup, signin, explore, signout, deleteAccount, refreshMe]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

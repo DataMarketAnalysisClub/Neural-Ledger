@@ -129,7 +129,7 @@ class ChatUseCase:
         max_tier = max_tier_for(cls.gate)
         allow_stateful = cls.gate is Gate.PROCEED
         as_of, currency = self._financial.context(user_id)
-        ctx = ToolContext(session_id, user_id, cls.intent.value, round(cls.confidence, 4), cls.checks)
+        ctx = ToolContext(session_id, user_id, cls.intent.value, round(cls.confidence, 4), cls.checks, text)
         turn_context = TurnContext(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         system = SYSTEM_PROMPT + context_block(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         tools = self._registry.specs(max_tier, allow_stateful)
@@ -198,7 +198,7 @@ class ChatUseCase:
             final_text = deterministic or narration.NO_RESULT
             fallback = True
             verification = check(final_text)
-        if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.EXECUTE_ACTION):
+        if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.SET_LIQUIDITY_FLOOR, Intent.EXECUTE_ACTION):
             final_text = f"{final_text} {narration.READ_ONLY_NOTE}"
 
         turn_entries = [e for i, e in enumerate(entries) if i >= len(history) and i not in discarded]

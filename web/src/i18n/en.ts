@@ -46,6 +46,7 @@ export const en = {
     until: "until {month}",
     ongoing: "Ongoing",
     askCopilot: "Ask the copilot",
+    minus: "minus {amount}",
   },
   errors: {
     network: "The API did not answer. Check that it is running on port 8000, then try again.",
@@ -295,6 +296,8 @@ export const en = {
     inputLabel: "Ask about your money",
     inputPlaceholder: "For example: can I afford a CLP 400,000 laptop in 12 cuotas?",
     send: "Send",
+    showMore: "Show more",
+    showLess: "Show less",
     suggestions: "Suggested questions",
     prompts: [
       "Will I be OK in December?",
@@ -321,7 +324,7 @@ export const en = {
       source: "From",
       destination: "To",
       effective: "Starts",
-      actions: { create_savings_rule: "Create a savings rule" },
+      actions: { create_savings_rule: "Create a savings rule", set_liquidity_floor: "Set your liquidity floor" },
       frequencies: { monthly: "Monthly", weekly: "Weekly" },
       accounts: { checking: "Checking account", sandbox_savings: "Sandbox savings" },
       fromPlan: "Built from stored plan {snapshot}",
@@ -342,6 +345,14 @@ export const en = {
     executed: "Rule {reference} created. Your balance did not change.",
     confirmed: "You confirmed these terms. Nothing has executed yet.",
     newProposal: "Prepare a new proposal",
+    /** A liquidity floor (ADR-037): the same contract, but nothing moves. */
+    floor: {
+      title: "Liquidity floor",
+      confirmNote: "Confirming does not change anything yet. Activating the floor is a separate step.",
+      execute: "Activate the {amount} floor",
+      executeNote: "Stores the floor as a rule. No money moves; forecasts, plans and purchase checks then use it instead of the default floor.",
+      executed: "Floor {reference} active. Your balance did not change.",
+    },
   },
   blocked: {
     title: "Blocked",
@@ -425,6 +436,8 @@ export const en = {
       title: "Import a statement",
       hint: "An Excel export, a PDF or a photo of a statement, up to 15 MB. Use synthetic data in this sandbox.",
       choose: "Choose file",
+      sandboxTitle: "Sandbox: do not upload a real bank statement",
+      sandboxBody: "This is a hackathon prototype. Upload only synthetic statements. Names and identifiers are masked at import, but merchants, amounts and dates are kept, and they are personal data when the statement is real.",
       importing: "Reading {name}. A scanned statement can take a few minutes.",
       tooLarge: "The file is larger than 15 MB. Export a shorter period or a smaller scan.",
       failed: "The statement could not be imported",
@@ -499,6 +512,7 @@ export const en = {
       amount: "Amount",
       spending: "Spending by category",
       income: "Income",
+      savings: "Savings, set aside less withdrawn",
       count: "{count} movements",
     },
     categories: {
@@ -512,6 +526,7 @@ export const en = {
       other: "Other",
       income: "Income",
       movement: "Own money movement",
+      savings: "Savings",
       uncategorized: "Uncategorized",
     },
   },
@@ -530,6 +545,11 @@ export const en = {
   },
   auth: {
     sandbox: "Sandbox only. Do not use real account information.",
+    sandboxNotice: {
+      title: "This is a hackathon sandbox",
+      body: "Neural Ledger is a FinTechathon 2026 prototype, not a bank or a production service. Do not upload real bank statements and do not enter real personal data: use synthetic statements or a demo persona.",
+      acknowledge: "I understand this is a sandbox and I will not upload real bank statements or personal data.",
+    },
     email: "Email",
     password: "Password",
     passwordHint: "Use 10 to 128 characters.",
@@ -549,7 +569,14 @@ export const en = {
       link: "Create an account",
       haveAccount: "Already have an account?",
     },
+    hero: {
+      title: "Check any purchase against your future months.",
+      lede: "Forecast, savings plan and a copilot that explains every number.",
+      featuresLabel: "What you can do",
+      features: ["Forecast", "Purchase check", "Savings plan", "Copilot"],
+    },
     explore: {
+      divider: "or explore a demo persona",
       title: "Explore a demo persona",
       description: "Camila and Diego are synthetic and read only. Their profiles cannot be changed.",
       camila: "Explore as Camila",
@@ -559,7 +586,7 @@ export const en = {
     signout: "Sign out",
     signingOut: "Signing out",
     mock: "Local mock, not a production service",
-    footer: "Sandbox account. No real money moves. Not financial advice.",
+    footer: "Sandbox account. Do not upload real bank statements or personal data. No real money moves. Not financial advice.",
   },
   onboarding: {
     title: "Your saving preferences",
@@ -623,6 +650,21 @@ export const en = {
     mockFinancial: "The local accounts mock does not provide financial projections. Connect the accounts backend to explore those screens.",
     openProfile: "Open profile",
     importStatements: "Import statements",
+    deletion: {
+      title: "Delete account",
+      description: "Deletes your account and everything it holds: imported statements, transactions, questionnaire answers, proposals, savings rules and every session. Your audit events are erased; the audit chain keeps only their place. This cannot be undone.",
+      start: "Delete account",
+      confirmLabel: "Type DELETE or your email to confirm",
+      password: "Your password",
+      submit: "Delete my account permanently",
+      cancel: "Cancel",
+      resetTitle: "Reset demo data",
+      resetDescription: "Demo personas are shared and never deleted. Resetting removes the statements, transactions, proposals and savings rules stored for this persona, for every visitor. The synthetic profile stays.",
+      resetStart: "Reset demo data",
+      resetConfirmLabel: "Type RESET to confirm",
+      resetSubmit: "Reset this persona's data",
+      resetDone: "Demo data reset. {count} audit events erased.",
+    },
   },
 } as const;
 

@@ -54,6 +54,25 @@ describe("phone header", () => {
   });
 });
 
+describe("Copilot icon", () => {
+  it("is the brand mark in the sidebar, drawn like the other nav icons", () => {
+    signedIn();
+    mount();
+    const sidebar = screen.getByRole("navigation", { name: "Main" });
+    const glyph = within(sidebar).getByRole("link", { name: "Copilot" }).querySelector("svg")!;
+    expect(glyph).toHaveAttribute("data-glyph", "copilot");
+    expect(glyph).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("is the round avatar in the middle of the bottom bar", () => {
+    signedIn();
+    mount();
+    const bar = screen.getByRole("navigation", { name: "Primary" });
+    const avatar = within(bar).getByRole("link", { name: "Copilot" }).querySelector("svg")!;
+    expect(avatar).toHaveAttribute("data-shape", "round");
+  });
+});
+
 describe("bottom bar", () => {
   it("has four destinations and More, with the Copilot in the middle", () => {
     signedIn();

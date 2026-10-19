@@ -26,6 +26,7 @@ from neural_ledger.application.ports import IdCollision
 from neural_ledger.application.use_cases.accounts import AccountUseCases
 from neural_ledger.domain.audit.events import verify_chain
 from neural_ledger.domain.user.account import token_digest
+from tests.conftest import TEST_CIPHER
 
 NOW = datetime(2026, 10, 29, 9, tzinfo=UTC)
 PASSWORD = "correct horse battery"
@@ -73,11 +74,11 @@ def world(request, tmp_path):
         db = None
     else:
         db = SqliteDatabase(tmp_path / "integrity.db")
-        accounts = SqliteUserAccountStore(db)
+        accounts = SqliteUserAccountStore(db, TEST_CIPHER)
         sessions = SqliteSessionStore(db)
-        profiles = SqliteUserProfileStore(db)
-        audit = SqliteAuditLog(db)
-    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db)
+        profiles = SqliteUserProfileStore(db, TEST_CIPHER)
+        audit = SqliteAuditLog(db, TEST_CIPHER)
+    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db, TEST_CIPHER)
     use_cases = AccountUseCases(accounts, sessions, writes, FakeHasher(), FakeTokens(), FixedClock(NOW), SequentialIds())
     return request.param, db, accounts, sessions, profiles, audit, use_cases
 
@@ -107,11 +108,11 @@ def test_u1_reused_ids_never_overwrite_a_profile(world, tmp_path):
     if kind == "sqlite":
         db.connection.close()
         db = SqliteDatabase(tmp_path / "integrity.db")
-        accounts = SqliteUserAccountStore(db)
+        accounts = SqliteUserAccountStore(db, TEST_CIPHER)
         sessions = SqliteSessionStore(db)
-        profiles = SqliteUserProfileStore(db)
-        audit = SqliteAuditLog(db)
-    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db)
+        profiles = SqliteUserProfileStore(db, TEST_CIPHER)
+        audit = SqliteAuditLog(db, TEST_CIPHER)
+    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db, TEST_CIPHER)
     second = AccountUseCases(accounts, sessions, writes, FakeHasher(), FakeTokens(), FixedClock(NOW), SequentialIds())
     with pytest.raises(IdCollision):
         second.signup("other@example.com", PASSWORD, "Other")
@@ -182,9 +183,9 @@ def test_u6_retry_signup_after_audit_failure_preserves_chain(world):
 
 def test_u7_sqlite_real_secrets_never_appear_in_persistence(tmp_path):
     db = SqliteDatabase(tmp_path / "privacy.db")
-    accounts, sessions, audit = SqliteUserAccountStore(db), SqliteSessionStore(db), SqliteAuditLog(db)
+    accounts, sessions, audit = SqliteUserAccountStore(db, TEST_CIPHER), SqliteSessionStore(db), SqliteAuditLog(db, TEST_CIPHER)
     use_cases = AccountUseCases(
-        accounts, sessions, SqliteAccountWrites(db), ScryptHasher(), SecretsTokens(), FixedClock(NOW), SequentialIds()
+        accounts, sessions, SqliteAccountWrites(db, TEST_CIPHER), ScryptHasher(), SecretsTokens(), FixedClock(NOW), SequentialIds()
     )
     first = use_cases.signup(EMAIL, PASSWORD, "Secret Name").session
     second = use_cases.signin(EMAIL, PASSWORD).session
@@ -194,7 +195,7 @@ def test_u7_sqlite_real_secrets_never_appear_in_persistence(tmp_path):
     for secret in (PASSWORD, first.token, second.token):
         assert secret not in dump
     assert EMAIL not in records and "Secret Name" not in records
-    assert dump.count(EMAIL) >= 1
+    assert EMAIL not in dump and "Secret Name" not in dump  # option B: the email is sealed and searched by its blind index
     assert verify_chain(audit.events()).ok
 
 
@@ -202,7 +203,7 @@ def test_u8_collision_error_never_exposes_personal_data(world):
     kind, db, accounts, sessions, profiles, audit, use_cases = world
     first = use_cases.signup(EMAIL, PASSWORD, "Secret Name").session
     second = AccountUseCases(
-        accounts, sessions, InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db),
+        accounts, sessions, InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db, TEST_CIPHER),
         FakeHasher(), FakeTokens(), FixedClock(NOW), SequentialIds()
     )
     with pytest.raises(IdCollision) as error:

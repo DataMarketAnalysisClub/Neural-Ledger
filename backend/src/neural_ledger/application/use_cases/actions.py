@@ -1,6 +1,8 @@
 """Action use cases (Role C): propose -> user confirms -> execute, each step audited.
 
-- propose: amount comes from the stored plan snapshot, never from model text (decision D7).
+- propose: a savings rule's amount comes from the stored plan snapshot, never from model text (decision D7).
+  A liquidity floor's amount is what the user wrote: the model may only relay a number that is in the
+  user's message of this turn, and the user still confirms the exact terms (ADR-037).
 - confirm: ONLY reachable from the UI endpoint. There is no confirm tool for the model.
 - execute: terms are re-read from the stored authorization; caller-supplied terms are only
   compared (S03, S05). Expiry (S04), single use (S04, S11) and destination checks (S06) are
@@ -21,8 +23,10 @@ from ...domain.actions.terms import (
     ExecutionReceipt,
     Proposal,
     ProposalStatus,
+    terms_for_floor,
     terms_from_plan,
 )
+from ...domain.agent.verification import extract_numbers
 from ...domain.audit.events import Actor, AuditDraft, AuditKind, DecisionCheck
 from ...domain.permissions.policy import (
     BlockReason,
@@ -33,6 +37,8 @@ from ...domain.permissions.policy import (
 )
 from ...domain.shared.envelope import Fact
 from ...domain.shared.errors import InvalidInput
+from ...domain.shared.hashing import content_id
+from ...domain.shared.month import Month
 from ..ports import (
     ActionRepository,
     AuditLog,
@@ -53,6 +59,7 @@ class ActorContext:
     user_intent: str | None = None
     intent_confidence: float | None = None
     checks: tuple[DecisionCheck, ...] = ()
+    user_text: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +183,32 @@ class ActionUseCases:
             user_id=ctx.user_id,
             terms=terms,
             source_snapshot_id=str(plan_snapshot_id),
+            created_at=now,
+            expires_at=now + timedelta(seconds=self._policy.proposal_ttl_seconds),
+        )
+        self._repo.add_proposal(proposal)
+        self._record(ctx, AuditKind.PROPOSAL_CREATED, tool=tool, tier=Tier.T1, forecast_snapshot_id=proposal.source_snapshot_id, detail=proposal.proposal_id)
+        return ActionOutcome("PROPOSED", proposal=proposal)
+
+    def propose_liquidity_floor(self, ctx: ActorContext, amount: object, first_cycle: Month, currency: str) -> ActionOutcome:
+        """The user's own floor (ADR-037). The amount must be one the user wrote in this turn's message."""
+        tool = "propose_liquidity_floor"
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+            return ActionOutcome("INVALID_INPUT", detail="amount must be a positive integer in minor units", field="amount")
+        written = {int(n.value) for n in extract_numbers(ctx.user_text) if not n.is_percent and n.value == int(n.value)}
+        if amount not in written:
+            return ActionOutcome("INVALID_INPUT", detail="the floor must be an amount the user wrote in this message; ask the user for it", field="amount")
+        terms = terms_for_floor(amount, currency, first_cycle)
+        gate = check_terms(terms, self._policy)
+        if not gate.allowed:
+            return self._blocked(ctx, tool, gate.reason, gate.detail, gate.tier)
+        now = self._clock.now()
+        proposal = Proposal(
+            proposal_id=self._ids.new("prop"),
+            session_id=ctx.session_id,
+            user_id=ctx.user_id,
+            terms=terms,
+            source_snapshot_id=content_id("floor", ctx.user_id, terms.canonical()),
             created_at=now,
             expires_at=now + timedelta(seconds=self._policy.proposal_ttl_seconds),
         )

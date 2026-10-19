@@ -99,7 +99,7 @@ On a checking account deposits are `income` by rule and charges are `purchase`, 
 
 **From statements to the forecast (ADR-029):** a signed-up account's financial model is estimated from its own verified statements (`domain/ledger/snapshot.py` builds the ledger snapshot, `application/services/statement_model.py` runs the stage-1 estimators); personas keep their fixtures. Six full pay cycles are needed, about seven months of checking statements.
 
-Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet. The user can set a category (`PATCH /v1/transactions/{txn_id}`, ADR-023): it is stored with classifier `user`, so it wins over any model, and a transaction the user marks `movement` leaves the spending and income totals.
+Existing transactions keep their category on re-import; re-categorizing the ledger with a new model is not built yet. The user can set a category (`PATCH /v1/transactions/{txn_id}`, ADR-023): it is stored with classifier `user`, so it wins over any model, and a transaction the user marks `movement` or `savings` leaves the spending and income totals. `savings` (ADR-036) is set by a layout rule (`Layout.savings`) or by the user, never by a model, and is reported as its own total.
 
 **Decided, not built yet** (see `docs/DECISIONS.md`):
 - ADR-021: unreconciled statements go to the user for manual correction and are posted either way, flagged.

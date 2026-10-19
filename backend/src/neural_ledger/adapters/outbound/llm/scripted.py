@@ -23,6 +23,7 @@ from ....application.services import narration
 from ..text.lexicon import installments, mentioned_month, money_amounts
 
 ASK_PURCHASE = "Tell me the price and how many cuotas you want, and I'll check it against your forecast."
+ASK_FLOOR = "Tell me the minimum balance you want your checking account to keep every month, and I'll prepare the rule."
 NOTHING_TO_EXECUTE = "There is no confirmed action to execute yet. Please confirm the proposal in the app first."
 NO_BYPASS = "I can't skip the conservative check, but here is what does fit."
 
@@ -70,6 +71,9 @@ class ScriptedLanguageModel:
             plan = done["compute_savings_plan"]
             if plan["data"]["amount"] > 0 and "propose_savings_rule" not in done:
                 return call("propose_savings_rule", plan_snapshot_id=plan["snapshot_id"])
+        if intent == "set_liquidity_floor" and "propose_liquidity_floor" not in done:
+            amounts = money_amounts(text)
+            return call("propose_liquidity_floor", amount=amounts[0]) if amounts else None
         if intent == "execute_action":
             if "get_pending_actions" not in done:
                 return call("get_pending_actions")
@@ -97,6 +101,8 @@ class ScriptedLanguageModel:
             return f"{NO_BYPASS} {text}" if follow_up else text
         if intent == "afford_purchase":
             return ASK_PURCHASE
+        if intent == "set_liquidity_floor":
+            return ASK_FLOOR
         if intent == "explain":
             return narration.EXPLAIN
         if intent == "out_of_scope":

@@ -61,6 +61,17 @@ def test_chat(client):
     assert reply["intent"] == "forecast" and reply["verification"]["ok"]
 
 
+def test_chat_proposes_the_floor_and_the_user_confirms_it_over_http(client):
+    from tests.contract.test_contracts import validate
+
+    reply = client.post("/v1/chat", json={"session_id": "fl", "message": "Quiero que el piso sea de 100.000"}).json()
+    validate(reply, "chat/chat_reply.schema.json")
+    proposal = reply["pending_proposal"]
+    assert reply["intent"] == "set_liquidity_floor" and proposal["terms"]["action"] == "set_liquidity_floor" and proposal["terms"]["amount"] == 100_000
+    confirmed = client.post(f"/v1/actions/proposals/{proposal['proposal_id']}/confirm", json={"session_id": "fl", "terms": proposal["terms"]})
+    assert confirmed.status_code == 201 and confirmed.json()["status"] == "CONFIRMED", confirmed.text
+
+
 def test_statement_upload_list_and_detail(client):
     pytest.importorskip("pymupdf")
     pytest.importorskip("pdfplumber")
@@ -94,7 +105,9 @@ def test_imported_statement_reaches_the_transaction_ledger(client):
     body = client.get("/v1/transactions", headers={"X-User-Id": "camila"}).json()
     txns = body["data"]["transactions"]
     assert len(txns) == 7 and txns[0]["merchant"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
-    assert sum(t["spent"] for t in body["data"]["spending"]) == 21_080 and body["data"]["income"][0]["spent"] == 463_521  # the 40,000 to savings is a Movimiento
+    assert sum(t["spent"] for t in body["data"]["spending"]) == 11_080 and body["data"]["income"][0]["spent"] == 463_521
+    # the 40,000 to the savings account and the 10,000 mutual fund contribution are Ahorro, not spending (ADR-036)
+    assert body["data"]["savings"] == [{"category": "savings", "currency": "CLP", "spent": 50_000, "count": 2}]
     assert client.get("/v1/transactions", headers={"X-User-Id": "diego"}).json()["data"]["transactions"] == []
 
 

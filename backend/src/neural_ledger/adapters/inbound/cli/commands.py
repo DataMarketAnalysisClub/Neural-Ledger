@@ -113,6 +113,8 @@ def list_transactions(services: ApplicationServices, user_id: str, as_json: bool
         print(f"spent {t.spent:>12,} {t.currency}  {t.category:<14} ({t.count})")
     for t in data.income:
         print(f"income {t.spent:>11,} {t.currency}  ({t.count})")
+    for t in data.savings:
+        print(f"saved {t.spent:>12,} {t.currency}  ({t.count})")
     if not data.transactions:
         print("no transactions yet: import a statement (use NL_PERSISTENCE=sqlite to keep them between runs)")
     return 0

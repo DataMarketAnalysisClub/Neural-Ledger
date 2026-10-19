@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from neural_ledger.adapters.outbound.fixtures.persona_source import PersonaFixtureSource
+from neural_ledger.adapters.outbound.persistence.field_cipher import FieldCipher
 from neural_ledger.bootstrap.config import Settings
 from neural_ledger.bootstrap.container import build
 from neural_ledger.domain.finance.params import FC_0_1
@@ -12,6 +13,7 @@ from neural_ledger.domain.finance.params import FC_0_1
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"
 CONTRACTS = REPO / "contracts"
+TEST_CIPHER = FieldCipher(bytes(range(32)))  # SQLite stores built by hand in tests seal with this fixed, public key
 
 
 def make_settings(**overrides) -> Settings:

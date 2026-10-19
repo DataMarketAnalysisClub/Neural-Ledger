@@ -8,7 +8,7 @@
   "properties": {
     "session_id": {"type": "string"},
     "text": {"type": "string"},
-    "intent": {"enum": ["afford_purchase", "forecast", "protected_surplus", "savings_plan", "execute_action", "explain", "out_of_scope", "smalltalk"]},
+    "intent": {"enum": ["afford_purchase", "forecast", "protected_surplus", "savings_plan", "set_liquidity_floor", "execute_action", "explain", "out_of_scope", "smalltalk"]},
     "intent_confidence": {"type": "number"},
     "gate": {"enum": ["proceed", "clarify", "read_only"]},
     "decision_model": {"type": ["string", "null"]},

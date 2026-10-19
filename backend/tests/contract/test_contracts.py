@@ -150,11 +150,13 @@ def test_card_and_spreadsheet_statements_match_contracts(services):
 
 
 def test_transaction_categories_match_the_domain_vocabulary():
-    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, MOVEMENT, UNCATEGORIZED
+    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, OWN_MONEY, UNCATEGORIZED, user_categories
     from neural_ledger.domain.ledger.entities import TransactionKind
 
     schema = json.loads((CONTRACTS / "outputs/transactions.schema.json").read_text())
-    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | {INCOME, MOVEMENT, UNCATEGORIZED}
+    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | OWN_MONEY | {INCOME, UNCATEGORIZED}
+    update = json.loads((CONTRACTS / "transactions/category_update.schema.json").read_text())
+    assert set(update["properties"]["category"]["enum"]) == set().union(*(user_categories(k) for k in TransactionKind))
     posted_kinds = {TransactionKind.INCOME, TransactionKind.PURCHASE, TransactionKind.CARD_PAYMENT, TransactionKind.REFUND, TransactionKind.FEE}
     assert set(schema["properties"]["transactions"]["items"]["properties"]["kind"]["enum"]) == {k.value for k in posted_kinds}
 
@@ -190,3 +192,20 @@ def test_redaction_placeholders_match_the_domain_codes():
 def test_account_references_must_be_masked(relative, pointer, masked, raw):
     account = _part(relative, pointer)
     assert account.is_valid(masked) and not account.is_valid(raw)
+
+
+def test_action_terms_list_every_domain_action():
+    from neural_ledger.domain.actions.terms import ActionType
+
+    terms = json.loads((CONTRACTS / "actions/action_terms.schema.json").read_text())
+    execute = json.loads((CONTRACTS / "tools/execute_sandbox_action.input.schema.json").read_text())
+    actions = {a.value for a in ActionType}
+    assert set(terms["properties"]["action"]["enum"]) == actions
+    assert set(execute["properties"]["requested_terms"]["properties"]["action"]["enum"]) == actions
+
+
+def test_chat_reply_lists_every_domain_intent():
+    from neural_ledger.domain.agent.questions import Intent
+
+    schema = json.loads((CONTRACTS / "chat/chat_reply.schema.json").read_text())
+    assert schema["properties"]["intent"]["enum"] == [i.value for i in Intent]

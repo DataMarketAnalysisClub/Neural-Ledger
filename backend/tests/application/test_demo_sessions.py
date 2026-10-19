@@ -34,7 +34,7 @@ from neural_ledger.domain.audit.events import Actor, AuditKind, verify_chain
 from neural_ledger.domain.finance.profile import RiskProfile
 from neural_ledger.domain.user.account import token_digest
 from neural_ledger.domain.user.profile import UserProfile
-from tests.conftest import make_settings
+from tests.conftest import TEST_CIPHER, make_settings
 
 NOW = datetime(2026, 10, 29, 9, tzinfo=UTC)
 EMAIL = "demo@accounts.invalid"
@@ -75,9 +75,9 @@ def world(request, tmp_path):
         accounts, sessions, inner, audit = InMemoryUserAccountStore(), InMemorySessionStore(), InMemoryUserProfileStore(), FailingAuditLog()
     else:
         db = SqliteDatabase(tmp_path / "demo-sessions.db")
-        accounts, sessions, inner, audit = SqliteUserAccountStore(db), SqliteSessionStore(db), SqliteUserProfileStore(db), SqliteAuditLog(db)
+        accounts, sessions, inner, audit = SqliteUserAccountStore(db, TEST_CIPHER), SqliteSessionStore(db), SqliteUserProfileStore(db, TEST_CIPHER), SqliteAuditLog(db, TEST_CIPHER)
     profiles = PersonaOverlayProfileStore(PERSONAS, inner)
-    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db)
+    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db, TEST_CIPHER)
     tokens = FakeTokens()
     use_cases = AccountUseCases(
         accounts, sessions, writes, FakeHasher(), tokens, FixedClock(NOW), SequentialIds(), demo_personas=frozenset(DEMO_PERSONAS)

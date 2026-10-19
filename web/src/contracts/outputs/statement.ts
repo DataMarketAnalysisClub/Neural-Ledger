@@ -22,9 +22,9 @@ export interface Statement {
      */
     confidence: number | null;
     /**
-     * What the bank says the line is, when its layout says it (credit cards), or transfer_own when a checking layout's rule recognizes the holder's own money moving to their savings or card (ADR-024; posted as movement by rule). null: the sign decides.
+     * What the bank says the line is, when its layout says it (credit cards), transfer_own when a checking layout's rule recognizes the holder's own money moving to their card (ADR-024; posted as movement by rule), or savings when it recognizes money into or out of their savings or investment products (ADR-036; posted as savings by rule). null: the sign decides.
      */
-    kind: "purchase" | "payment" | "refund" | "fee" | "transfer_own" | null;
+    kind: "purchase" | "payment" | "refund" | "fee" | "transfer_own" | "savings" | null;
     /**
      * The printed subtotal the line belongs to (e.g. B, D, E on a card statement).
      */

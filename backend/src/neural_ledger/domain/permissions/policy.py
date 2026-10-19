@@ -78,16 +78,25 @@ class PermissionPolicy:
     max_amount_per_action: int
     proposal_ttl_seconds: int
     authorization_ttl_seconds: int
+    # Per action: the only (source, destination) it may use, and its own amount limit when it moves no money.
+    # A savings rule cannot point at checking, and a floor rule cannot point anywhere but the account it protects.
+    routes: tuple[tuple[ActionType, str, str], ...] = ((ActionType.CREATE_SAVINGS_RULE, "checking", "sandbox_savings"),)
+    max_liquidity_floor: int = 0
 
 
 PP_0_1 = PermissionPolicy(
-    version="pp-0.1",
-    allowed_actions=frozenset({ActionType.CREATE_SAVINGS_RULE}),
+    version="pp-0.2",
+    allowed_actions=frozenset({ActionType.CREATE_SAVINGS_RULE, ActionType.SET_LIQUIDITY_FLOOR}),
     allowed_sources=frozenset({"checking"}),
-    allowed_destinations=frozenset({"sandbox_savings"}),
+    allowed_destinations=frozenset({"sandbox_savings", "checking"}),
     max_amount_per_action=1_000_000,
     proposal_ttl_seconds=30 * 60,
     authorization_ttl_seconds=10 * 60,
+    routes=(
+        (ActionType.CREATE_SAVINGS_RULE, "checking", "sandbox_savings"),
+        (ActionType.SET_LIQUIDITY_FLOOR, "checking", "checking"),
+    ),
+    max_liquidity_floor=100_000_000,  # the estimator's input limit for a personal ledger is 10^9 (ADR-037)
 )
 
 
@@ -110,8 +119,11 @@ def check_terms(terms: ActionTerms, policy: PermissionPolicy) -> GateDecision:
         return _block(BlockReason.UNKNOWN_SOURCE, f"source {terms.source_account!r} is not allowed", Tier.T3)
     if terms.destination not in policy.allowed_destinations:
         return _block(BlockReason.UNKNOWN_DESTINATION, f"destination {terms.destination!r} is not allowed", Tier.T3)
-    if terms.amount > policy.max_amount_per_action:
-        return _block(BlockReason.AMOUNT_OVER_LIMIT, f"amount {terms.amount} exceeds {policy.max_amount_per_action}")
+    if (terms.action, terms.source_account, terms.destination) not in policy.routes:
+        return _block(BlockReason.UNKNOWN_DESTINATION, f"{terms.action.value} cannot go from {terms.source_account!r} to {terms.destination!r}", Tier.T3)
+    limit = policy.max_liquidity_floor if terms.action is ActionType.SET_LIQUIDITY_FLOOR else policy.max_amount_per_action
+    if terms.amount > limit:
+        return _block(BlockReason.AMOUNT_OVER_LIMIT, f"amount {terms.amount} exceeds {limit}")
     return GateDecision(True, Tier.T2)
 
 

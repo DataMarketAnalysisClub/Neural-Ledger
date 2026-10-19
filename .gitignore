@@ -43,6 +43,8 @@ evidence/test-results/*.xml
 commit_message.txt
 resumen-*.md
 .impeccable/
+.playwright-mcp/
+
 # Playwright artifacts
 web/test-results/
 web/playwright-report/

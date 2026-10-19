@@ -47,7 +47,14 @@ def _required(args: Mapping[str, Any], name: str) -> Any:
 
 
 def _actor(ctx: ToolContext) -> ActorContext:
-    return ActorContext(ctx.session_id, ctx.user_id, Actor.AGENT, ctx.intent, ctx.intent_confidence, ctx.checks)
+    return ActorContext(ctx.session_id, ctx.user_id, Actor.AGENT, ctx.intent, ctx.intent_confidence, ctx.checks, ctx.user_text)
+
+
+def _propose_floor(financial: FinancialUseCases, actions: ActionUseCases, args: Mapping[str, Any], ctx: ToolContext) -> Any:
+    cycle = financial.first_cycle(ctx.user_id)
+    if not isinstance(cycle, tuple):
+        return cycle  # INSUFFICIENT_DATA envelope: no financial model for this user
+    return actions.propose_liquidity_floor(_actor(ctx), _required(args, "amount"), *cycle)
 
 
 def build_registry(
@@ -111,6 +118,7 @@ def build_registry(
             lambda a, c: actions.propose_savings_rule(_actor(c), str(_required(a, "plan_snapshot_id"))),
             stateful=True,
         ),
+        Tool("propose_liquidity_floor", Tier.T1, lambda a, c: _propose_floor(financial, actions, a, c), stateful=True),
         # T2: execute an approved sandbox action (terms come from the stored authorization)
         Tool(
             "execute_sandbox_action",

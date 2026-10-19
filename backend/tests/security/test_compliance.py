@@ -221,11 +221,12 @@ def test_c07_the_public_repository_holds_no_secrets_and_no_real_statements():
 
 
 def test_c08_sql_is_always_parameterized(tmp_path):
-    """ASVS 5.0 V1 (injection), OWASP API8:2023. Statically: no SQL built from strings in the SQLite adapter.
+    """ASVS 5.0 V1 (injection), OWASP API8:2023. Statically: no SQL built from strings in the SQLite adapters.
     Dynamically: an injection-shaped user id is just an id."""
-    tree = ast.parse((SRC / "adapters/outbound/persistence/sqlite.py").read_text(encoding="utf-8"))
+    trees = [ast.parse(path.read_text(encoding="utf-8")) for path in sorted((SRC / "adapters/outbound/persistence").glob("sqlite*.py"))]
     built = [
         node.lineno
+        for tree in trees
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -324,7 +325,7 @@ def test_c13_only_redacted_statement_text_is_sent_to_jev(monkeypatch):
 
 
 # ------------------------------------------------------------------------------------------------
-# Gaps: duties not built yet (strict xfail)
+# Gaps: duties not built yet (strict xfail); G03 is built (below, with them for its number)
 # ------------------------------------------------------------------------------------------------
 @gap("identity is an X-User-Id header (sandbox); no authentication. OWASP API2:2023, Ley 21.719 art. 14 quinquies")
 def test_g01_requests_without_credentials_are_rejected(services):
@@ -341,9 +342,12 @@ def test_g02_a_user_can_export_all_of_their_data(services):
     assert ("GET", "/v1/me/export") in _routes(services)
 
 
-@gap("no deletion of the user's statements and transactions. Ley 21.719 art. 7 (supresión)")
 def test_g03_a_user_can_delete_their_data(services):
-    assert ("DELETE", "/v1/me/data") in _routes(services)
+    """Ley 21.719 art. 7 (supresión). Built (option B): DELETE /v1/account erases the account and everything it owns,
+    with the password and a typed confirmation; the audit keeps tombstones a later ACCOUNT_DELETED event commits to.
+    End to end in tests/security/test_account_deletion.py."""
+    assert ("DELETE", "/v1/account") in _routes(services)
+    assert {"ACCOUNT_DELETED", "ERASED"} <= {kind.value for kind in AuditKind}
 
 
 def test_g04_a_user_can_correct_their_records(services):
@@ -408,7 +412,7 @@ def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
     assert services.ledger.list_transactions(USER).data.transactions  # imported and readable through the API
     stored = _stored_bytes(path)
     assert "Compra Nacional VD SHOP ONE" not in stored and "SHOP ONE" not in stored
-    assert "nlenc1:" in stored
+    assert "nlenc2:" in stored and "nlenc1:" not in stored
 
 
 def test_g12_privacy_policy_and_breach_runbook_exist():

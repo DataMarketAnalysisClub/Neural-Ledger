@@ -20,7 +20,7 @@ describe("accounts request identity", () => {
 
 describe("local accounts mock", () => {
   it("returns a profile with synthetic provenance in a complete OK envelope", async () => {
-    await accountsApi.signup({ email: "provenance@example.invalid", password: "synthetic-password-four", display_name: "Mock Tester" });
+    await accountsApi.signup({ email: "provenance@example.invalid", password: "synthetic-password-four", display_name: "Mock Tester", sandbox_acknowledged: true });
 
     const profile = await accountsApi.profile();
 
@@ -43,7 +43,7 @@ describe("local accounts mock", () => {
   });
 
   it("answers a domain-rejected profile edit with an INVALID_INPUT envelope naming the field", async () => {
-    await accountsApi.signup({ email: "invalid-name@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester" });
+    await accountsApi.signup({ email: "invalid-name@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester", sandbox_acknowledged: true });
 
     const failure = await accountsApi.updateProfile({ display_name: "123", language: "en" }).then(() => null, (error: unknown) => error);
 
@@ -58,7 +58,7 @@ describe("local accounts mock", () => {
   });
 
   it("answers an empty profile-edit body with the strict auth error on field body", async () => {
-    await accountsApi.signup({ email: "empty-edit@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester" });
+    await accountsApi.signup({ email: "empty-edit@example.invalid", password: "synthetic-password-five", display_name: "Valid Tester", sandbox_acknowledged: true });
 
     const failure = await request("/v1/profile", { method: "PUT", body: {} }).then(() => null, (error: unknown) => error);
 
@@ -70,7 +70,7 @@ describe("local accounts mock", () => {
   });
 
   it("returns only the contracted session and me fields, with one absolute expiry", async () => {
-    const session = await accountsApi.signup({ email: "shape@example.invalid", password: "synthetic-password", display_name: "Shape Tester", language: "es" });
+    const session = await accountsApi.signup({ email: "shape@example.invalid", password: "synthetic-password", display_name: "Shape Tester", language: "es", sandbox_acknowledged: true });
 
     const me = await accountsApi.me();
     const profile = await accountsApi.profile();
@@ -82,9 +82,9 @@ describe("local accounts mock", () => {
   });
 
   it.each([
-    { flow: "signup", issue: () => accountsApi.signup({ email: "ttl-signup@example.invalid", password: "synthetic-password", display_name: "TTL Tester" }) },
+    { flow: "signup", issue: () => accountsApi.signup({ email: "ttl-signup@example.invalid", password: "synthetic-password", display_name: "TTL Tester", sandbox_acknowledged: true }) },
     { flow: "signin", issue: async () => {
-      await accountsApi.signup({ email: "ttl-signin@example.invalid", password: "synthetic-password", display_name: "Returning Tester" });
+      await accountsApi.signup({ email: "ttl-signin@example.invalid", password: "synthetic-password", display_name: "Returning Tester", sandbox_acknowledged: true });
       await accountsApi.signout();
       vi.setSystemTime(new Date("2026-10-14T14:00:00Z"));
       return accountsApi.signin({ email: "ttl-signin@example.invalid", password: "synthetic-password" });
@@ -111,9 +111,9 @@ describe("local accounts mock", () => {
   });
 
   it("keeps authentication failures generic and uses the strict error statuses", async () => {
-    await accountsApi.signup({ email: "duplicate@example.invalid", password: "synthetic-password", display_name: "Duplicate Tester" });
+    await accountsApi.signup({ email: "duplicate@example.invalid", password: "synthetic-password", display_name: "Duplicate Tester", sandbox_acknowledged: true });
 
-    const duplicate = await accountsApi.signup({ email: "duplicate@example.invalid", password: "synthetic-password", display_name: "Duplicate Tester" }).then(() => null, (error: unknown) => error);
+    const duplicate = await accountsApi.signup({ email: "duplicate@example.invalid", password: "synthetic-password", display_name: "Duplicate Tester", sandbox_acknowledged: true }).then(() => null, (error: unknown) => error);
     const missing = await accountsApi.signin({ email: "missing@example.invalid", password: "wrong-password" }).then(() => null, (error: unknown) => error);
     const malformed = await accountsApi.signin({ email: "malformed", password: "wrong-password" }).then(() => null, (error: unknown) => error);
 
@@ -131,7 +131,7 @@ describe("local accounts mock", () => {
   });
 
   it("reissues only a session receipt on signin", async () => {
-    const created = await accountsApi.signup({ email: "returning@example.invalid", password: "synthetic-password", display_name: "Returning Tester" });
+    const created = await accountsApi.signup({ email: "returning@example.invalid", password: "synthetic-password", display_name: "Returning Tester", sandbox_acknowledged: true });
     await accountsApi.signout();
 
     const returned = await accountsApi.signin({ email: "returning@example.invalid", password: "synthetic-password" });
@@ -142,7 +142,7 @@ describe("local accounts mock", () => {
   });
 
   it("returns no signout body and revokes the mock session", async () => {
-    await accountsApi.signup({ email: "signout@example.invalid", password: "synthetic-password", display_name: "Signout Tester" });
+    await accountsApi.signup({ email: "signout@example.invalid", password: "synthetic-password", display_name: "Signout Tester", sandbox_acknowledged: true });
 
     const signedOut = await accountsApi.signout();
 
@@ -151,7 +151,7 @@ describe("local accounts mock", () => {
   });
 
   it("accepts a single profile-update field without changing the other", async () => {
-    await accountsApi.signup({ email: "partial@example.invalid", password: "synthetic-password", display_name: "First Name" });
+    await accountsApi.signup({ email: "partial@example.invalid", password: "synthetic-password", display_name: "First Name", sandbox_acknowledged: true });
 
     await accountsApi.updateProfile({ language: "es" });
 
@@ -161,7 +161,7 @@ describe("local accounts mock", () => {
   });
 
   it("reports missing financial data without manufacturing a successful state", async () => {
-    await accountsApi.signup({ email: "no-finance@example.invalid", password: "synthetic-password-six", display_name: "Empty Tester" });
+    await accountsApi.signup({ email: "no-finance@example.invalid", password: "synthetic-password-six", display_name: "Empty Tester", sandbox_acknowledged: true });
 
     const state = request("/v1/state");
 
@@ -172,11 +172,11 @@ describe("local accounts mock", () => {
   });
 
   it("keeps a new account empty and scopes profiles across sessions", async () => {
-    await accountsApi.signup({ email: "empty-one@example.invalid", password: "synthetic-password-one", display_name: "First Tester" });
+    await accountsApi.signup({ email: "empty-one@example.invalid", password: "synthetic-password-one", display_name: "First Tester", sandbox_acknowledged: true });
     const first = await accountsApi.profile();
     await accountsApi.signout();
 
-    await accountsApi.signup({ email: "empty-two@example.invalid", password: "synthetic-password-two", display_name: "Second Tester" });
+    await accountsApi.signup({ email: "empty-two@example.invalid", password: "synthetic-password-two", display_name: "Second Tester", sandbox_acknowledged: true });
     const second = await accountsApi.profile();
 
     expect(first.data?.display_name.untrusted_text).toBe("First Tester");
@@ -187,7 +187,7 @@ describe("local accounts mock", () => {
   });
 
   it("derives the cap from submitted versioned answers in the mock, not from a client verdict", async () => {
-    await accountsApi.signup({ email: "scores@example.invalid", password: "synthetic-password-three", display_name: "Scores Tester" });
+    await accountsApi.signup({ email: "scores@example.invalid", password: "synthetic-password-three", display_name: "Scores Tester", sandbox_acknowledged: true });
     const definition = await accountsApi.questionnaire();
 
     await accountsApi.submitQuestionnaire({
@@ -232,7 +232,7 @@ describe("local accounts mock", () => {
   });
 
   it("offers no sample-data action: the API has no such method and the mock serves no such route", async () => {
-    await accountsApi.signup({ email: "no-sample@example.invalid", password: "synthetic-password-seven", display_name: "Empty Tester" });
+    await accountsApi.signup({ email: "no-sample@example.invalid", password: "synthetic-password-seven", display_name: "Empty Tester", sandbox_acknowledged: true });
 
     const attempt = await request("/v1/profile/sample-data", { method: "POST" }).then(() => null, (error: unknown) => error);
 

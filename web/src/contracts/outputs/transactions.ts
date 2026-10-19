@@ -11,6 +11,7 @@ export type Category =
   | "other"
   | "income"
   | "movement"
+  | "savings"
   | "uncategorized";
 
 /**
@@ -62,19 +63,23 @@ export interface Transactions {
     } | null;
   }[];
   /**
-   * Purchases and fees less refunds, per currency and category, largest first. Movimientos (card payments, and anything the user marks movement) are excluded.
+   * Purchases and fees less refunds, per currency and category, largest first. The holder's own money is excluded: Movimientos (card payments, and anything the user marks movement) and Ahorro (savings lines, ADR-036).
    */
   spending: Total[];
   /**
-   * Deposits per currency (category "income").
+   * Deposits per currency (category "income"), without the holder's own money (movement, savings).
    */
   income: Total[];
+  /**
+   * Money set aside in the holder's savings or investment products less money back from them, per currency (category "savings", ADR-036). Neither spending nor income. Set by a layout rule or by the user, never by a model.
+   */
+  savings: Total[];
 }
 export interface Total {
   category: Category;
   currency: string;
   /**
-   * Spending: charges and fees less refunds (negative only if refunds exceed charges). Income: deposits.
+   * Spending: charges and fees less refunds (negative only if refunds exceed charges). Income: deposits. Savings: set aside less withdrawn (negative if more came back than went in).
    */
   spent: number;
   count: number;

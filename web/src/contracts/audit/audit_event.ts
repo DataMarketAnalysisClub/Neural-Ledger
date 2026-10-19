@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * Spec v0 section 10 fields plus a hash chain (sequence, prev_hash, event_hash). event_hash = sha256 of the canonical JSON of every other field. No hidden model reasoning is ever logged.
+ * Spec v0 section 10 fields plus a hash chain (sequence, prev_hash, event_hash). event_hash = sha256 of the canonical JSON of every other field. No hidden model reasoning is ever logged. A tombstone (kind ERASED, after an account deletion or a demo reset) keeps sequence, prev_hash and event_hash of the erased event and nothing else about it; its detail is erased_by=<event_id> of the later ACCOUNT_DELETED or DEMO_DATA_RESET event, whose detail commits to the erased sequences (erased_events, erased_sha256).
  */
 export interface AuditEvent {
   event_id: string;
@@ -31,7 +31,10 @@ export interface AuditEvent {
     | "PROFILE_UPDATED"
     | "USER_REGISTERED"
     | "SESSION_STARTED"
-    | "SESSION_ENDED";
+    | "SESSION_ENDED"
+    | "ACCOUNT_DELETED"
+    | "DEMO_DATA_RESET"
+    | "ERASED";
   user_intent?: string | null;
   intent_confidence?: number | null;
   tool_requested?: string | null;

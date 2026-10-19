@@ -2,17 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/auth/signup_request.schema.json",
   "title": "SignupRequest",
-  "description": "POST /v1/auth/signup. Email is normalized and checked by the domain; the password is never returned. The display name follows the domain's Unicode-letter rule: 1-40 code points of letters, spaces, periods, apostrophes or hyphens only, with no controls or newlines. Language defaults to en.",
+  "description": "POST /v1/auth/signup. Email is normalized and checked by the domain; the password is never returned. The display name follows the domain's Unicode-letter rule: 1-40 code points of letters, spaces, periods, apostrophes or hyphens only, with no controls or newlines. Language defaults to en. sandbox_acknowledged must be true: the user ticked the sandbox notice (a hackathon sandbox; no real bank statements or personal data). The server refuses the request otherwise and records the notice version on USER_REGISTERED.",
   "type": "object",
-  "required": ["email", "password", "display_name"],
+  "required": ["email", "password", "display_name", "sandbox_acknowledged"],
   "properties": {
     "email": {"type": "string", "format": "email", "minLength": 1, "maxLength": 254},
     "password": {"type": "string", "minLength": 10, "maxLength": 128},
     "display_name": {"type": "string", "minLength": 1, "maxLength": 40},
-    "language": {"type": "string", "pattern": "^[a-z]{2}$"}
+    "language": {"type": "string", "pattern": "^[a-z]{2}$"},
+    "sandbox_acknowledged": {"const": true}
   },
   "additionalProperties": false,
   "examples": [
-    {"email": "ana@accounts.invalid", "password": "example-passphrase", "display_name": "Ana María", "language": "es"}
+    {"email": "ana@accounts.invalid", "password": "example-passphrase", "display_name": "Ana María", "language": "es", "sandbox_acknowledged": true}
   ]
 }
