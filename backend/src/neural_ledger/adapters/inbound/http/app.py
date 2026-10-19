@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import Body, FastAPI, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -454,6 +454,52 @@ def create_app(
                 return too_large
         result = await run_in_threadpool(services.statements.import_statement, owner, bytes(content))
         return _envelope_response(result)
+
+    @app.post("/v1/documents")
+    async def ingest_document(request: Request, session_id: str = Query("documents"), kind: str | None = Query(None)):
+        """A file dropped on the copilot (ADR-038): a statement or a receipt, decided by the server, never the
+        Content-Type or the file name. Same size limit and threadpool as a statement import."""
+        too_large = JSONResponse({"detail": "the file is larger than 15 MB"}, status_code=413)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_STATEMENT_BYTES:
+            return too_large
+        owner = user(request)
+        content = bytearray()
+        async for chunk in request.stream():
+            content += chunk
+            if len(content) > MAX_STATEMENT_BYTES:
+                return too_large
+        result = await run_in_threadpool(_documents().ingest, owner, bytes(content), session_id[:120] or "documents", kind)
+        return _envelope_response(result)
+
+    @app.get("/v1/receipts")
+    def receipts(request: Request):
+        return _envelope_response(_documents().list_receipts(user(request)))
+
+    @app.patch("/v1/receipts/{receipt_id}")
+    def correct_receipt(receipt_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        """The user's correction of a receipt's total or date (contracts/receipts/receipt_correction). Only the user
+        corrects: no agent tool reaches this route."""
+        session = str(body.get("session_id") or "documents")[:120]
+        result = _documents().correct_receipt(user(request), session, receipt_id, body.get("total"), body.get("issued_on"))
+        return _found_response(result, "receipt")
+
+    @app.post("/v1/expenses/{proposal_id}/confirm")
+    def confirm_expense(proposal_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        """The user confirms an expense the copilot prepared (contracts/expenses/expense_confirmation). Only the user."""
+        session = str(body.get("session_id") or "documents")[:120]
+        result = _documents().confirm_expense(user(request), session, proposal_id, body.get("payment"), body.get("category"), body.get("spent_on"))
+        return _found_response(result, "expense")
+
+    @app.get("/v1/spending")
+    def spending(request: Request):
+        """The spending check-in the copilot's get_spending_status tool reads (T0)."""
+        return _envelope_response(_documents().spending_status(user(request)))
+
+    def _documents():
+        if services.documents is None:
+            raise HTTPException(status_code=503, detail="documents are not configured")
+        return services.documents
 
     @app.get("/v1/statements")
     def statements(request: Request):

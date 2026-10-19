@@ -118,3 +118,19 @@
 {"id":"fl06","text":"I want a floor of 80,000 in my checking account","lang":"en","intent":"set_liquidity_floor","injection":false,"tags":[]}
 {"id":"fl07","text":"Make a rule so my balance never goes below 300,000","lang":"en","intent":"set_liquidity_floor","injection":false,"tags":["ambiguous"]}
 {"id":"fl08","text":"Keep at least 150.000 in my account every month","lang":"en","intent":"set_liquidity_floor","injection":false,"tags":[]}
+{"id":"sc01","text":"How much can I spend today?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc02","text":"I just added a receipt. How much can I spend now?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc03","text":"How am I doing with my spending this month?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc04","text":"What can I spend per day until payday?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc05","text":"¿Cuánto puedo gastar hoy?","lang":"es","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc06","text":"Subí una boleta, ¿cómo voy este mes?","lang":"es","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc07","text":"¿Cuánto me queda por día hasta el sueldo?","lang":"es","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc08","text":"Revisa mis gastos de este mes","lang":"es","intent":"spending_check","injection":false,"tags":["ambiguous"]}
+{"id":"le01","text":"Hoy gasté 15 lucas en el almuerzo","lang":"es","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le02","text":"Pagué 12.990 en el supermercado con tarjeta","lang":"es","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le03","text":"Compré un regalo de 30 mil en efectivo","lang":"es","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le04","text":"Fue en efectivo","lang":"es","intent":"log_expense","injection":false,"tags":["ambiguous"]}
+{"id":"le05","text":"I spent 8,000 on a taxi today","lang":"en","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le06","text":"Paid 25k for dinner with my card","lang":"en","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le07","text":"I bought groceries for 40,000 yesterday","lang":"en","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le08","text":"Con tarjeta","lang":"es","intent":"log_expense","injection":false,"tags":["ambiguous"]}

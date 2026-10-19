@@ -82,7 +82,10 @@ def narrate(results: Sequence[tuple[str, Payload]], currency: str) -> str:
     by several tools, is said once. The warnings keep their tokens, so the verifier still sees each one."""
     sentences: list[str] = []
     narrated: list[tuple[str, Payload]] = []
+    told_document = any(name == "get_latest_document" for name, _ in results)
     for name, payload in results:
+        if told_document and name == "get_spending_status" and isinstance(payload.get("data"), dict):
+            payload = {**payload, "data": {**payload["data"], "latest_receipt": None}}  # the document was just described
         if (name, payload) in narrated:
             continue
         narrated.append((name, payload))
@@ -290,6 +293,92 @@ def _profile(p: Payload, cur: str) -> list[str]:
     return [f"Profile loaded for {p['data']['display_name']['untrusted_text']}."]
 
 
+def _spending(p: Payload, cur: str) -> list[str]:
+    d = p["data"]
+    c = d["check"]
+    text = []
+    receipt = d.get("latest_receipt")
+    # A receipt is worth a sentence while it bears on this cycle; the workflow card already said why an old one does not.
+    if receipt and receipt.get("total") is not None and (receipt.get("counted") or receipt.get("matched_transaction") or not receipt["verified"]):
+        amount, category = _money(receipt["total"], cur), receipt["category"]
+        if not receipt["verified"]:
+            text.append(f"Your latest receipt ({amount}) could not be verified, so it is not counted.")
+        elif receipt.get("matched_transaction"):
+            text.append(f"Your latest receipt of {amount} ({category}) is already on your bank statement, so it is counted once.")
+        else:
+            text.append(f"Your latest receipt of {amount} ({category}, {receipt['issued_on']}) is counted.")
+    if c["overspend"] == 0:
+        text.append(
+            f"This cycle you have logged {_money(c['logged'], cur)} of the {_money(c['assumed'], cur)} your conservative "
+            f"forecast counts on, so {_money(c['left'], cur)} is left: about {_money(c['per_day'], cur)} a day for the "
+            f"next {c['days_left']} days, until {c['window_end']}."
+        )
+        if c["protected_surplus"] >= 0:
+            text.append(f"Your protected surplus of {_money(c['protected_surplus'], cur)} stays untouched.")
+        else:
+            text.append(
+                f"Careful: even without this spending, your conservative forecast already falls "
+                f"{_money(c['protected_surplus'], cur)} below your minimum, so there is no protected surplus right now."
+            )
+    elif not c["projected"]:
+        text.append(
+            f"This cycle you have logged {_money(c['logged'], cur)}, {_money(c['overspend'], cur)} more than the "
+            f"{_money(c['assumed'], cur)} your conservative forecast counts on for a pay cycle."
+        )
+    elif c["surplus_after"] >= 0:
+        text.append(
+            f"This cycle you have logged {_money(c['logged'], cur)}, {_money(c['overspend'], cur)} more than the "
+            f"{_money(c['assumed'], cur)} your conservative forecast counts on, so your protected surplus is down to "
+            f"{_money(c['surplus_after'], cur)}."
+        )
+    else:
+        text.append(
+            f"This cycle you have logged {_money(c['logged'], cur)}, {_money(c['overspend'], cur)} more than the "
+            f"{_money(c['assumed'], cur)} your conservative forecast counts on, which is more than your protected surplus "
+            f"of {_money(c['protected_surplus'], cur)}."
+        )
+    return text
+
+
+def _document(p: Payload, cur: str) -> list[str]:
+    d = p["data"]
+    if d["kind"] == "receipt":
+        r = d["receipt"]
+        if r["total"] is None:
+            return ["I read your receipt, but I could not read its total. What did you pay? Type it in the form under the receipt and I will count it."]
+        if r["issued_on"] is None:
+            return [
+                f"I read your receipt of {_money(r['total'], cur)}, but I could not read its date. On what day was it? "
+                "Type it in the form under the receipt and I will count it if it is from this pay cycle."
+            ]
+        when = f", dated {r['issued_on']}"
+        if r["counted"]:
+            return [f"I read your receipt of {_money(r['total'], cur)}{when} and counted it this cycle."]
+        if r["matched_transaction"]:
+            return [f"I read your receipt of {_money(r['total'], cur)}{when}; it is already on your bank statement, so it is counted once."]
+        if r["verified"]:
+            return [f"I read your receipt of {_money(r['total'], cur)}{when}; it is outside this pay cycle, so it does not change what you can spend now."]
+        return [
+            f"I read your receipt of {_money(r['total'], cur)}{when}, but it could not be verified, so it is not counted. "
+            "If you know the right total or date, type it in the form under the receipt."
+        ]
+    text = []
+    for item in d["statement"]["imports"]:
+        st = item["statement"]
+        text.append(
+            f"I imported your statement for {st['period_start']} to {st['period_end']} with {st['line_count']} movements; "
+            f"{item['ledger']['posted']} of them were added to your ledger."
+        )
+    return text
+
+
+def _expense(p: Payload, cur: str) -> list[str]:
+    d = p["data"]
+    how = {"cash": ", paid in cash", "card": ", paid by card"}.get(d["payment"], "")
+    kind = f", {d['category']}" if d["category"] != "uncategorized" else ""
+    return [f"I prepared the expense: {_money(d['amount'], cur)} on {d['spent_on']}{how}{kind}. Check it and confirm it in the card below; nothing is saved until you do."]
+
+
 def _fact(payload: Payload, key: str) -> Any:
     for fact in payload.get("facts", ()):
         if fact["key"] == key:
@@ -313,4 +402,7 @@ _HANDLERS = {
     "get_pending_actions": _pending,
     "get_audit_events": _audit,
     "get_user_profile": _profile,
+    "get_spending_status": _spending,
+    "get_latest_document": _document,
+    "propose_expense": _expense,
 }

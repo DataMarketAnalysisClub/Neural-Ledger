@@ -43,6 +43,7 @@ from .actions import ActionOutcome
 from .financial import FinancialUseCases
 
 MAX_MESSAGE_CHARS = 4000
+RECENT_USER_MESSAGES = 3  # how far back an amount the user said still counts for an expense (with this message: 4)
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class ChatReply:
     pending_proposal: Proposal | None
     actions: tuple[ActionOutcome, ...]
     blocked_reason: str | None
+    pending_expense: dict | None = None  # an expense prepared from what the user said, for them to confirm (ADR-038)
 
 
 class ChatUseCase:
@@ -129,12 +131,13 @@ class ChatUseCase:
         max_tier = max_tier_for(cls.gate)
         allow_stateful = cls.gate is Gate.PROCEED
         as_of, currency = self._financial.context(user_id)
-        ctx = ToolContext(session_id, user_id, cls.intent.value, round(cls.confidence, 4), cls.checks, text)
+        history = self._conversations.history(user_id, session_id)
+        said = [e.text for e in history if isinstance(e, UserEntry)][-RECENT_USER_MESSAGES:]
+        ctx = ToolContext(session_id, user_id, cls.intent.value, round(cls.confidence, 4), cls.checks, text, "\n".join([*said, text]))
         turn_context = TurnContext(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         system = SYSTEM_PROMPT + context_block(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         tools = self._registry.specs(max_tier, allow_stateful)
 
-        history = self._conversations.history(user_id, session_id)
         entries: list[Entry] = [*history, UserEntry(text)]
         outcomes: list[ToolOutcome] = []
         final_text: str | None = None
@@ -198,7 +201,7 @@ class ChatUseCase:
             final_text = deterministic or narration.NO_RESULT
             fallback = True
             verification = check(final_text)
-        if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.SET_LIQUIDITY_FLOOR, Intent.EXECUTE_ACTION):
+        if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.SET_LIQUIDITY_FLOOR, Intent.LOG_EXPENSE, Intent.EXECUTE_ACTION):
             final_text = f"{final_text} {narration.READ_ONLY_NOTE}"
 
         turn_entries = [e for i, e in enumerate(entries) if i >= len(history) and i not in discarded]
@@ -209,6 +212,7 @@ class ChatUseCase:
         self._conversations.append(user_id, session_id, turn_entries, self._policy.history_limit)
 
         proposals = [o.proposal for o in outcomes if o.proposal is not None]
+        expenses = [o.payload.get("data") for o in outcomes if o.name == "propose_expense" and o.payload.get("status") == "OK"]
         blocked = next((o.blocked_reason for o in outcomes if o.blocked_reason), None)
         return ChatReply(
             session_id=session_id,
@@ -226,4 +230,5 @@ class ChatUseCase:
             pending_proposal=proposals[-1] if proposals else None,
             actions=tuple(o.action for o in outcomes if o.action is not None),
             blocked_reason=blocked,
+            pending_expense=expenses[-1] if expenses else None,
         )

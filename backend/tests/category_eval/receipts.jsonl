@@ -1,0 +1,55 @@
+{"text": "SUPERMERCADO EL PEUMO SPA", "category": "groceries", "slice": "unseen"}
+{"text": "MINIMARKET LA PRADERA", "category": "groceries", "slice": "unseen"}
+{"text": "LIDER EXPRESS PROVIDENCIA", "category": "groceries", "slice": "unseen"}
+{"text": "JUMBO LOS DOMINICOS", "category": "groceries", "slice": "unseen"}
+{"text": "UNIMARC NUNOA", "category": "groceries", "slice": "unseen"}
+{"text": "SANTA ISABEL LAS CONDES", "category": "groceries", "slice": "unseen"}
+{"text": "ALMACEN DONA ROSA", "category": "groceries", "slice": "unseen"}
+{"text": "PANADERIA EL TRIGAL", "category": "groceries", "slice": "unseen"}
+{"text": "VERDULERIA DON LUCHO", "category": "groceries", "slice": "unseen"}
+{"text": "CARNICERIA EL BUEY", "category": "groceries", "slice": "unseen"}
+{"text": "RESTAURANT LA ESQUINA DEL SABOR", "category": "dining", "slice": "unseen"}
+{"text": "EL REY DE LAS MICHELADAS", "category": "dining", "slice": "unseen"}
+{"text": "SANGUCHERIA EL GUATON", "category": "dining", "slice": "unseen"}
+{"text": "CAFE DEL CERRO SPA", "category": "dining", "slice": "unseen"}
+{"text": "PIZZERIA NAPOLI LTDA", "category": "dining", "slice": "unseen"}
+{"text": "SUSHI KOI PROVIDENCIA", "category": "dining", "slice": "unseen"}
+{"text": "STARBUCKS COSTANERA", "category": "dining", "slice": "unseen"}
+{"text": "FUENTE ALEMANA", "category": "dining", "slice": "unseen"}
+{"text": "FARMACIAS CRUZ VERDE", "category": "health", "slice": "seen"}
+{"text": "SALCOBRAND 1234", "category": "health", "slice": "unseen"}
+{"text": "FARMACIA AHUMADA", "category": "health", "slice": "seen"}
+{"text": "CLINICA DENTAL SONRISA", "category": "health", "slice": "unseen"}
+{"text": "LABORATORIO BIONET", "category": "health", "slice": "unseen"}
+{"text": "OPTICA ROTTER", "category": "health", "slice": "unseen"}
+{"text": "FALABELLA PARQUE ARAUCO", "category": "shopping", "slice": "unseen"}
+{"text": "PARIS COSTANERA CENTER", "category": "shopping", "slice": "unseen"}
+{"text": "SODIMAC HOMECENTER", "category": "shopping", "slice": "seen"}
+{"text": "EASY MAIPU", "category": "shopping", "slice": "unseen"}
+{"text": "FERRETERIA LA LLAVE", "category": "shopping", "slice": "unseen"}
+{"text": "LIBRERIA ANTARTICA", "category": "shopping", "slice": "unseen"}
+{"text": "TIENDA DEPORTIVA EL ATLETA", "category": "shopping", "slice": "unseen"}
+{"text": "COPEC AV KENNEDY", "category": "transport", "slice": "unseen"}
+{"text": "ESTACION SHELL VITACURA", "category": "transport", "slice": "unseen"}
+{"text": "PETROBRAS RUTA 68", "category": "transport", "slice": "seen"}
+{"text": "ESTACIONAMIENTO SABA MALL", "category": "transport", "slice": "unseen"}
+{"text": "PEAJE AUTOPISTA CENTRAL", "category": "transport", "slice": "unseen"}
+{"text": "TALLER MECANICO DON PEPE", "category": "transport", "slice": "unseen"}
+{"text": "ENEL CLIENTES PAGO", "category": "utilities", "slice": "unseen"}
+{"text": "AGUAS ANDINAS PAGO SERVICIO", "category": "utilities", "slice": "unseen"}
+{"text": "METROGAS PAGO", "category": "utilities", "slice": "unseen"}
+{"text": "ENTEL TIENDA RECARGA", "category": "utilities", "slice": "unseen"}
+{"text": "MOVISTAR OFICINA COMERCIAL", "category": "utilities", "slice": "unseen"}
+{"text": "VTR SERVICIO TECNICO", "category": "utilities", "slice": "unseen"}
+{"text": "CINEMARK PLAZA EGANA", "category": "entertainment", "slice": "unseen"}
+{"text": "CINEPLANET COSTANERA", "category": "entertainment", "slice": "unseen"}
+{"text": "TEATRO CAUPOLICAN", "category": "entertainment", "slice": "unseen"}
+{"text": "BOWLING CENTER LA REINA", "category": "entertainment", "slice": "unseen"}
+{"text": "JUEGOS DIVERTILANDIA", "category": "entertainment", "slice": "unseen"}
+{"text": "PUNTOTICKET EVENTOS", "category": "entertainment", "slice": "unseen"}
+{"text": "NOTARIA GONZALEZ", "category": "other", "slice": "unseen"}
+{"text": "LAVANDERIA EL MANANTIAL", "category": "other", "slice": "unseen"}
+{"text": "PELUQUERIA ESTILO", "category": "other", "slice": "unseen"}
+{"text": "VETERINARIA HUELLITAS", "category": "other", "slice": "unseen"}
+{"text": "CERRAJERIA RAPIDA", "category": "other", "slice": "unseen"}
+{"text": "FOTOCOPIADORA CENTRO", "category": "other", "slice": "unseen"}

@@ -10,6 +10,8 @@ export interface ChatReply {
     | "afford_purchase"
     | "forecast"
     | "protected_surplus"
+    | "spending_check"
+    | "log_expense"
     | "savings_plan"
     | "set_liquidity_floor"
     | "execute_action"
@@ -36,6 +38,10 @@ export interface ChatReply {
    */
   fallback_used: boolean;
   pending_proposal?: {} | null;
+  /**
+   * An expense the copilot prepared from what the user said (ADR-038). The UI shows it for the user to check, complete (cash or card, category) and confirm; confirming calls POST /v1/expenses/{proposal_id}/confirm. Nothing is stored before.
+   */
+  pending_expense?: ExpenseProposal | null;
   actions: ActionOutcome[];
   blocked_reason?: string | null;
 }
@@ -55,6 +61,21 @@ export interface Caveat {
    * The explanation passes if it contains any of these tokens.
    */
   must_mention: string[];
+}
+/**
+ * data of the propose_expense tool and pending_expense of a chat reply (ADR-038): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.
+ */
+export interface ExpenseProposal {
+  proposal_id: string;
+  amount: number;
+  currency: "CLP";
+  description: {
+    untrusted_text: string;
+  };
+  spent_on: string;
+  category: string;
+  payment: "cash" | "card" | "unknown";
+  missing: ("payment" | "category")[];
 }
 /**
  * Result of propose / confirm / execute. BLOCKED always carries a reason and is always audited.

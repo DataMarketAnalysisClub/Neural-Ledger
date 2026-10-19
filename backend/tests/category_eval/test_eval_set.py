@@ -8,6 +8,7 @@ from collections import Counter
 from neural_ledger.adapters.outbound.classifier.sklearn_text import TRAINING_DATA, SklearnTextClassifier, naive_bayes
 from neural_ledger.domain.ledger.categorization import CATEGORIES, CategoryGuess
 from neural_ledger.domain.privacy.redaction import redact_text
+from tests.category_eval.run import HERE as EXAMPLES_DIR
 from tests.category_eval.run import load_examples, score
 
 EXAMPLES = load_examples()
@@ -51,3 +52,11 @@ def test_naive_bayes_baseline():
     assert report["seen"]["coverage"] >= 0.75 and report["seen"]["wrong_accepted"] <= 0.03
     assert report["unseen"]["coverage"] <= 0.35  # the gap Jev is for
     assert report["all"]["wrong_accepted"] <= 0.05
+
+
+def test_the_receipt_set_is_well_formed_and_covers_every_category():
+    """Store names as receipts print them (ADR-038): the set the classifiers are compared on for receipts."""
+    receipts = load_examples(EXAMPLES_DIR / "receipts.jsonl")
+    assert len({e["text"] for e in receipts}) == len(receipts) >= 50
+    assert set(Counter(e["category"] for e in receipts)) == CATEGORIES and min(Counter(e["category"] for e in receipts).values()) >= 6
+    assert all(redact_text(e["text"]) == e["text"] and e["slice"] in ("seen", "unseen") for e in receipts)

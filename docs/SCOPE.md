@@ -165,6 +165,8 @@ flowchart LR
 | `StatementReader` | Bank statement file → `BankStatement` | `OcrStatementReader` (ocr_tabular + one `Bank` per layout; offline) | more banks |
 | `PersonalDataDetector` | Personal data the redaction rules miss in imported statements; its spans can only add masking (ADR-028) | `NullDetector` (`none`: the domain rules alone, offline), `AzureLanguageDetector` (`azure`, off by default) | another detector: one class + one `DETECTORS` entry in `container.py` |
 | `StatementStore` | Imported statements, once per user and statement | memory, SQLite | Postgres |
+| `ReceiptReader` | A document's text for routing, and a receipt's fields from its print and its SII stamp (ADR-038) | `ReceiptFileReader` (text-layer PDFs with `pdf`; photos with `ocr`; the stamp with `receipts`) | another layout or OCR engine: one adapter |
+| `ReceiptStore` | Receipts, once per user and receipt | memory, SQLite | Postgres |
 | `TransactionClassifier` | Spending category guess per statement charge (gated by the domain) | `SklearnTextClassifier` with naive Bayes (`ml` extra; offline, trained from package data) | other methods: one registry entry in `container.py` |
 | `TransactionStore` | Transaction ledger built from verified statements, once per user and transaction | memory, SQLite | Postgres |
 | `Clock`, `IdGenerator` | Testability | system/fixed, uuid/sequential | — |

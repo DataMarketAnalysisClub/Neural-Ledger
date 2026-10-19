@@ -30,6 +30,7 @@ from ....domain.audit.events import ERASED_SESSION, ERASURE_KINDS, GENESIS_HASH,
 from ....domain.finance.profile import RiskProfile
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
+from ....domain.receipts.model import ReceiptIssue, ReceiptIssueCode, StoredReceipt
 from ....domain.shared.month import Month
 from ....domain.shared.serialization import to_primitive
 from ....domain.statements.model import (
@@ -90,6 +91,13 @@ CREATE TABLE IF NOT EXISTS transactions (
     payload   TEXT NOT NULL,
     UNIQUE (user_id, txn_id)
 );
+CREATE TABLE IF NOT EXISTS receipts (
+    sequence   INTEGER PRIMARY KEY,
+    receipt_id TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    UNIQUE (user_id, receipt_id)
+);
 CREATE TABLE IF NOT EXISTS savings_rules (
     sequence INTEGER PRIMARY KEY,
     rule_id  TEXT NOT NULL UNIQUE,
@@ -128,6 +136,7 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "audit_events": ("SELECT COUNT(*) FROM audit_events", "DELETE FROM audit_events"),
     "statements": ("SELECT COUNT(*) FROM statements", "DELETE FROM statements"),
     "transactions": ("SELECT COUNT(*) FROM transactions", "DELETE FROM transactions"),
+    "receipts": ("SELECT COUNT(*) FROM receipts", "DELETE FROM receipts"),
     "savings_rules": ("SELECT COUNT(*) FROM savings_rules", "DELETE FROM savings_rules"),
     "user_profiles": ("SELECT COUNT(*) FROM user_profiles", "DELETE FROM user_profiles"),
     "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
@@ -580,6 +589,71 @@ def _transaction_aad(user_id: str, txn_id: str) -> str:
     return f"transactions|{user_id}|{txn_id}"
 
 
+def _receipt_aad(user_id: str, receipt_id: str) -> str:
+    return f"receipts|{user_id}|{receipt_id}"
+
+
+class SqliteReceiptStore:
+    """Payloads are sealed with the data key (G11); ids and the owner stay in clear for lookups."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def add(self, receipt: StoredReceipt) -> bool:
+        payload = self._cipher.seal(json.dumps(to_primitive(receipt)), _receipt_aad(receipt.user_id, receipt.receipt_id))
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "INSERT OR IGNORE INTO receipts (receipt_id, user_id, payload) VALUES (?, ?, ?)",
+                (receipt.receipt_id, receipt.user_id, payload),
+            )
+            return cursor.rowcount == 1
+
+    def get(self, user_id: str, receipt_id: str) -> StoredReceipt | None:
+        row = self._db.fetchone("SELECT user_id, receipt_id, payload FROM receipts WHERE user_id = ? AND receipt_id = ?", (user_id, receipt_id))
+        return self._open(row) if row else None
+
+    def for_user(self, user_id: str) -> tuple[StoredReceipt, ...]:
+        rows = self._db.fetchall("SELECT user_id, receipt_id, payload FROM receipts WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(self._open(r) for r in rows)
+
+    def replace(self, receipt: StoredReceipt) -> bool:
+        payload = self._cipher.seal(json.dumps(to_primitive(receipt)), _receipt_aad(receipt.user_id, receipt.receipt_id))
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "UPDATE receipts SET payload = ? WHERE user_id = ? AND receipt_id = ?", (payload, receipt.user_id, receipt.receipt_id)
+            )
+            return cursor.rowcount == 1
+
+    def _open(self, row: tuple) -> StoredReceipt:
+        user_id, receipt_id, payload = row
+        return _receipt_from(json.loads(self._cipher.open(payload, _receipt_aad(user_id, receipt_id))))
+
+
+def _receipt_from(payload: dict) -> StoredReceipt:
+    return StoredReceipt(
+        receipt_id=payload["receipt_id"],
+        user_id=payload["user_id"],
+        imported_at=datetime.fromisoformat(payload["imported_at"]),
+        issuer=payload["issuer"],
+        issued_on=date.fromisoformat(payload["issued_on"]) if payload.get("issued_on") else None,
+        total=payload.get("total"),
+        currency=payload["currency"],
+        folio=payload.get("folio"),
+        stamped=bool(payload["stamped"]),
+        source=payload["source"],
+        confidence=payload.get("confidence"),
+        category=payload["category"],
+        classifier=payload["classifier"],
+        category_confidence=payload.get("category_confidence"),
+        issues=tuple(
+            ReceiptIssue(ReceiptIssueCode(i["code"]), i["message"], i.get("expected"), i.get("found")) for i in payload.get("issues", ())
+        ),
+        corrected=bool(payload.get("corrected", False)),  # receipts stored before corrections existed were never corrected
+        payment=payload.get("payment", "unknown"),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SealedColumn:
     """One column sealed with the data key: how to read every row, rebuild its associated data and rewrite it.
@@ -601,6 +675,10 @@ SEALED_COLUMNS: tuple[SealedColumn, ...] = (
     SealedColumn(
         "transactions", "SELECT rowid, user_id, txn_id, payload FROM transactions ORDER BY rowid",
         "UPDATE transactions SET payload = ? WHERE rowid = ?", lambda r: _transaction_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "receipts", "SELECT rowid, user_id, receipt_id, payload FROM receipts ORDER BY rowid",
+        "UPDATE receipts SET payload = ? WHERE rowid = ?", lambda r: _receipt_aad(r[1], r[2]),
     ),
     SealedColumn(
         "user_profiles", "SELECT rowid, user_id, payload FROM user_profiles ORDER BY rowid",
@@ -1020,6 +1098,7 @@ class SqliteTransactionWrites:
 _ERASE_SQL: dict[str, str] = {
     "statements": "DELETE FROM statements WHERE user_id = ?",
     "transactions": "DELETE FROM transactions WHERE user_id = ?",
+    "receipts": "DELETE FROM receipts WHERE user_id = ?",
     "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
     "proposals": "DELETE FROM proposals WHERE user_id = ?",
     "authorizations": "DELETE FROM authorizations WHERE user_id = ?",

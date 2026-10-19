@@ -20,6 +20,7 @@ from .ports import AuditLog, Clock, IdGenerator
 from .services.tools import Tool, ToolContext, ToolDefinition, ToolRegistry
 from .use_cases.actions import ActionUseCases, ActorContext
 from .use_cases.audit import AuditUseCases
+from .use_cases.documents import DocumentUseCases
 from .use_cases.financial import FinancialUseCases
 from .use_cases.profile import ProfileUseCases
 
@@ -62,6 +63,7 @@ def build_registry(
     actions: ActionUseCases,
     profiles: ProfileUseCases,
     audit_queries: AuditUseCases,
+    documents: DocumentUseCases,
     definitions: Mapping[str, ToolDefinition],
     audit: AuditLog,
     clock: Clock,
@@ -79,6 +81,8 @@ def build_registry(
             Tier.T0,
             lambda a, c: audit_queries.events(c.user_id, c.session_id, _int(a, "limit", 50)),
         ),
+        Tool("get_spending_status", Tier.T0, lambda a, c: documents.spending_status(c.user_id)),
+        Tool("get_latest_document", Tier.T0, lambda a, c: documents.latest_document(c.user_id)),
         # T1: analyze and suggest
         Tool(
             "forecast_cashflow",
@@ -119,6 +123,14 @@ def build_registry(
             stateful=True,
         ),
         Tool("propose_liquidity_floor", Tier.T1, lambda a, c: _propose_floor(financial, actions, a, c), stateful=True),
+        Tool(
+            "propose_expense",
+            Tier.T1,
+            lambda a, c: documents.propose_expense(
+                c.user_id, c.recent_user_text or c.user_text, a.get("amount"), a.get("description"), a.get("category"), a.get("payment"), a.get("spent_on")
+            ),
+            stateful=True,
+        ),
         # T2: execute an approved sandbox action (terms come from the stored authorization)
         Tool(
             "execute_sandbox_action",

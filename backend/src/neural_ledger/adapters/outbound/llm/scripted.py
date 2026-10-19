@@ -7,6 +7,7 @@ way to record the demo video. It is NOT smart: real conversation needs a real pr
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any
 
@@ -16,6 +17,7 @@ from ....application.conversation import (
     ModelTurn,
     ToolCall,
     ToolResultEntry,
+    UserEntry,
     entries_since_last_user,
     last_user_text,
 )
@@ -23,9 +25,12 @@ from ....application.services import narration
 from ..text.lexicon import installments, mentioned_month, money_amounts
 
 ASK_PURCHASE = "Tell me the price and how many cuotas you want, and I'll check it against your forecast."
+ASK_EXPENSE = "How much did you spend, and on what? I'll prepare it for you to confirm."
 ASK_FLOOR = "Tell me the minimum balance you want your checking account to keep every month, and I'll prepare the rule."
 NOTHING_TO_EXECUTE = "There is no confirmed action to execute yet. Please confirm the proposal in the app first."
 NO_BYPASS = "I can't skip the conservative check, but here is what does fit."
+# "I just added a receipt", "subí una boleta", "acabo de agregar un documento": the copilot first reads what happened to it.
+ADDED_DOCUMENT = re.compile(r"\b(added|uploaded|agregu\w*|agregar|sub[ií]\w*|cargu\w*|document\w*|receipts?|boletas?|statements?|cartolas?)\b", re.I)
 
 
 class ScriptedLanguageModel:
@@ -54,6 +59,16 @@ class ScriptedLanguageModel:
         if intent == "afford_purchase" and "simulate_purchase" not in done:
             args = _purchase_args(text, request.context.as_of) or _previous_purchase_args(request)
             return call("simulate_purchase", **args) if args else None
+        if intent == "log_expense" and "propose_expense" not in done:
+            amounts = _recent_amounts(request)
+            if not amounts:
+                return None
+            return call("propose_expense", amount=amounts[0], description=_recent_description(request))
+        if intent == "spending_check":
+            if ADDED_DOCUMENT.search(text) and "get_latest_document" not in done:
+                return call("get_latest_document")
+            if "get_spending_status" not in done:
+                return call("get_spending_status")
         if intent == "forecast" and "forecast_cashflow" not in done:
             return call("forecast_cashflow", horizon_months=6, scenario="conservative")
         if intent == "protected_surplus":
@@ -103,6 +118,8 @@ class ScriptedLanguageModel:
             return ASK_PURCHASE
         if intent == "set_liquidity_floor":
             return ASK_FLOOR
+        if intent == "log_expense":
+            return ASK_EXPENSE
         if intent == "explain":
             return narration.EXPLAIN
         if intent == "out_of_scope":
@@ -133,3 +150,23 @@ def _previous_purchase_args(request: ModelRequest) -> dict[str, Any] | None:
                 if c.name == "simulate_purchase":
                     return dict(c.arguments)
     return None
+
+
+def _recent_user_texts(request: ModelRequest, last: int = 4) -> list[str]:
+    """The user's last messages, newest first: an expense may be said over two turns ("gasté 15 lucas" / "efectivo")."""
+    return [e.text for e in reversed(request.entries) if isinstance(e, UserEntry)][:last]
+
+
+def _recent_amounts(request: ModelRequest) -> list[int]:
+    for text in _recent_user_texts(request):
+        found = money_amounts(text)
+        if found:
+            return found
+    return []
+
+
+def _recent_description(request: ModelRequest) -> str:
+    for text in _recent_user_texts(request):
+        if money_amounts(text):
+            return text[:120]
+    return ""

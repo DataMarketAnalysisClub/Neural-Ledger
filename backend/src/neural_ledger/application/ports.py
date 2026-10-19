@@ -24,6 +24,7 @@ from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.privacy.redaction import Span
+from ..domain.receipts.model import ReadReceipt, StoredReceipt
 from ..domain.statements.model import BankStatement, StoredStatement
 from ..domain.user.account import Session, UserAccount
 from ..domain.user.profile import UserProfile
@@ -100,6 +101,46 @@ class StatementReader(Protocol):
     whether they add up."""
 
     def read(self, content: bytes) -> tuple[BankStatement, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentText:
+    """What a document says before anyone decides what it is: enough to route it, nothing to trust."""
+
+    format: str  # xlsx | pdf | image
+    text: str  # the first page's text in reading order (empty for a spreadsheet, which is always a statement)
+
+
+@runtime_checkable
+class ReceiptReader(Protocol):
+    """Reads documents dropped on the copilot: their text to route them, and a receipt's fields (ADR-038).
+
+    Never decides whether a receipt may be trusted: that is domain/receipts `check`. Raises StatementUnreadable
+    for a file it cannot read and StatementReaderUnavailable when an extra it needs (OCR) is missing.
+    """
+
+    name: str  # reported with every receipt it reads
+
+    def peek(self, content: bytes) -> DocumentText: ...
+
+    def read_receipt(self, content: bytes) -> ReadReceipt: ...
+
+
+@runtime_checkable
+class ReceiptStore(Protocol):
+    def add(self, receipt: StoredReceipt) -> bool:
+        """Store unless this user already has this receipt_id. Returns False for a duplicate."""
+        ...
+
+    def get(self, user_id: str, receipt_id: str) -> StoredReceipt | None: ...
+
+    def for_user(self, user_id: str) -> tuple[StoredReceipt, ...]:
+        """In import order."""
+        ...
+
+    def replace(self, receipt: StoredReceipt) -> bool:
+        """Overwrite this user's stored receipt with the same id (a user correction). False if it is not stored."""
+        ...
 
 
 @runtime_checkable

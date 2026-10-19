@@ -31,6 +31,7 @@ class ToolContext:
     intent_confidence: float | None = None
     checks: tuple[DecisionCheck, ...] = ()
     user_text: str = ""  # the user's message this turn: an amount the user asked for must appear in it (ADR-037)
+    recent_user_text: str = ""  # the user's last few messages: an expense said over two turns ("gasté 15 lucas" / "en efectivo")
 
 
 Handler = Callable[[Mapping[str, Any], ToolContext], Any]

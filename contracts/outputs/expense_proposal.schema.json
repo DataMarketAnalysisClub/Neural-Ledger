@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/expense_proposal.schema.json",
+  "title": "ExpenseProposal",
+  "description": "data of the propose_expense tool and pending_expense of a chat reply (ADR-038): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.",
+  "type": "object",
+  "required": ["proposal_id", "amount", "currency", "description", "spent_on", "category", "payment", "missing"],
+  "properties": {
+    "proposal_id": {"type": "string"},
+    "amount": {"type": "integer", "minimum": 1},
+    "currency": {"const": "CLP"},
+    "description": {"type": "object", "required": ["untrusted_text"], "properties": {"untrusted_text": {"type": "string"}}, "additionalProperties": false},
+    "spent_on": {"type": "string", "format": "date"},
+    "category": {"type": "string"},
+    "payment": {"enum": ["cash", "card", "unknown"]},
+    "missing": {"type": "array", "items": {"enum": ["payment", "category"]}}
+  },
+  "additionalProperties": false
+}
