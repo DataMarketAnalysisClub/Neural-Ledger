@@ -127,7 +127,10 @@ class _EmptyKnowledgeBase:
         return ()
 
 
-EDUCATION_MIN_SCORE = 0.2  # a passage below this relevance is not an explanation; tune on tests/rag_eval (ADR-039)
+# Relevance floor per index, by NL_KNOWLEDGE_BASE name (ADR-039): scores are on different scales, so each index in the
+# chain is wrapped with its own floor (ThresholdKnowledgeBase) before the fallback. From the WP2 eval on the 70 cards:
+# lexical answerable min 0.573 / off-topic max 0.379; chroma answerable min 0.425 / off-topic max 0.23.
+KB_MIN_SCORES: dict[str, float] = {"lexical": 0.45, "chroma": 0.30}
 
 
 # NL_EMAIL_CHECKS, applied in order at sign-up: disposable (offline blocklist) and dns (the domain receives mail).
@@ -304,7 +307,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         financial, audit_log, clock, ids, snapshots,
     )
     knowledge_base: KnowledgeBase = _EmptyKnowledgeBase()  # replaced by KNOWLEDGE_BASES (WP2)
-    education = EducationUseCases(knowledge_base, EDUCATION_MIN_SCORE, profiles)
+    # The floor is applied per index (KB_MIN_SCORES, ThresholdKnowledgeBase) when the chain is built, so 0 here.
+    education = EducationUseCases(knowledge_base, 0.0, profiles)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, documents, education, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
