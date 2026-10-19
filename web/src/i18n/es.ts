@@ -625,6 +625,7 @@ export const es: Messages = {
     description: "Tus respuestas describen lo que aceptas. El motor decide lo que tus finanzas permiten.",
     name: "Nombre visible",
     language: "Idioma",
+    languageUnreviewed: "El chino simplificado aún no ha sido revisado por un hablante nativo.",
     save: "Guardar perfil",
     saving: "Guardando",
     readOnly: "Este perfil sintético de demostración es de solo lectura.",

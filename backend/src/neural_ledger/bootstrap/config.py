@@ -58,6 +58,7 @@ class Settings:
     app_origins: tuple[str, ...] = ("http://localhost:3000", "http://localhost:5173")  # may send unsafe requests (accounts)
     cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
+    email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -96,6 +97,7 @@ class Settings:
 
         chain = tuple(part.strip() for part in get("NL_DECISION_CHAIN", "rules").split(",") if part.strip())
         classifiers = tuple(part.strip() for part in get("NL_CLASSIFIER", "naive_bayes").split(",") if part.strip())
+        email_checks = tuple(part.strip() for part in get("NL_EMAIL_CHECKS", "disposable").split(",") if part.strip() not in ("", "none"))
         return cls(
             persona=get("NL_PERSONA", cls.persona),
             model_source=get("NL_MODEL_SOURCE", cls.model_source),
@@ -128,6 +130,7 @@ class Settings:
             app_origins=tuple(o.strip() for o in get("NL_APP_ORIGINS", ",".join(cls.app_origins)).split(",") if o.strip()),
             cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
             demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
+            email_checks=email_checks,
         )
 
 

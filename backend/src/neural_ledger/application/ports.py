@@ -283,6 +283,13 @@ class TokenGenerator(Protocol):
 
 
 @runtime_checkable
+class EmailDomainCheck(Protocol):
+    """Whether sign-up accepts the domain of a normalized email: why not, or None to accept. Sign-in never asks."""
+
+    def refusal(self, email: str) -> str | None: ...
+
+
+@runtime_checkable
 class UserAccountStore(Protocol):
     def add(self, account: UserAccount) -> bool:
         """Store unless the user_id or the (normalized) email already exists, atomically. Returns False for a duplicate."""
