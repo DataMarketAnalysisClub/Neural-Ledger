@@ -20,18 +20,6 @@ from neural_ledger.domain.education.concepts import LANGUAGES
 CARDS = load_cards()
 IDS = {c.id for c in CARDS}
 
-# The concepts the education plan commits to (docs/plans/EDUCATION_RAG.md, WP1). A card may name one as `related`
-# before its own card is written.
-PLANNED = frozenset(
-    """
-    budget rule_50_30_20 emergency_fund savings_goal pay_yourself_first net_income fixed_and_variable_expenses liquidity
-    liquidity_floor interest_rate cae installments revolving_credit minimum_payment credit_report
-    debt_avalanche_and_snowball debt_to_income_ratio compound_interest simple_interest inflation unidad_de_fomento
-    real_vs_nominal time_value_of_money opportunity_cost time_deposit stock bond mutual_fund etf diversification
-    risk_and_return apv cryptocurrency afp_pension_system protected_surplus
-    """.split()
-)
-
 # The verifier's banned wording plus the README's: "safe", guarantees, "risk-free". "seguro" alone is not banned,
 # because it also means insurance; "dinero seguro" and "sin riesgo" are.
 BANNED = re.compile(
@@ -60,7 +48,7 @@ def test_every_id_exists_in_every_language():
 def test_ids_are_snake_case_and_related_ids_are_known():
     for c in CARDS:
         assert re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", c.id), c.id
-        unknown = [r for r in c.related if r not in IDS | PLANNED]
+        unknown = [r for r in c.related if r not in IDS]
         assert not unknown, f"{_card_id(c)} relates to unknown ids {unknown}"
         assert c.id not in c.related
 
