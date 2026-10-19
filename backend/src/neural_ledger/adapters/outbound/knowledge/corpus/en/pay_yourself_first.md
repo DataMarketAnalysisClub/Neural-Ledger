@@ -8,16 +8,17 @@
   "related": ["savings_goal", "budget", "emergency_fund", "rule_50_30_20"],
   "sources": [
     {"title": "¿Qué significa pagarte a ti misma primero? (El Club de Inversión)", "url": "https://www.elclubdeinversion.com/ufaq/que-significa-pagarte-a-ti-misma-primero/", "license": "reference only (own words)"},
-    {"title": "Presupuesto 50/30/20: la regla para administrar su dinero (Finary)", "url": "https://finary.com/es/blog/finance-perso/budget/presupuesto-50-30-20-la-regla-para-administrar-su-dinero", "license": "reference only (own words)"}
+    {"title": "Presupuesto 50/30/20: la regla para administrar su dinero (Finary)", "url": "https://finary.com/es/blog/finance-perso/budget/presupuesto-50-30-20-la-regla-para-administrar-su-dinero", "license": "reference only (own words)"},
+    {"title": "Pay yourself first (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:budgeting-and-saving/xa6995ea67a8e9fdd:saving-money/a/pay-yourself-first", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"}
   ],
   "numbers": []
 }
 ---
-Paying yourself first means setting aside a share of your income for saving or investing as soon as the money arrives, before you pay for anything else. The idea reverses the usual order, in which saving is whatever is left at the end of the month.
+Paying yourself first means moving part of each paycheck into savings or investments as soon as it arrives, ahead of every other payment. This reverses the common order, where saving is whatever remains at the end of the month.
 
-The logic is simple. What is left at the end of the month is often nothing, because spending tends to grow to fill the space available. If you set the savings amount first, it becomes a fixed commitment, and the rest of the budget is built around it.
+The logic is straightforward: what is left at month's end is often little, because spending tends to expand to use the money available. If the savings amount is fixed at the start, it becomes a commitment and the rest of the budget is built around it.
 
-The habit works best when it is automated. A transfer scheduled for payday, from your current account to a separate place for savings, removes the need for willpower each month and cuts down on spending you did not plan. Start with an amount that fits your budget, and raise it when your income grows.
+The habit is easiest to keep when it is automated: a transfer timed for payday, moving money from your current account into a separate savings place. This keeps saving ahead of the temptation to spend. To work out the per-paycheck amount, divide the goal by the number of pay periods in the year, and raise the amount when income grows.
 
 Paying yourself first is a method for building a habit, not a promise of returns. It does not replace planning for debts or essential costs, and it only works if the amount is realistic for your month.
 
