@@ -41,7 +41,10 @@ INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
         r"(?:keep|mantener|mant[eé]n) (?:at least|al menos|como m[ií]nimo))\b", re.I)),
     (Intent.EXECUTE_ACTION, re.compile(
         r"\b(execute|ejecut\w*|go ahead|adelante|do it|hazlo|activate|activa\w*|transfer\w*|transfi\w*|move|mueve|send|env[ií]a)\b", re.I)),
-    (Intent.EXPLAIN, re.compile(r"\b(what is an?|what's an?|what are|qu[eé] (?:es|son)|explain (?:what|how)|expl[ií]came|define)\b", re.I)),
+    (Intent.EXPLAIN, re.compile(
+        r"\b(what is an?|what's an?|what are|qu[eé] (?:es|son)|explain (?:what|how)|expl[ií]came|define|"
+        # "what is compound interest?" is a term; "what is my balance / the forecast" is not (ADR-039).
+        r"what (?:is|does) (?!my\b|your\b|the\b|it\b|this\b|that\b|there\b|left\b|going\b|happening\b)[a-z]+)\b", re.I)),
     (Intent.SAVINGS_PLAN, re.compile(r"\b(sav(?:e|ing|ings)|ahorr\w*|set aside|put away|guardar)\b", re.I)),
     (Intent.AFFORD_PURCHASE, re.compile(
         r"\b(afford|buy|purchase|compr\w*|laptop|notebook|phone|cuotas?|installments?|make it work|alcanza)\b", re.I)),
