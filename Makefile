@@ -1,4 +1,4 @@
-.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest evidence api up cartola seed reset
+.PHONY: install test test-all test-property test-golden test-security test-suitability demo demo-ledger ledgers backtest rag-eval evidence api up cartola seed reset
 
 PY ?= python3
 
@@ -34,6 +34,9 @@ ledgers:            ## regenerate data/ledgers/*.json (deterministic, seeded)
 
 backtest:           ## synthetic implementation validation (100 seeded ledgers per source)
 	cd backend && PYTHONPATH=src:. $(PY) -m tests.backtest.run --seeds 100 --out ../evidence/backtest/synthetic_backtest.json
+
+rag-eval:           ## concept retrieval on tests/rag_eval/questions.jsonl -> evidence/rag_eval/<kb>.json (KB=chroma needs the rag extra)
+	cd backend && PYTHONPATH=src:. $(PY) -m tests.rag_eval.run --kb $(or $(KB),lexical) $(if $(filter chroma,$(KB)),--kb-dir ../var/chroma)
 
 # Synthetic data (docs/runbooks/SYNTHETIC_DATA.md). Optional: SEED=42 MONTHS=3 PERSONA=diego.
 SEED_ARG = $(if $(SEED),--seed $(SEED))
