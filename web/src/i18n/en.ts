@@ -324,7 +324,7 @@ export const en = {
       source: "From",
       destination: "To",
       effective: "Starts",
-      actions: { create_savings_rule: "Create a savings rule" },
+      actions: { create_savings_rule: "Create a savings rule", set_liquidity_floor: "Set your liquidity floor" },
       frequencies: { monthly: "Monthly", weekly: "Weekly" },
       accounts: { checking: "Checking account", sandbox_savings: "Sandbox savings" },
       fromPlan: "Built from stored plan {snapshot}",
@@ -345,6 +345,14 @@ export const en = {
     executed: "Rule {reference} created. Your balance did not change.",
     confirmed: "You confirmed these terms. Nothing has executed yet.",
     newProposal: "Prepare a new proposal",
+    /** A liquidity floor (ADR-037): the same contract, but nothing moves. */
+    floor: {
+      title: "Liquidity floor",
+      confirmNote: "Confirming does not change anything yet. Activating the floor is a separate step.",
+      execute: "Activate the {amount} floor",
+      executeNote: "Stores the floor as a rule. No money moves; forecasts, plans and purchase checks then use it instead of the default floor.",
+      executed: "Floor {reference} active. Your balance did not change.",
+    },
   },
   blocked: {
     title: "Blocked",

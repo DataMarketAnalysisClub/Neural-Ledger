@@ -38,6 +38,26 @@ function wrap(ui: ReactNode) {
 }
 
 describe("ProposalReceipt", () => {
+  it("shows a liquidity floor as a rule that moves no money and comes from no plan", async () => {
+    const floor = { ...proposal, terms: { ...terms, action: "set_liquidity_floor", destination: "checking" }, source_snapshot_id: "floor_0123456789abcdef" };
+    const onConfirm = vi.fn();
+    wrap(<ProposalReceipt proposal={floor as never} onConfirm={onConfirm} onExecute={vi.fn()} confirming={false} executing={false} />);
+    expect(screen.getByRole("heading", { name: "Liquidity floor" })).toBeInTheDocument();
+    expect(screen.getByText("Set your liquidity floor")).toBeInTheDocument();
+    expect(screen.queryByText(/Built from stored plan/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Activating the floor is a separate step/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Confirm CLP 100,000 monthly/ }));
+    expect(onConfirm.mock.calls[0]![0]).toBe(floor);
+  });
+
+  it("offers to activate a confirmed floor, not to create a transfer", () => {
+    const floorTerms = { ...terms, action: "set_liquidity_floor", destination: "checking" };
+    const authorization = { authorization_id: "auth_1", proposal_id: "prop_000014", terms: floorTerms, expires_at: "2099-10-29T12:40:00-03:00", used: false };
+    wrap(<ProposalReceipt authorization={authorization as never} onConfirm={vi.fn()} onExecute={vi.fn()} confirming={false} executing={false} />);
+    expect(screen.getByRole("button", { name: /Activate the CLP 100,000 floor/ })).toBeInTheDocument();
+    expect(screen.getByText(/No money moves/)).toBeInTheDocument();
+  });
+
   it("sends back the exact proposal it received, untouched", async () => {
     const onConfirm = vi.fn();
     wrap(<ProposalReceipt proposal={proposal as never} onConfirm={onConfirm} onExecute={vi.fn()} confirming={false} executing={false} />);

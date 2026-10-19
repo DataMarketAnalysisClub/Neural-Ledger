@@ -201,13 +201,15 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
 
   const amount = formatMoney(terms.amount, terms.currency);
   const frequency = tDynamic("receipt.terms.frequencies", terms.frequency).toLowerCase();
+  // A liquidity floor (ADR-037) goes through the same contract but moves no money and comes from no plan.
+  const floor = terms.action === "set_liquidity_floor";
 
   return (
     <article aria-labelledby="receipt-title" className={cn("rounded-object border bg-surface p-6 transition-shadow duration-200", stage === "pending" ? "border-line" : "border-ink/20 shadow-object")}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="receipt-title" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-ink outline-none">
-            {t("receipt.title")}
+            {floor ? t("receipt.floor.title") : t("receipt.title")}
           </h2>
           <p className="mt-0.5 text-sm text-ink-2" role="status">
             {expired ? t("receipt.status.expired") : t(`receipt.status.${stage}`)}
@@ -239,7 +241,7 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
         <Terms terms={terms} />
       </div>
 
-      {proposal?.source_snapshot_id && (
+      {proposal?.source_snapshot_id && !floor && (
         <p className="mt-3 text-xs text-ink-3">
           {t("receipt.terms.fromPlan", { snapshot: "" })}
           <span className="font-mono">{shortHash(proposal.source_snapshot_id, 10, 6)}</span>
@@ -276,7 +278,7 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
             >
               {confirming ? t("receipt.confirming") : t("receipt.confirm", { amount, frequency })}
             </Button>
-            <p className="text-xs text-ink-2">{t("receipt.confirmNote")}</p>
+            <p className="text-xs text-ink-2">{floor ? t("receipt.floor.confirmNote") : t("receipt.confirmNote")}</p>
             {onBack && (
               <Button variant="quiet" size="sm" onClick={onBack}>
                 {t("receipt.back")}
@@ -294,15 +296,15 @@ export function ProposalReceipt({ proposal, authorization, receipt, onConfirm, o
               disabled={executing || !!expired}
               busy={executing}
               onClick={() => onExecute(authorization)}
-              aria-label={t("receipt.execute", { amount: moneyForSpeech(terms.amount, terms.currency) })}
+              aria-label={t(floor ? "receipt.floor.execute" : "receipt.execute", { amount: moneyForSpeech(terms.amount, terms.currency) })}
             >
-              {executing ? t("receipt.executing") : t("receipt.execute", { amount })}
+              {executing ? t("receipt.executing") : t(floor ? "receipt.floor.execute" : "receipt.execute", { amount })}
             </Button>
-            <p className="text-xs text-ink-2">{t("receipt.executeNote")}</p>
+            <p className="text-xs text-ink-2">{floor ? t("receipt.floor.executeNote") : t("receipt.executeNote")}</p>
           </>
         )}
         {stage === "executed" && receipt && (
-          <Notice tone="positive" title={t("receipt.executed", { reference: receipt.reference ?? "" })} />
+          <Notice tone="positive" title={t(floor ? "receipt.floor.executed" : "receipt.executed", { reference: receipt.reference ?? "" })} />
         )}
         {expired && <p className="text-sm text-danger">{t("receipt.validity.expired")}</p>}
       </div>

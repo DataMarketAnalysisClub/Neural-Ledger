@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
@@ -29,6 +30,7 @@ from neural_ledger.domain.actions.terms import (
     SavingsRule,
 )
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, verify_chain
+from neural_ledger.domain.shared.serialization import to_primitive
 
 NOW = datetime(2026, 10, 29, 15, 0, tzinfo=UTC)
 TEST_CIPHER = FieldCipher(bytes(range(32)))
@@ -93,6 +95,20 @@ def test_savings_rules_round_trip_per_user(rule_store):
     assert [r.rule_id for r in rule_store.for_user("camila")] == ["rule_0001", "rule_0003"]
     assert rule_store.for_user("camila")[0] == _rule("rule_0001", "camila")
     assert rule_store.for_user("nobody") == ()
+
+
+def test_a_floor_rule_keeps_its_kind(rule_store):
+    """ADR-037: a floor rule moves no money, so its kind must survive storage."""
+    floor = SavingsRule("rule_0001", "camila", 100_000, "CLP", Frequency.MONTHLY, "checking", "checking", date(2026, 10, 1), "auth_1", ActionType.SET_LIQUIDITY_FLOOR)
+    rule_store.add(floor)
+    assert rule_store.for_user("camila") == (floor,)
+
+
+def test_a_rule_stored_before_floors_existed_is_a_savings_rule(tmp_path):
+    db = SqliteDatabase(tmp_path / "legacy.db")
+    payload = {k: v for k, v in to_primitive(_rule("rule_0001", "camila")).items() if k != "action"}
+    db.connection.execute("INSERT INTO savings_rules (rule_id, user_id, payload) VALUES (?, ?, ?)", ("rule_0001", "camila", json.dumps(payload)))
+    assert SqliteSavingsRuleStore(db).for_user("camila") == (_rule("rule_0001", "camila"),)
 
 
 def test_sqlite_survives_a_restart(tmp_path):

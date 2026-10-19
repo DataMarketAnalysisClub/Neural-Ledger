@@ -61,6 +61,17 @@ def test_chat(client):
     assert reply["intent"] == "forecast" and reply["verification"]["ok"]
 
 
+def test_chat_proposes_the_floor_and_the_user_confirms_it_over_http(client):
+    from tests.contract.test_contracts import validate
+
+    reply = client.post("/v1/chat", json={"session_id": "fl", "message": "Quiero que el piso sea de 100.000"}).json()
+    validate(reply, "chat/chat_reply.schema.json")
+    proposal = reply["pending_proposal"]
+    assert reply["intent"] == "set_liquidity_floor" and proposal["terms"]["action"] == "set_liquidity_floor" and proposal["terms"]["amount"] == 100_000
+    confirmed = client.post(f"/v1/actions/proposals/{proposal['proposal_id']}/confirm", json={"session_id": "fl", "terms": proposal["terms"]})
+    assert confirmed.status_code == 201 and confirmed.json()["status"] == "CONFIRMED", confirmed.text
+
+
 def test_statement_upload_list_and_detail(client):
     pytest.importorskip("pymupdf")
     pytest.importorskip("pdfplumber")

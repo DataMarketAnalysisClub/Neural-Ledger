@@ -8,11 +8,12 @@ INVALID_INPUT and touch no engine; missing data returns INSUFFICIENT_DATA (hard 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, TypeVar
 
+from ...domain.actions.terms import liquidity_floor_from, savings_rules
 from ...domain.agent.untrusted import wrap_untrusted
 from ...domain.finance.capacity import (
     CapacityAssessment,
@@ -153,7 +154,19 @@ class FinancialUseCases:
         except InsufficientData as exc:
             return Envelope.insufficient(exc.missing, params_version=version, message=exc.message)
 
+    def _user_floor(self, user_id: str) -> int | None:
+        """The user's own liquidity floor from an executed floor rule (ADR-037), or None for the parameter register's."""
+        return liquidity_floor_from(self._bank.active_rules(user_id))
+
+    def _params_for(self, model: FinancialModel) -> FinanceParams:
+        """The parameter register with the user's floor in place of its own, when the user set one (ADR-037)."""
+        floor = self._user_floor(model.user_id)
+        return self._params if floor is None else replace(self._params, liquidity_floor=floor)
+
     def _ok(self, model: FinancialModel, data: T, facts, warnings=(), *, kind: str, parts: tuple = ()) -> Envelope[T]:
+        floor = self._user_floor(model.user_id)
+        if floor is not None:  # the same data with another floor is another snapshot
+            parts = (*parts, ("liquidity_floor", floor))
         snapshot_id = content_id(kind, model.source_version, model.as_of, self._params.version, *parts)
         return Envelope.success(
             data,
@@ -172,8 +185,19 @@ class FinancialUseCases:
             return ("unknown", "CLP")
         return (model.as_of.isoformat(), model.currency)
 
+    def first_cycle(self, user_id: str) -> tuple[Month, str] | Envelope[Any]:
+        """(first projected cycle, currency) for a rule that starts now, or the INSUFFICIENT_DATA envelope."""
+        def body(model: FinancialModel) -> Envelope[tuple[Month, str]]:
+            return Envelope.success((model.first_cycle, model.currency), params_version=self._params.version, snapshot_id="cycle", as_of=model.as_of.isoformat())
+
+        result = self._run(user_id, body)
+        return result.data if result.ok and result.data is not None else result
+
     def _floor_fact(self, model: FinancialModel) -> Fact:
-        return Fact("liquidity_floor", self._params.liquidity_floor, model.currency, "parameter register")
+        floor = self._user_floor(model.user_id)
+        if floor is None:
+            return Fact("liquidity_floor", self._params.liquidity_floor, model.currency, "parameter register")
+        return Fact("liquidity_floor", floor, model.currency, "your liquidity floor rule")
 
     @staticmethod
     def _horizon(value: int) -> int:
@@ -188,14 +212,14 @@ class FinancialUseCases:
         return RiskProfile.CONSERVATIVE
 
     def _permitted(self, model: FinancialModel) -> PermittedProfile:
-        return derive_permitted_profile(self._tolerance(model.user_id), assess_capacity(model, self._params), model)
+        return derive_permitted_profile(self._tolerance(model.user_id), assess_capacity(model, self._params_for(model)), model)
 
     def _plan_overlay(self, model: FinancialModel, include: IncludePlan) -> Recurring | None:
         if include is IncludePlan.NONE:
             return None
         if include is IncludePlan.RECOMMENDED:
-            return size_plan(model, self._params, self._permitted(model).permitted).as_recurring()
-        rules = self._bank.active_rules(model.user_id)
+            return size_plan(model, self._params_for(model), self._permitted(model).permitted).as_recurring()
+        rules = savings_rules(self._bank.active_rules(model.user_id))
         if not rules:
             return None
         start = min(Month.of(r.effective_date) for r in rules)
@@ -252,7 +276,7 @@ class FinancialUseCases:
             scen = _parse_enum(Scenario, scenario, "scenario")
             include = _parse_enum(IncludePlan, include_plan, "include_plan")
             plan = self._plan_overlay(model, include)
-            result = project(model, self._params, scen, horizon, plan=plan)
+            result = project(model, self._params_for(model), scen, horizon, plan=plan)
             parts = (horizon, scen, include, plan)
             return self._ok(model, result, forecast_facts(result, model.currency), kind="forecast", parts=parts)
 
@@ -285,7 +309,7 @@ class FinancialUseCases:
             plan = self._plan_overlay(model, include)
             principal = _parse_int(amount, "amount")
             count = _parse_int(installments, "installments")
-            sim = simulate_purchase(model, self._params, principal, count, first, rate, plan)
+            sim = simulate_purchase(model, self._params_for(model), principal, count, first, rate, plan)
             facts = (*purchase_facts(sim, model.currency), self._floor_fact(model))
             parts = (principal, count, first, str(rate), include, plan)
             return self._ok(model, sim, facts, (*purchase_caveats(sim), *caveats), kind="purchase", parts=parts)
@@ -297,7 +321,7 @@ class FinancialUseCases:
             horizon = self._horizon(horizon_months)
             include = _parse_enum(IncludePlan, include_plan, "include_plan")
             plan = self._plan_overlay(model, include)
-            result = protected_surplus(model, self._params, horizon, plan)
+            result = protected_surplus(model, self._params_for(model), horizon, plan)
             facts = (*surplus_facts(result, model.currency), self._floor_fact(model))
             return self._ok(model, result, facts, kind="surplus", parts=(horizon, include, plan))
 
@@ -305,7 +329,7 @@ class FinancialUseCases:
 
     def capacity(self, user_id: str) -> Envelope[CapacityAssessment]:
         def body(model: FinancialModel) -> Envelope[CapacityAssessment]:
-            result = assess_capacity(model, self._params)
+            result = assess_capacity(model, self._params_for(model))
             return self._ok(model, result, capacity_facts(result, model.currency), kind="capacity")
 
         return self._run(user_id, body)
@@ -313,7 +337,7 @@ class FinancialUseCases:
     def permitted_profile(self, user_id: str, tolerance: str) -> Envelope[PermittedProfile]:
         def body(model: FinancialModel) -> Envelope[PermittedProfile]:
             tol = _parse_enum(RiskProfile, tolerance, "tolerance")
-            result = derive_permitted_profile(tol, assess_capacity(model, self._params), model)
+            result = derive_permitted_profile(tol, assess_capacity(model, self._params_for(model)), model)
             return self._ok(model, result, permitted_facts(result), kind="profile", parts=(tol,))
 
         return self._run(user_id, body)
@@ -338,7 +362,7 @@ class FinancialUseCases:
                         (permitted.value,),
                     )
                 )
-            plan = size_plan(model, self._params, effective)
+            plan = size_plan(model, self._params_for(model), effective)
             envelope = self._ok(
                 model, plan, plan_facts(plan, model.currency), caveats, kind="plan", parts=(effective,)
             )

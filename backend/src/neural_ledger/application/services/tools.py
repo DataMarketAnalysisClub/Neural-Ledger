@@ -30,6 +30,7 @@ class ToolContext:
     intent: str | None = None
     intent_confidence: float | None = None
     checks: tuple[DecisionCheck, ...] = ()
+    user_text: str = ""  # the user's message this turn: an amount the user asked for must appear in it (ADR-037)
 
 
 Handler = Callable[[Mapping[str, Any], ToolContext], Any]

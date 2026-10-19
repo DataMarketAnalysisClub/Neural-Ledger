@@ -11,7 +11,7 @@
       "type": ["object", "null"],
       "required": ["action", "amount", "currency", "frequency", "source_account", "destination", "effective_date"],
       "properties": {
-        "action": {"enum": ["create_savings_rule"]},
+        "action": {"enum": ["create_savings_rule", "set_liquidity_floor"]},
         "amount": {"type": "integer", "minimum": 1},
         "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
         "frequency": {"enum": ["monthly"]},
