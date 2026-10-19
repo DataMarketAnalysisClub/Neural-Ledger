@@ -41,12 +41,22 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 ## Work packages (run in parallel)
 
 ### WP1 · Concept cards (4 Haiku agents, one per group, es + en)
-- [ ] G1 Budget and saving: `budget`, `rule_50_30_20`, `emergency_fund`, `savings_goal`, `pay_yourself_first`, `net_income`, `fixed_and_variable_expenses`, `liquidity`, `liquidity_floor`
-- [ ] G2 Credit and debt: `interest_rate`, `cae`, `installments`, `revolving_credit`, `minimum_payment`, `credit_report`, `debt_avalanche_and_snowball`, `debt_to_income_ratio`
-- [ ] G3 Money over time: `compound_interest`, `simple_interest`, `inflation`, `unidad_de_fomento`, `real_vs_nominal`, `time_value_of_money`, `opportunity_cost`, `time_deposit`
-- [ ] G4 Investing vocabulary (definitions only): `stock`, `bond`, `mutual_fund`, `etf`, `diversification`, `risk_and_return`, `apv`, `cryptocurrency`, `afp_pension_system`
+- [x] G1 Budget and saving: `budget`, `rule_50_30_20`, `emergency_fund`, `savings_goal`, `pay_yourself_first`, `net_income`, `fixed_and_variable_expenses`, `liquidity`, `liquidity_floor`
+- [x] G2 Credit and debt: `interest_rate`, `cae`, `installments`, `revolving_credit`, `minimum_payment`, `credit_report`, `debt_avalanche_and_snowball`, `debt_to_income_ratio`
+- [x] G3 Money over time: `compound_interest`, `simple_interest`, `inflation`, `unidad_de_fomento`, `real_vs_nominal`, `time_value_of_money`, `opportunity_cost`, `time_deposit`
+- [x] G4 Investing vocabulary (definitions only): `stock`, `bond`, `mutual_fund`, `etf`, `diversification`, `risk_and_return`, `apv`, `cryptocurrency`, `afp_pension_system`
 - [x] Example card: `protected_surplus` (es, en)
 - [ ] Review pass: own words, numbers declared, no advice, Chilean Spanish
+- [ ] Source check before release (Investopedia blocks fetching, so cards cite Wikipedia and regulator pages):
+    - [ ] `apv`, `afp_pension_system`: regime A/B tax treatment, multifondos A–E and default assignment against spensiones.cl and sii.cl (written from general knowledge; cited pages are home pages)
+    - [ ] `mutual_fund` (AGF, CMF), `cryptocurrency` (not legal tender in Chile): add a Chilean source
+    - [ ] `time_deposit`: Chilean source for fixed vs renewable and UF-indexed deposits
+    - [ ] `inflation`: the es.wikipedia page fetched looked like the English article; re-check
+    - [ ] `unidad_de_fomento`: cite Banco Central for who publishes it
+    - [ ] `net_income`: AFP, health and impuesto único deductions against spensiones.cl and sii.cl (sources are commercial sites)
+    - [ ] `cae`, `credit_report`: Ley 20.555 disclosure and informe comercial rights against CMF, SERNAC and Ley 19.628
+    - [ ] `minimum_payment`, `revolving_credit`: a CMF or bank source for statement mechanics
+    - [ ] `debt_to_income_ratio`: source the "carga financiera" mention or drop it
 
 ### WP2 · Retrieval adapters and wiring
 - [ ] `corpus_loader.py` + package data for `corpus/**/*.md`
@@ -68,10 +78,10 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - [ ] `tests/application` chat tests for EXPLAIN in es and en
 
 ### WP4 · Docs
-- [ ] ADR-039 in `docs/DECISIONS.md`
-- [ ] `docs/SCOPE.md` §5.3 ports table: `KnowledgeBase`
-- [ ] `docs/ARCHITECTURE.md`: where code goes + recipe "Add a concept card"
-- [ ] README: `pip install -e "backend[rag]"`, `NL_KNOWLEDGE_BASE=chroma,lexical`
+- [x] ADR-039 in `docs/DECISIONS.md`
+- [x] `docs/SCOPE.md` §5.3 ports table: `KnowledgeBase`
+- [x] `docs/ARCHITECTURE.md`: where code goes + recipe "Add a concept card"
+- [x] README: `pip install -e "backend[rag]"`, `NL_KNOWLEDGE_BASE=chroma,lexical`
 
 ### Integration (after the packages)
 - [ ] Merge WP2–WP4 into `c/education-rag`; `ruff check .`; `make test-all` green
