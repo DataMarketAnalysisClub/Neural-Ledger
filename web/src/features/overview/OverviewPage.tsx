@@ -1,5 +1,6 @@
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChatText, CheckCircle, WarningOctagon } from "@phosphor-icons/react";
+import { ChatText, CheckCircle, Question, WarningOctagon } from "@phosphor-icons/react";
 import { useFinancialState, useForecast, useProtectedSurplus, useSavingsPlan } from "@/api/hooks";
 import { fact } from "@/api/client";
 import { LiquidityBridge } from "@/components/LiquidityBridge";
@@ -7,8 +8,11 @@ import { ForecastChart, type ForecastPoint } from "@/components/charts";
 import { Button, ErrorState, Loading, Money, PageHeader, Section, Surface, cn } from "@/components/ui";
 import { formatMoney, formatMonth } from "@/lib/format";
 import { t } from "@/i18n";
+import { GuidePanel, type GuideStep } from "./OverviewGuide";
 
 export function OverviewPage() {
+  const [guideStep, setGuideStep] = useState<number | null>(null);
+  const guideButton = useRef<HTMLButtonElement>(null);
   const state = useFinancialState();
   const conservative = useForecast("conservative");
   const typical = useForecast("typical");
@@ -47,37 +51,64 @@ export function OverviewPage() {
 
   const goal = plan.data?.data?.goal_status[0];
 
+  // One step per region, in reading order; the goal step only when there is a goal.
+  const guide: GuideStep[] = [
+    { target: "page-title", title: t("overview.guide.headline.title"), body: short ? t("overview.guide.headline.bodyShort") : t("overview.guide.headline.body") },
+    { target: "guide-bridge", title: t("overview.guide.bridge.title"), body: t("overview.guide.bridge.body") },
+    { target: "guide-chart", title: t("overview.guide.chart.title"), body: t("overview.guide.chart.body") },
+    { target: "flow", title: t("overview.guide.flow.title"), body: t("overview.guide.flow.body") },
+    { target: "reserve", title: t("overview.guide.reserve.title"), body: t("overview.guide.reserve.body") },
+    ...(goal ? [{ target: "goal", title: t("overview.guide.goal.title"), body: t("overview.guide.goal.body") }] : []),
+    { target: "guide-copilot", title: t("overview.guide.copilot.title"), body: t("overview.guide.copilot.body") },
+  ];
+
   return (
     <>
       <PageHeader
         title={title}
         subtitle={short ? t("overview.subtitleShort") : t("overview.subtitle")}
         actions={
-          <Button asChild variant="primary">
-            <Link to="/copilot">
-              <ChatText aria-hidden className="size-4" />
-              {t("common.askCopilot")}
-            </Link>
-          </Button>
+          <>
+            <Button
+              ref={guideButton}
+              onClick={() => setGuideStep(0)}
+              aria-label={t("overview.guide.open")}
+              title={t("overview.guide.open")}
+              aria-expanded={guideStep !== null}
+              className="w-10 px-0"
+            >
+              <Question aria-hidden className="size-5" />
+            </Button>
+            <Button asChild variant="primary">
+              <Link to="/copilot" id="guide-copilot">
+                <ChatText aria-hidden className="size-4" />
+                {t("common.askCopilot")}
+              </Link>
+            </Button>
+          </>
         }
       />
 
-      <Surface className="p-6 sm:p-8">
-        <LiquidityBridge
-          currency={currency}
-          balance={fc.opening_trough}
-          cycles={bridgeCycles}
-          floor={fc.floor}
-          protectedSurplus={sp.protected_surplus}
-          bindingMonth={binding}
-          snapshotId={surplus.data!.snapshot_id}
-          paramsVersion={surplus.data!.params_version}
-          facts={surplus.data!.facts}
-        />
-      </Surface>
+      <div id="guide-bridge">
+        <Surface className="p-6 sm:p-8">
+          <LiquidityBridge
+            currency={currency}
+            balance={fc.opening_trough}
+            cycles={bridgeCycles}
+            floor={fc.floor}
+            protectedSurplus={sp.protected_surplus}
+            bindingMonth={binding}
+            snapshotId={surplus.data!.snapshot_id}
+            paramsVersion={surplus.data!.params_version}
+            facts={surplus.data!.facts}
+          />
+        </Surface>
+      </div>
 
       <div className="mt-12 grid gap-12 xl:grid-cols-[1fr_300px]">
-        <ForecastChart points={points} floor={fc.floor} currency={currency} bindingMonth={binding} />
+        <div id="guide-chart" className="min-w-0">
+          <ForecastChart points={points} floor={fc.floor} currency={currency} bindingMonth={binding} />
+        </div>
 
         <div className="space-y-10 xl:border-l xl:border-line xl:pl-10">
           <Section id="flow" title={t("overview.flow.title")} subtitle={t("overview.flow.subtitle")}>
@@ -141,6 +172,18 @@ export function OverviewPage() {
           )}
         </div>
       </div>
+
+      {guideStep !== null && (
+        <GuidePanel
+          steps={guide}
+          step={guideStep}
+          onStep={setGuideStep}
+          onClose={() => {
+            setGuideStep(null);
+            guideButton.current?.focus();
+          }}
+        />
+      )}
     </>
   );
 }

@@ -99,6 +99,46 @@ export const en = {
       onTrack: "On track with the plan",
       offTrack: "Not on track",
     },
+    guide: {
+      open: "How to read this page",
+      headline: {
+        title: "The answer in one line",
+        body: "The headline says how much could leave checking today without any of the coming months dropping below your safety floor. That amount is the protected surplus. Everything on this page uses the conservative scenario: spending on the high side.",
+        bodyShort:
+          "The headline says how far your balance falls below your safety floor in the tightest month, even with no new spending. Everything on this page uses the conservative scenario: spending on the high side.",
+      },
+      bridge: {
+        title: "From balance to protected surplus",
+        body: "It starts with what is in checking today. Each payday cycle adds income and subtracts commitments and conservative spending. The lowest balance before a payday, minus the safety floor, is the protected surplus.",
+      },
+      chart: {
+        title: "The next six paydays",
+        body: "Each point is the balance just before a payday, when money is tightest. One line is a typical month, the other a conservative one. The floor line is the minimum you want to keep: a point below it is a month where you would run short.",
+      },
+      flow: {
+        title: "Month by month",
+        body: "Income minus commitments and conservative spending for each month. A negative month eats into your balance, even while the balance itself is still positive.",
+      },
+      reserve: {
+        title: "Your reserve",
+        body: "Money kept apart from checking, for example in savings. It is not part of the checking balance the bridge starts from. Select the amount to see where it comes from.",
+      },
+      goal: {
+        title: "Your savings goal",
+        body: "How much is saved against the target, and whether the savings plan reaches it by the due date.",
+      },
+      copilot: {
+        title: "Ask about any number",
+        body: "The copilot answers questions about this page, like whether a purchase fits, using the same numbers. It never moves money without your confirmation.",
+      },
+    },
+  },
+  guide: {
+    progress: "Step {step} of {total}",
+    back: "Back",
+    next: "Next",
+    done: "Done",
+    close: "Close guide",
   },
   commitments: {
     title: "{amount} committed in {month}",
