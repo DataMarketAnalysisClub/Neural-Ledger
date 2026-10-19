@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -53,6 +53,40 @@ describe("versioned questionnaire", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Your profile" })).toBeInTheDocument());
     expect(screen.getByText("Aggressive")).toBeInTheDocument();
     expect(screen.getByText("Answered with pq-0.1")).toBeInTheDocument();
+  });
+
+  it("shows a timeline above the card that only lets a person go back to answered questions", async () => {
+    await accountsApi.signup({ email: "question-timeline@example.invalid", password: "synthetic-password", display_name: "Timeline Tester" });
+    mount("/onboarding");
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("group", { name: /Of money left after bills/ })).toBeInTheDocument());
+
+    const timeline = screen.getByRole("list", { name: "Progress" });
+    expect(within(timeline).getAllByRole("listitem")).toHaveLength(5);
+    expect(screen.getByRole("button", { name: "Question 1 of 5, current" })).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("button", { name: "Question 2 of 5, not reached yet" })).toBeDisabled();
+    expect(timeline.compareDocumentPosition(screen.getByRole("group", { name: /Of money left after bills/ })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(screen.getByRole("radio", { name: "Most of it" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("group", { name: /If the rule leaves less room/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Question 2 of 5, current" })).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("button", { name: "Question 3 of 5, not reached yet" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Question 1 of 5, answered" }));
+    expect(screen.getByRole("group", { name: /Of money left after bills/ })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Most of it" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Question 2 of 5, not answered yet" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Question 3 of 5, not reached yet" })).toBeDisabled();
+  });
+
+  it("stands alone: no app navigation around the questions", async () => {
+    await accountsApi.signup({ email: "question-alone@example.invalid", password: "synthetic-password", display_name: "Alone Tester" });
+    mount("/onboarding");
+    await waitFor(() => expect(screen.getByRole("group", { name: /Of money left after bills/ })).toBeInTheDocument());
+
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeInTheDocument();
   });
 
   it("keeps a new account's profile empty, editable and without a sample-data action", async () => {

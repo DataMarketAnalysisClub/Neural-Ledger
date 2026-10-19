@@ -22,6 +22,9 @@ export const en = {
   },
   nav: {
     label: "Main",
+    primary: "Primary",
+    more: "More",
+    planShort: "Plan",
     overview: "Overview",
     commitments: "Commitments",
     simulator: "Purchase check",
@@ -43,6 +46,7 @@ export const en = {
     until: "until {month}",
     ongoing: "Ongoing",
     askCopilot: "Ask the copilot",
+    minus: "minus {amount}",
   },
   errors: {
     network: "The API did not answer. Check that it is running on port 8000, then try again.",
@@ -562,6 +566,9 @@ export const en = {
     title: "Your saving preferences",
     description: "Five short questions about how you would use a savings rule. The engine, not this form, derives your declared tolerance.",
     step: "Question {current} of {total}",
+    timeline: "Progress",
+    stepAria: "Question {current} of {total}, {state}",
+    state: { current: "current", answered: "answered", pending: "not answered yet", locked: "not reached yet" },
     back: "Back",
     next: "Next",
     submit: "Save answers",
