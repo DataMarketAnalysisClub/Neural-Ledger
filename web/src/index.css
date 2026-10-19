@@ -17,17 +17,22 @@
 /* ---- Layer 1: primitives. Never referenced by components directly. ---- */
 :root {
   --p-white: #ffffff;
-  --p-gray-50: #f4f5f7;
-  --p-gray-100: #eceef3;
-  --p-gray-200: #dde1e6;
+  --p-gray-50: #f2f7f6;
+  --p-gray-100: #e6efed;
+  --p-gray-200: #d8e5e3;
   --p-gray-450: #7d8796;
   --p-gray-500: #6f7a8a;
   --p-gray-600: #5f6875;
   --p-gray-700: #4a5361;
   --p-gray-950: #14181f;
-  --p-cobalt-50: #eef0fb;
-  --p-cobalt-600: #3346c8;
-  --p-cobalt-700: #2836a6;
+  --p-teal-50: #e0f2f0;
+  --p-teal-300: #5eead4;
+  --p-teal-700: #0f766e;
+  --p-teal-800: #115e59;
+  --p-teal-900: #0b2f2e;
+  --p-mist-200: #cdd8d6;
+  --p-mist-400: #a6b8b5;
+  --p-sea-500: #5f7f7c;
   --p-green-50: #eaf5ef;
   --p-green-700: #0e7a4f;
   --p-amber-50: #fff4e0;
@@ -47,9 +52,9 @@
   --text: var(--p-gray-950);
   --text-2: var(--p-gray-700);
   --text-3: var(--p-gray-600);
-  --accent: var(--p-cobalt-600);
-  --accent-hover: var(--p-cobalt-700);
-  --accent-soft: var(--p-cobalt-50);
+  --accent: var(--p-teal-700);
+  --accent-hover: var(--p-teal-800);
+  --accent-soft: var(--p-teal-50);
   --on-accent: var(--p-white);
   --positive: var(--p-green-700);
   --positive-bg: var(--p-green-50);
@@ -60,10 +65,17 @@
   --danger-hover: var(--p-red-800);
   --danger-hatch: rgb(180 35 24 / 0.22);
   /* Data: emphasis form (the series that matters in ink, context in gray, also told apart by line style). */
-  --series-focus: var(--p-gray-950); /* ink: cobalt is reserved for action, focus and selection */
-  --series-context: var(--p-gray-500);
+  --series-focus: var(--p-gray-950); /* ink: the accent is reserved for action, focus and selection */
+  --series-context: var(--p-sea-500);
   --floor: var(--p-red-700);
   --grid: var(--p-gray-200);
+
+  /* The dark rail: the sidebar on a wide screen and the header on a phone. */
+  --rail-bg: var(--p-teal-900);
+  --rail-text: var(--p-gray-50);
+  --rail-text-2: var(--p-mist-200);
+  --rail-text-3: var(--p-mist-400);
+  --rail-accent: var(--p-teal-300);
 
   /* ---- Layer 3: component tokens ---- */
   --radius-control: 6px;
@@ -72,6 +84,18 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 150ms;
   --dur-base: 200ms;
+}
+
+/* Inside the rail the semantic roles are remapped, so every component keeps using its usual utilities. */
+.rail {
+  --bg-rail: var(--rail-bg);
+  --bg-canvas: rgb(255 255 255 / 0.06);
+  --bg-surface: rgb(255 255 255 / 0.1);
+  --border: rgb(255 255 255 / 0.16);
+  --text: var(--rail-text);
+  --text-2: var(--rail-text-2);
+  --text-3: var(--rail-text-3);
+  --accent: var(--rail-accent);
 }
 
 @theme inline {
@@ -128,6 +152,12 @@ html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+/* Below 16px iOS Safari zooms the page when a field takes focus. */
+@media (max-width: 639px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
 body {
   min-height: 100dvh;
   caret-color: var(--accent);
@@ -169,6 +199,51 @@ h1, h2, h3 {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Phone chrome: the More sheet unfolds upward from the bar, its items rise in, and each screen fades in. */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes sheet-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 

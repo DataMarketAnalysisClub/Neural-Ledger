@@ -1,10 +1,11 @@
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/api/client";
 import { PersonaProvider } from "@/api/hooks";
 import { AppShell } from "@/app/AppShell";
+import { MobileLanding } from "@/app/mobileLanding";
 import { FinancialRoute } from "@/app/FinancialRoute";
 import { EmptyState, ErrorState, Loading, PageHeader } from "@/components/ui";
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
@@ -64,24 +65,25 @@ function AppRoutes() {
   </Suspense>;
 
   return <PersonaProvider key={auth.me?.user_id ?? "demo"}>
-    <AppShell>
-      <Suspense fallback={<Loading className="max-w-5xl" />}>
-        <Routes>
-          <Route path="/" element={<FinancialRoute><OverviewPage /></FinancialRoute>} />
-          <Route path="/commitments" element={<FinancialRoute><CommitmentsPage /></FinancialRoute>} />
-          <Route path="/simulator" element={<FinancialRoute><SimulatorPage /></FinancialRoute>} />
-          <Route path="/plan" element={<FinancialRoute><PlanPage /></FinancialRoute>} />
-          <Route path="/copilot" element={<FinancialRoute><CopilotPage /></FinancialRoute>} />
-          <Route path="/audit" element={<FinancialRoute><AuditPage /></FinancialRoute>} />
-          <Route path="/statements" element={<StatementsRoute><StatementsPage /></StatementsRoute>} />
-          <Route path="/profile" element={auth.mode === "accounts" ? <ProfilePage /> : <Navigate to="/" replace />} />
-          <Route path="/onboarding" element={auth.mode === "accounts" ? <OnboardingPage /> : <Navigate to="/" replace />} />
-          <Route path="/signin" element={<Navigate to="/" replace />} />
-          <Route path="/signup" element={<Navigate to={auth.mode === "accounts" ? "/onboarding" : "/"} replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </AppShell>
+    <Routes>
+      {/* The questionnaire is its own screen, outside the app shell. */}
+      <Route path="/onboarding" element={auth.mode === "accounts"
+        ? <Suspense fallback={<Loading className="mx-auto mt-16 max-w-md" />}><OnboardingPage /></Suspense>
+        : <Navigate to="/" replace />} />
+      <Route element={<AppShell><Suspense fallback={<Loading className="max-w-5xl" />}><Outlet /></Suspense></AppShell>}>
+        <Route path="/" element={<MobileLanding><FinancialRoute><OverviewPage /></FinancialRoute></MobileLanding>} />
+        <Route path="/commitments" element={<FinancialRoute><CommitmentsPage /></FinancialRoute>} />
+        <Route path="/simulator" element={<FinancialRoute><SimulatorPage /></FinancialRoute>} />
+        <Route path="/plan" element={<FinancialRoute><PlanPage /></FinancialRoute>} />
+        <Route path="/copilot" element={<FinancialRoute><CopilotPage /></FinancialRoute>} />
+        <Route path="/audit" element={<FinancialRoute><AuditPage /></FinancialRoute>} />
+        <Route path="/statements" element={<StatementsRoute><StatementsPage /></StatementsRoute>} />
+        <Route path="/profile" element={auth.mode === "accounts" ? <ProfilePage /> : <Navigate to="/" replace />} />
+        <Route path="/signin" element={<Navigate to="/" replace />} />
+        <Route path="/signup" element={<Navigate to={auth.mode === "accounts" ? "/onboarding" : "/"} replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
   </PersonaProvider>;
 }
 

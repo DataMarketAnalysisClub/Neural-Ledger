@@ -119,12 +119,12 @@ export { Prohibit, SealCheck };
 
 export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pb-8">
+    <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3 pb-5 sm:gap-y-4 sm:pb-8">
       <div className="max-w-3xl">
-        <h1 id="page-title" className="text-2xl font-semibold text-ink">
+        <h1 id="page-title" className="text-xl font-semibold text-ink sm:text-2xl">
           {title}
         </h1>
-        {subtitle && <p className="mt-2 text-base text-ink-2">{subtitle}</p>}
+        {subtitle && <p className="mt-2 text-sm text-ink-2 sm:text-base">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-3">{actions}</div>}
     </header>

@@ -62,7 +62,7 @@ export function OverviewPage() {
         }
       />
 
-      <Surface className="p-6 sm:p-8">
+      <Surface className={cn("p-6 sm:p-8", short ? "border-danger/25 bg-danger-bg" : "border-positive/25 bg-positive-bg")}>
         <LiquidityBridge
           currency={currency}
           balance={fc.opening_trough}
