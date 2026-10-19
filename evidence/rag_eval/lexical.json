@@ -1,9 +1,9 @@
 {
   "kb": "lexical",
-  "knowledge_base": "lexical/b29d96cc",
+  "knowledge_base": "lexical/a10155f6",
   "cards": 70,
   "skipped": 0,
-  "seconds": 0.03,
+  "seconds": 0.01,
   "all": {
     "n": 48,
     "recall@1": 0.958,
@@ -24,8 +24,8 @@
   },
   "top_score": {
     "answerable_median": 1.0,
-    "answerable_min": 0.573,
-    "off_topic_max": 0.379
+    "answerable_min": 0.574,
+    "off_topic_max": 0.38
   },
   "misses": []
 }

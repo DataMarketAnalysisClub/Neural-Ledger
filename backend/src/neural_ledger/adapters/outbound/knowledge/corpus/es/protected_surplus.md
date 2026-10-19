@@ -3,7 +3,7 @@
   "id": "protected_surplus",
   "lang": "es",
   "title": "Excedente protegido",
-  "aliases": ["lo que realmente tengo disponible", "plata disponible", "protected surplus"],
+  "aliases": ["lo que realmente tengo disponible", "plata que de verdad puedo gastar", "lo que queda después de los compromisos", "plata disponible", "protected surplus"],
   "tags": ["neural ledger", "flujo de caja", "ahorro"],
   "related": ["liquidity_floor", "emergency_fund", "installments"],
   "sources": [

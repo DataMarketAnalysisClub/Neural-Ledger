@@ -3,7 +3,7 @@
   "id": "protected_surplus",
   "lang": "en",
   "title": "Protected surplus",
-  "aliases": ["what is really available", "available money", "excedente protegido"],
+  "aliases": ["what is really available", "money I can actually spend", "money left after commitments", "available money", "excedente protegido"],
   "tags": ["neural ledger", "cash flow", "saving"],
   "related": ["liquidity_floor", "emergency_fund", "installments"],
   "sources": [
