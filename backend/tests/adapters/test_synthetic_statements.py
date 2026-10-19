@@ -81,15 +81,15 @@ def test_import_verifies_posts_and_keeps_fictional_holder_out_of_the_store():
 def test_savings_and_cash_lines_are_not_given_a_spending_category():
     """'Transf a Cuenta Ahorro' once came back as groceries at 0.50: savings must never count as spending in a category.
 
-    Since ADR-024's checking rules the layout marks a savings transfer as the holder's own money: `movement` by rule.
-    A cash withdrawal is still left uncategorized."""
+    Since ADR-024's checking rules the layout marks a savings transfer as the holder's own money, and since ADR-036 as
+    Ahorro: `savings` by rule. A cash withdrawal is still left uncategorized."""
     services, _ = build(make_settings())
     for f in SyntheticStatements().checking(11, date(2026, 9, 1), months=3):
         services.statements.import_statement("camila", f.content)
     for t in services.ledger.list_transactions("camila").data.transactions:
         text = t.merchant["untrusted_text"]
         if "Transf a Ahorro" in text:
-            assert (t.category, t.classifier) == ("movement", "rule"), text
+            assert (t.category, t.classifier) == ("savings", "rule"), text
         if "Giro Nacional" in text:
             assert t.category == "uncategorized", (text, t.category)
 

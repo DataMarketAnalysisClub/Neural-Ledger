@@ -6,6 +6,7 @@ A category is a label for spend breakdowns, never an amount, a kind or a permiss
 and kinds come from the reconciled statement alone:
 
     checking account   deposit → income (rule)          charge → purchase (classified)
+                       savings line → 'savings', other own money → 'movement' (rule, ADR-024, ADR-036)
     credit card        payment → card_payment, 'movement' (rule: the holder's own money, ADR-024)
                        refund, fee → refund, fee (classified)   anything else → purchase (classified)
 """
@@ -21,7 +22,7 @@ from ..shared.hashing import content_id
 from ..statements.model import LineKind, StatementLine, StoredStatement
 from .entities import AccountType, InstallmentInfo, Transaction, TransactionKind
 
-CATEGORIZATION_VERSION = "cat-0.6"  # posting rules (own money by rule) + savings label + vocabulary + category question + user categories; outputs carry it as params_version
+CATEGORIZATION_VERSION = "cat-0.6"  # posting rules (own money and savings by rule) + vocabulary + category question + user categories; outputs carry it as params_version
 
 # Spending categories a classifier may choose. The first six are the personas' categories.
 CATEGORY_OPTIONS = ("groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other")
@@ -126,6 +127,7 @@ _CARD_KINDS = {
     LineKind.FEE: TransactionKind.FEE,
     LineKind.PURCHASE: TransactionKind.PURCHASE,
     LineKind.TRANSFER_OWN: TransactionKind.CARD_PAYMENT,  # on a card, the holder's own money moving is a payment to it
+    LineKind.SAVINGS: TransactionKind.CARD_PAYMENT,  # no card layout marks savings; if one did, it would be own money
 }
 
 
@@ -144,10 +146,12 @@ _RULE_CATEGORIES = {TransactionKind.INCOME: INCOME, TransactionKind.CARD_PAYMENT
 def _rule_category(account_type: AccountType, line: StatementLine) -> str | None:
     """The category a rule gives this line, or None if a classifier chooses it.
 
-    The layout's own-money mark (ADR-024) wins over the sign: money to the holder's savings or card is a Movimiento,
-    never spending, and money back from their own account is not income.
+    The layout's own-money marks (ADR-024, ADR-036) win over the sign: money to the holder's savings is Ahorro and
+    money to their card a Movimiento, never spending, and money back from their own account is not income.
     """
-    if line.kind is LineKind.TRANSFER_OWN:
+    if line.kind is LineKind.SAVINGS and account_type is not AccountType.CREDIT_CARD:
+        return SAVINGS
+    if line.kind in (LineKind.TRANSFER_OWN, LineKind.SAVINGS):
         return MOVEMENT
     return _RULE_CATEGORIES.get(transaction_kind(account_type, line))
 
