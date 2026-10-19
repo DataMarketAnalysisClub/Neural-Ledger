@@ -17,9 +17,9 @@ export const PREVIEW_SCREENS = [
 export const PREVIEW_INTERVAL_MS = 4000;
 
 /**
- * The real app peeking in from the corner, changing screen every few seconds: the new one rises in while the old one
- * lifts away and fades. Decorative (the words next to it say what the app does), it stays on the first screen for
- * anyone who prefers reduced motion, and it waits while the tab is hidden.
+ * The real app peeking in from the corner, turning pages: the next screen slides in from the right as the current one
+ * slides out to the left, in one continuous motion. Decorative (the words next to it say what the app does), it stays
+ * on the first screen for anyone who prefers reduced motion, and it waits while the tab is hidden.
  */
 export function LoginPreview({ className }: { className?: string }) {
   const [{ index, previous }, setShown] = useState<{ index: number; previous: number | null }>({ index: 0, previous: null });
@@ -46,10 +46,11 @@ export function LoginPreview({ className }: { className?: string }) {
             data-state={state}
             loading={i === 0 ? "eager" : "lazy"}
             className={cn(
-              "absolute top-0 left-0 min-h-full w-[108%] max-w-none rounded-tl-[calc(10*var(--u))] border border-r-0 border-b-0 border-on-accent/35 bg-surface object-cover object-left-top transition-[opacity,transform] duration-700 ease-out motion-reduce:transition-none",
-              state === "active" && "translate-y-0 opacity-100",
-              state === "leaving" && "-translate-y-2 opacity-0",
-              state === "waiting" && "translate-y-5 opacity-0",
+              "absolute top-0 left-0 min-h-full w-[108%] max-w-none rounded-tl-[calc(10*var(--u))] border border-r-0 border-b-0 border-on-accent/35 bg-surface object-cover object-left-top will-change-transform",
+              // Sliding states ease in and out together; a page waiting on the right snaps there with no transition.
+              state === "active" && "translate-x-0 transition-transform duration-[900ms] ease-[cubic-bezier(0.65,0,0.35,1)] motion-reduce:transition-none",
+              state === "leaving" && "-translate-x-full transition-transform duration-[900ms] ease-[cubic-bezier(0.65,0,0.35,1)] motion-reduce:transition-none",
+              state === "waiting" && "translate-x-full transition-none",
             )}
           />
         );
