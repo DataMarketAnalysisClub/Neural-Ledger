@@ -202,3 +202,10 @@ def test_action_terms_list_every_domain_action():
     actions = {a.value for a in ActionType}
     assert set(terms["properties"]["action"]["enum"]) == actions
     assert set(execute["properties"]["requested_terms"]["properties"]["action"]["enum"]) == actions
+
+
+def test_chat_reply_lists_every_domain_intent():
+    from neural_ledger.domain.agent.questions import Intent
+
+    schema = json.loads((CONTRACTS / "chat/chat_reply.schema.json").read_text())
+    assert schema["properties"]["intent"]["enum"] == [i.value for i in Intent]

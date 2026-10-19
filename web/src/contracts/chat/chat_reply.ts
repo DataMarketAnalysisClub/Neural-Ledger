@@ -11,6 +11,7 @@ export interface ChatReply {
     | "forecast"
     | "protected_surplus"
     | "savings_plan"
+    | "set_liquidity_floor"
     | "execute_action"
     | "explain"
     | "out_of_scope"
