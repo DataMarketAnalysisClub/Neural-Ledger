@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of the propose_expense tool and pending_expense of a chat reply (ADR-038): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.
+ * data of the propose_expense tool and pending_expense of a chat reply (ADR-039): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.
  */
 export interface ExpenseProposal {
   proposal_id: string;

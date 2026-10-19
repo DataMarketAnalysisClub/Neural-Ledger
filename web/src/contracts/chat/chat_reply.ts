@@ -39,7 +39,7 @@ export interface ChatReply {
   fallback_used: boolean;
   pending_proposal?: {} | null;
   /**
-   * An expense the copilot prepared from what the user said (ADR-038). The UI shows it for the user to check, complete (cash or card, category) and confirm; confirming calls POST /v1/expenses/{proposal_id}/confirm. Nothing is stored before.
+   * An expense the copilot prepared from what the user said (ADR-039). The UI shows it for the user to check, complete (cash or card, category) and confirm; confirming calls POST /v1/expenses/{proposal_id}/confirm. Nothing is stored before.
    */
   pending_expense?: ExpenseProposal | null;
   actions: ActionOutcome[];
@@ -63,7 +63,7 @@ export interface Caveat {
   must_mention: string[];
 }
 /**
- * data of the propose_expense tool and pending_expense of a chat reply (ADR-038): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.
+ * data of the propose_expense tool and pending_expense of a chat reply (ADR-039): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.
  */
 export interface ExpenseProposal {
   proposal_id: string;

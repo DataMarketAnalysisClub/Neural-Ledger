@@ -1,4 +1,4 @@
-"""Receipts (boletas) read from a photo or a PDF, and what the engine may conclude from them (ADR-038).
+"""Receipts (boletas) read from a photo or a PDF, and what the engine may conclude from them (ADR-039).
 
 A receipt is evidence of one purchase. If it was paid by card, the next bank statement shows the same purchase,
 so a receipt is never posted to the transaction ledger: it counts as logged spending only until a statement
@@ -192,7 +192,7 @@ class StoredReceipt:
     classifier: str
     category_confidence: float | None
     issues: tuple[ReceiptIssue, ...]
-    corrected: bool = False  # the user corrected or confirmed its total or date (ADR-038): they, not a reader, vouch for it
+    corrected: bool = False  # the user corrected or confirmed its total or date (ADR-039): they, not a reader, vouch for it
     payment: str = "unknown"  # cash | card | unknown. Cash never reaches a statement, so it is never matched to a charge
 
     @property

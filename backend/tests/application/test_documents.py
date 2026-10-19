@@ -1,4 +1,4 @@
-"""ADR-038: a file dropped on the copilot is routed, read, recorded once and turned into a spending check-in.
+"""ADR-039: a file dropped on the copilot is routed, read, recorded once and turned into a spending check-in.
 
 Offline and deterministic (rules decision model, naive Bayes classifier), with the clock on 2026-10-19: the user is in the
 pay cycle of October (2026-09-30 to the eve of payday, 2026-10-29), 11 days with today, and Camila's conservative

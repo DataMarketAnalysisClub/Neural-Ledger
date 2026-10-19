@@ -1,4 +1,4 @@
-"""ReceiptReader adapter: the statement reader's page pipeline, reused for receipts (ADR-038).
+"""ReceiptReader adapter: the statement reader's page pipeline, reused for receipts (ADR-039).
 
     bytes ─┬─ .xlsx / .xls ─► "xlsx": always a statement, nothing read here
            └─ PDF / image ─► ocr_tabular.read_pages (text layer, or OCR for scans and photos) ─► page lines

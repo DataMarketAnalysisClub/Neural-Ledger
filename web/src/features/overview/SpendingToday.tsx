@@ -7,7 +7,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
 
 /**
- * The daily figure (ADR-038): what the conservative forecast counts on for the pay cycle of today, less the receipts
+ * The daily figure (ADR-039): what the conservative forecast counts on for the pay cycle of today, less the receipts
  * and statement charges logged in it, per day until payday. Every number is the API's; nothing is computed here but
  * the width of the bars. Without a financial model the API answers INSUFFICIENT_DATA and the card stays out of the way.
  */
