@@ -496,6 +496,7 @@ export const en = {
       amount: "Amount",
       spending: "Spending by category",
       income: "Income",
+      savings: "Savings, set aside less withdrawn",
       count: "{count} movements",
     },
     categories: {
@@ -509,6 +510,7 @@ export const en = {
       other: "Other",
       income: "Income",
       movement: "Own money movement",
+      savings: "Savings",
       uncategorized: "Uncategorized",
     },
   },
