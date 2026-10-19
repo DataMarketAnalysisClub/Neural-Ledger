@@ -1,0 +1,264 @@
+\section{Financial core algorithms}\label{sec:core}
+
+The engine lives in \code{domain/finance} and is pure: the same model and parameters always give the same result.
+The numbers it uses are the parameter register \code{FC_0_1} in \code{domain/finance/params.py}, version
+\code{fc-0.3} (\cref{tab:params}).
+
+\begin{discrepancy}
+\code{docs/FINANCIAL_CORE.md} says the register is \code{fc-0.2} ``since ADR-034''. The code is at \code{fc-0.3}: ADR-034 also
+made a single charge (one cuota) interest-free (\code{interest_free_installments} $= 1$). The golden answers E01--E14
+are unchanged across the three versions.
+\end{discrepancy}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}Xr@{}}
+    \toprule
+    Symbol & Parameter & Value \\
+    \midrule
+    $F$ & \code{liquidity_floor} (or the user's floor rule, ADR-037) & 150{,}000 \\
+    & \code{stress_shock_min} & 300{,}000 \\
+    & \code{dashboard_horizon_months} & 6 \\
+    $C$ & \code{check_horizon_months} (plans and purchases) & 12 \\
+    $W$ & \code{plan_window_months} & 6 \\
+    & \code{reserve_min_months}, \code{reserve_target_months}, \code{reserve_rebuild_months} & 1, 3, 24 \\
+    & \code{near_term_goal_months} & 12 \\
+    $\sigma(p)$ & \code{profile_share}: conservative, moderate, aggressive & $\tfrac25, \tfrac35, \tfrac45$ \\
+    & \code{rule_rounding} & 10{,}000 \\
+    & \code{max_installments}, \code{interest_free_installments} & 48, 1 \\
+    & \code{default_monthly_rate} (only when the offer gives none; flagged) & 0.025 \\
+    & \code{min_history_months} & 6 \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Main parameters of \texttt{fc-0.3}. Amounts in CLP.}\label{tab:params}
+\end{table}
+
+\subsection{Estimating the model (stage 1)}
+
+\code{estimate_model} turns a ledger of transactions into a \code{FinancialModel}, over pay cycles rather than calendar
+months, and refuses fewer than six cycles of history. In short (\code{docs/FINANCIAL_CORE.md} \S4.1--4.3):
+\begin{itemize}
+  \item \emph{commitments}: cuotas from structured metadata or from \code{CUOTA nn/NN} text, and recurring payments
+    with a 28--35-day cadence and amounts within 5\%;
+  \item \emph{income}: the contracted net income, lowered to the recent median when the two differ by more than 5\%;
+    for freelance income, the P50 (typical) and P20 (conservative) of cycle totals;
+  \item \emph{variable spend}: P50 and P80 per category, by linear interpolation on exact fractions, net of refunds
+    and excluding cuotas, recurring payments and own transfers; sparse categories merge into \code{other}; one
+    December factor, clamped to $[1, 2]$.
+\end{itemize}
+The estimators trust the ledger's \code{transfer_own} label (ADR-012), which is a known risk for real data.
+
+\subsection{Forecast at pay-cycle troughs}\label{sec:forecast}
+
+Liquidity is checked at each cycle's \emph{trough}: the balance just before salary arrives. With $B_0$ the opening
+trough, for each projected cycle $m$:
+\begin{equation}
+  B_m = B_{m-1} + I_m - K_m - V_m - R_m - P_m - S_m, \qquad H_m = B_m - F,
+\end{equation}
+where $I$ is income, $K$ commitments due, $V$ variable spend, $R$ a savings rule (the plan), $P$ purchase installments
+and $S$ a shock. A cycle \emph{breaches} when $H_m < 0$. The \emph{typical} scenario uses typical income and P50 spend;
+\emph{conservative}, used for every decision, uses conservative income and P80 spend; \emph{stress} is conservative
+plus one shock $\max(300{,}000, \text{largest one-off expense})$ in the first cycle. The lowest headroom, ties broken
+by the earliest month, is the binding month (\code{project} in \code{forecast.py}, \cref{alg:project}).
+
+\begin{algorithm}[htbp]
+  \caption{Projection (\texttt{project}, \texttt{domain/finance/forecast.py}).}\label{alg:project}
+  \KwIn{model $M$, parameters, scenario $\in$ \{typical, conservative, stress\}, horizon $h \geq 1$, optional plan, purchases, shock}
+  \KwOut{cycles with trough $B_m$ and headroom $H_m$}
+  \lIf{scenario is stress and no shock given}{shock $\gets \max(\mathit{stress\_shock\_min}, M.\mathit{largest\_one\_off})$ in $M.\mathit{first\_cycle}$}
+  $q \gets$ P50 if typical else P80;\quad $I \gets$ typical income if typical else conservative income\;
+  $B \gets M.\mathit{balances.checking}$\;
+  \For{$m \gets M.\mathit{first\_cycle}$ \KwTo $M.\mathit{first\_cycle} + h - 1$}{
+    $A_m \gets I - M.\mathit{commitments\_due}(m) - M.\mathit{spend}(m, q)$ \Comment*[r]{available}
+    $B \gets B + A_m - \mathit{plan}(m) - \sum \mathit{purchases}(m) - \mathit{shock}(m)$\;
+    record $(m, B, H_m = B - F)$\;
+  }
+\end{algorithm}
+
+\subsection{Protected surplus}\label{sec:surplus}
+
+The protected surplus over a horizon $h$ is the lowest conservative headroom, with the plan and any purchases included
+(\code{protected_surplus} in \code{surplus.py}):
+\begin{equation}
+  \mathit{PS}(h) = \min_{m \leq h} \Bigl[ B_0 - F + \sum_{k \leq m} (A_k - R_k - P_k) \Bigr].
+\end{equation}
+It is how much could leave checking today without any conservative trough falling below the floor. A negative value is
+a breach, not a debt; the engine never calls a positive value ``safe''.
+
+\subsection{Financial capacity}\label{sec:capacity}
+
+Capacity (\code{assess_capacity} in \code{capacity.py}) bands five factors and takes the weakest. Essentials are the
+P80 of essential categories (groceries, transport, utilities, health) without seasonality, plus average rent and
+average debt service over the six-month dashboard horizon. With zero essentials every ratio is undefined, so the engine
+raises \code{InsufficientData} (hard rule H4) instead of dividing by zero.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{24mm}>{\raggedright\arraybackslash}Xp{18mm}c@{}}
+    \toprule
+    Factor & Measure & Direction & Bands $(a, b)$ \\
+    \midrule
+    reserve coverage & reserve / monthly essentials & higher is better & $(1, 3)$ \\
+    income stability & coefficient of variation of income (sample s.d.) & lower is better & $(0.10, 0.25)$ \\
+    debt service & peak monthly debt payments (cuotas, loans; not rent) / conservative income & lower is better & $(0.20, 0.35)$ \\
+    conservative headroom & lowest conservative headroom / floor & higher is better & $(0.25, 1)$ \\
+    stress coverage & $\max(0, \text{reserve} - \text{stress shortfall})$ / essentials & higher is better & $(0.5, 1)$ \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Capacity factors. ``Higher is better'': low below $a$, high from $b$. ``Lower is better'': high below $a$, low above $b$.}\label{tab:capacity}
+\end{table}
+
+The weakest band maps to a profile (low $\to$ conservative, medium $\to$ moderate, high $\to$ aggressive), and every
+factor tied at that band is reported as binding. The \emph{permitted profile} is the lower of the declared tolerance
+(from the questionnaire) and capacity (\code{derive_permitted_profile}); the plan use case recomputes it server-side, so
+a request for a higher profile is capped and flagged \code{PROFILE_CAPPED}. Language never raises a declared tolerance;
+without one the tolerance is conservative, or at most moderate when the decision model reads a confident signal.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}lX@{}}
+    \toprule
+    Rule & Behaviour (code) \\
+    \midrule
+    H1 & Reserve below its minimum ($1\times$ essentials): the whole rule goes to the reserve (\code{plan._allocate}); also reported by the permitted profile \\
+    H2 & No start month gives a positive rule that keeps the conservative path above the floor: no rule (\code{size_plan}) \\
+    H3 & Near-term goals (deadline within 12 months) are funded before the reserve top-up, earliest deadline first (\code{_near_term_goals}); not emitted as a separate code \\
+    H4 & Unknown state (no income, no spend history, fewer than 6 cycles, zero essentials): \code{INSUFFICIENT_DATA}, no advice \\
+    H5 & No sized rule may push a conservative trough below the floor over the check horizon (\code{size_plan}) \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Hard rules of the financial core.}\label{tab:hard}
+\end{table}
+
+\subsection{Sizing a savings plan}\label{sec:plan}
+
+\Cref{alg:plan} is \code{size_plan} in \code{plan.py}. It searches the earliest start month whose rule is positive and
+keeps the conservative path above the floor. The rule is a share of the lowest available amount in a six-month window,
+capped by what goals and the reserve top-up actually need, and rounded down to 10{,}000.
+
+\begin{algorithm}[htbp]
+  \caption{Plan sizing (\texttt{size\_plan}).}\label{alg:plan}
+  \KwIn{model $M$, parameters, permitted profile $p$, purchases}
+  \KwOut{a rule amount and start month, its allocation, and the hard rules triggered}
+  $E \gets$ essentials;\quad $\mathit{target} \gets 3E$;\quad $\mathit{min} \gets E$;\quad $s_p \gets \sigma(p)$\;
+  $G \gets$ goals with a deadline within 12 months, by deadline\;
+  $A \gets$ conservative available minus purchases, per cycle, over $C + W$ cycles\;
+  \For{$i \gets 0$ \KwTo $C - 1$}{
+    $s \gets M.\mathit{first\_cycle} + i$;\quad $\ell \gets \min_{k < W} A_{s+k}$\;
+    \lIf{$\ell \leq 0$}{\KwContinue}
+    $\mathit{required} \gets \mathrm{round}\bigl(\max(0, \mathit{target} - \mathit{reserve}) / 24\bigr) + \sum_{g \in G} \lceil (g.\mathit{target} - g.\mathit{saved}) / \max(1, n_{s,g}) \rceil$ \Comment*[r]{$n_{s,g}$: cycles from $s$ to $g$'s deadline}
+    $R \gets \mathrm{floor}_{10{,}000}\bigl(\min(s_p \cdot \ell, \mathit{required})\bigr)$\;
+    \lIf{$R \leq 0$}{\KwContinue}
+    \lIf{the conservative projection with rule $R$ from $s$ breaches before $s + C$}{\KwContinue \Comment*[r]{H5}}
+    \eIf{$M.\mathit{reserve} < \mathit{min}$}{\Return $R$, $s$, all to the reserve, H1}{
+      give each goal in $G$ $\min(\text{remaining}, \text{its need})$; the rest to the reserve\;
+      \Return $R$, $s$, allocation}
+  }
+  \Return no rule, H2\;
+\end{algorithm}
+
+The search is not monotone: a higher profile, or an extra purchase, can produce a smaller rule.
+\code{tests/property/test_plan_counterexamples.py} keeps two minimal counterexamples as strict expected failures, and
+ADR-014 proposes a fix that is not accepted or built.
+
+\subsection{Simulating a purchase}\label{sec:purchase}
+
+A purchase of principal $P$ in $n$ equal cuotas at monthly rate $r$ costs, per cuota (\code{installments.py}),
+\begin{equation}
+  c = \operatorname{round}\Bigl(P \cdot \frac{r}{1 - (1 + r)^{-n}}\Bigr) \quad (r > 0), \qquad c = \operatorname{round}(P / n) \quad (r = 0),
+\end{equation}
+with total cost $n \cdot c$; one cuota carries no interest whatever the rate. \code{simulate_purchase} overlays the
+cuotas on the typical and conservative projections over $\max(C, \text{months to the last cuota})$ and returns a
+verdict: \code{BASELINE_BREACH} when the conservative path already breaches without the purchase, \code{FITS_ALL}
+when the conservative path holds with it, \code{FITS_TYPICAL_ONLY} when only the typical path holds, else
+\code{BREACHES_ALL}. In the last two cases it offers up to three deterministic alternatives (defer the start, another
+cuota count, a smaller amount), each re-simulated. The largest affordable cuota accounts for cuotas accumulating in
+the trough: with $k_m$ the number of cuotas paid by cycle $m$,
+\begin{equation}
+  c_{\max} = \min_{m \geq \text{first cuota}} \left\lfloor H_m / k_m \right\rfloor .
+\end{equation}
+
+\subsection{Importing a statement}\label{sec:import}
+
+\Cref{fig:dataflow} is the import path (\code{application/use_cases/statements.py}). The reader routes a file by its
+bytes, not its declared type: an Excel export is parsed with the standard library; a PDF uses its text layer, and a scan
+or photo needs OCR. Redaction runs right after reading, before anything is stored, classified, audited or returned
+(ADR-028): deterministic rules in \code{domain/privacy/redaction.py} replace RUTs (checked with modulus 11), runs of
+seven or more digits, emails, Chilean phones and the counterparty of a transfer with placeholders such as
+\code{[PERSON]} and \code{[ID]}, and keep only the last four digits of an account. An optional detector can only add
+masking. If any statement in a file cannot be redacted, nothing from the file is stored.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/dataflow}
+  \caption{Statement upload. Every payload is sealed before it reaches SQLite; the audit records counts, never text.}\label{fig:dataflow}
+\end{figure}
+
+Reconciliation is the authority over the reader (ADR-020): \code{reconcile} recomputes totals, section totals, the
+closing balance and every printed daily balance from the lines, so a misread amount, a dropped line or a wrong day
+breaks an equality. A statement that does not reconcile is stored as unverified, with a warning naming each issue, and
+is not posted. A verified, final statement is posted (\code{post_statement}): on a checking account deposits are income
+by rule and charges are purchases; a classifier's category is accepted only if it is in the vocabulary with a
+confidence of at least 0.5, otherwise the charge is \code{uncategorized}. A category the user sets wins over any model
+(ADR-023).
+
+\subsection{The response verifier}\label{sec:verifier}
+
+\code{verify_explanation} (\code{domain/agent/verification.py}) checks a reply against the facts and warnings of the
+tools called in the same turn (\cref{alg:verify}). A failed reply is replaced by \code{narration}, a deterministic text
+built from the same facts, and the failure is audited as \code{VERIFICATION_FAILED}.
+
+\begin{algorithm}[htbp]
+  \caption{Reply verification (\texttt{verify\_explanation}).}\label{alg:verify}
+  \KwIn{reply text $x$, facts $\Phi$, warnings $\Omega$, verdicts and execution results of the turn}
+  \KwOut{pass, or the list of issues}
+  \ForEach{number $v$ in $x$ (currency prefixes, thousands separators, k/mil/M suffixes, percentages)}{
+    \If{$v$ matches no fact exactly, nor to the nearest 1{,}000 after ``about'', nor a percentage fact}{issue \code{UNSUPPORTED_NUMBER}}}
+  \ForEach{warning $w \in \Omega$}{\lIf{no token of $w.\mathit{must\_mention}$ occurs in $x$}{issue \code{MISSING_WARNING}}}
+  \lIf{$x$ says ``safe money'', ``safe to spend'' or ``guaranteed'' (English or Spanish)}{issue \code{BANNED_WORDING}}
+  \lIf{a verdict is not \code{FITS_ALL} and $x$ affirms the purchase}{issue \code{CONTRADICTION}}
+  \lIf{$x$ claims a rule was created or executed and no execution succeeded}{issue \code{FALSE_EXECUTION_CLAIM}}
+  \Return pass if there is no issue\;
+\end{algorithm}
+
+\subsection{The audit chain and erasure}\label{sec:chain}
+
+The audit log is one hash chain for all users (ADR-008). An event's hash covers every field of its record and the
+previous event's hash, so editing, inserting or deleting an event is detected by \code{verify_chain}. Account deletion
+(\cref{sec:deletion}) must remove a user's events without breaking the chain for everyone else. Each of the user's
+events becomes a \emph{tombstone}: it keeps its sequence, \code{prev_hash} and \code{event_hash}, so the links still
+verify, and loses everything else (kind \code{ERASED}, actor system, no user, session \code{erased}). A tombstone can no
+longer be re-hashed, so it is accepted only when a later erasure event commits to it (\cref{fig:chain},
+\cref{alg:chain}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/chain}
+  \caption{The chain after user A's account is deleted.}\label{fig:chain}
+\end{figure}
+
+\begin{algorithm}[htbp]
+  \caption{Chain verification with tombstones (\texttt{verify\_chain}, \texttt{domain/audit/events.py}).}\label{alg:chain}
+  \KwIn{events $e_1, \dots, e_n$ by sequence}
+  \KwOut{ok, or the first broken sequence and a reason}
+  $\mathit{prev} \gets 0^{64}$;\quad $T \gets \{\}$ (erasure id $\to$ tombstone sequences);\quad $X \gets \{\}$ (erasure events)\;
+  \For{$i \gets 1$ \KwTo $n$}{
+    \lIf{$e_i.\mathit{sequence} \neq i$}{\KwFail ``sequence gap''}
+    \lIf{$e_i.\mathit{prev\_hash} \neq \mathit{prev}$}{\KwFail ``prev\_hash does not link''}
+    \eIf{$e_i$ is a tombstone naming erasure $j$}{
+      \lIf{$j \in X$}{\KwFail ``erased after its erasure event''}
+      append $i$ to $T[j]$\;
+    }{\lIf{$\mathrm{SHA256}(\mathrm{canonical}(e_i)) \neq e_i.\mathit{event\_hash}$}{\KwFail ``event content changed''}}
+    \lIf{$e_i$ is \code{ACCOUNT_DELETED} or \code{DEMO_DATA_RESET}}{$X[e_i.\mathit{id}] \gets e_i$}
+    $\mathit{prev} \gets e_i.\mathit{event\_hash}$\;
+  }
+  \ForEach{$(j, S) \in T$}{\lIf{$j \notin X$ or $X[j]$ does not commit to $(|S|, \mathrm{SHA256}(S))$}{\KwFail ``erasure not recorded''}}
+  \ForEach{$(j, x) \in X$}{\lIf{$x$ commits to a count other than $|T[j]|$}{\KwFail ``erasure event does not match''}}
+  \Return ok\;
+\end{algorithm}
+
+The hash is computed over the plaintext record, exactly as \code{neural-ledger export-audit} writes it, so an export
+verifies without any key. In the database the whole record, hashes included, is sealed (\cref{sec:at-rest}).

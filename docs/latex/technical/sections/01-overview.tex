@@ -1,0 +1,62 @@
+\section{Overview}\label{sec:overview}
+
+Neural Ledger is a personal cash-flow copilot. A user asks, in Spanish or English, whether a purchase fits, how much
+money is really available, and what to do with a surplus; the copilot answers with figures computed from the user's
+financial model and, inside limits the user confirms, creates a recurring rule in a \emph{sandbox} bank. No real money
+moves. The product's central distinction is that a balance is not the same as the money that is available, and that
+neither is the same as a \emph{protected surplus}: the amount that could leave the account today without any future
+pay-cycle trough falling below a liquidity floor (\cref{sec:surplus}). The README's example: Camila's bank shows
+920{,}000 CLP, but her protected surplus is 20{,}000 CLP because three installment plans (\emph{cuotas}) overlap in
+December.
+
+\subsection{Design principles}\label{sec:principles}
+
+Five principles, stated in \code{CLAUDE.md} and enforced by tests, shape everything that follows.
+
+\begin{description}[style=nextline,leftmargin=1.2em]
+  \item[Deterministic authority.] Money is computed, and actions are authorized, only by domain code. A language model
+    interprets the user and writes prose; it never sets an amount, a verdict or a permission. Execution terms are read
+    from a stored, signed authorization, never from model text, and only the user can confirm an action
+    (\cref{sec:confirmation}).
+  \item[Every number is a fact.] Each financial tool returns an \emph{envelope} whose \code{facts} list every number the
+    agent may say and whose \code{warnings} list every assumption it must mention. A deterministic verifier rejects a
+    reply that breaks either rule (\cref{sec:verifier}).
+  \item[Contracts first.] JSON Schemas in \code{contracts/} define tools, outputs, actions, audit events and HTTP bodies.
+    The backend validates against them in tests and the web client generates its TypeScript types from them.
+  \item[Offline is a requirement.] Every port has an adapter that needs no network and no key, so the whole demo, the
+    test suite and \texttt{docker compose up} run offline (\cref{sec:runtime}).
+  \item[Exact money.] Money is an integer in minor units; ratios stay exact (\code{Fraction}, \code{Decimal}) until the
+    final rounding (\code{domain/shared/numbers.py}). Money is never called ``safe''.
+\end{description}
+
+\subsection{Scope and sources of this document}
+
+The document consolidates five Markdown files into one description: \code{docs/ARCHITECTURE.md} (where code goes),
+\code{docs/FINANCIAL_CORE.md} (the engine), \code{docs/DECISIONS.md} (the decision log), \code{docs/SECURITY.md} and
+\code{docs/PRIVACY.md}. It describes the code at commit \texttt{\nlCommit}, which includes the security hardening
+called \emph{option B} (ADR-038): open sign-up with a sandbox notice, every personal field sealed at rest, the data
+key kept off the data volume, and account deletion. A companion document, the \emph{Security self-assessment
+report}, evaluates the same system against its threats and lists the residual risks.
+
+\Cref{tab:map} is a map of the repository.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{52mm}X@{}}
+    \toprule
+    Path & Contents \\
+    \midrule
+    \code{backend/src/neural_ledger/domain} & Pure rules: finance, permissions, actions, audit chain, agent verification, privacy redaction, statements, user records \\
+    \code{backend/src/neural_ledger/application} & Use cases, services and the ports (interfaces) the use cases need \\
+    \code{backend/src/neural_ledger/adapters} & Inbound (HTTP with FastAPI, CLI) and outbound (persistence, models, bank, readers) implementations \\
+    \code{backend/src/neural_ledger/bootstrap} & Configuration, key resolution, migration and the composition root (\code{container.py}) \\
+    \code{backend/tests} & Architecture, golden, property, security, suitability, contract, adapter and HTTP tests \\
+    \code{contracts/} & JSON Schemas (draft 2020-12): the source of truth for every interface \\
+    \code{data/} & Synthetic personas (Camila, Diego) and generated ledgers \\
+    \code{web/} & React and TypeScript client; renders API facts and never computes money \\
+    \code{docker-compose*.yml}, \code{deploy/} & Local and deployed container setup; the data key secret \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Repository map.}\label{tab:map}
+\end{table}

@@ -1,0 +1,28 @@
+\section{Where the Markdown documentation and the code disagree}\label{sec:discrepancies}
+
+Where the files in \code{docs/} and the README disagree with the code at commit \texttt{\nlCommit}, this document
+follows the code. The differences found while writing it:
+
+\begin{enumerate}
+  \item \textbf{Parameter version.} \code{docs/FINANCIAL_CORE.md} gives the register as \code{fc-0.2}; the code is at
+    \code{fc-0.3} (\cref{sec:core}).
+  \item \textbf{Names of policy objects.} The constants \code{FC_0_1}, \code{AP_0_1} and \code{PP_0_1} hold versions
+    \code{fc-0.3}, \code{ap-0.2} and \code{pp-0.2}. The audit records the version string, not the constant's name.
+  \item \textbf{Forecast from a user's own statements.} \code{docs/PRIVACY.md} (``Why'') says the forecast and the plans
+    compute from the persona model and that ADR-029 is not built. In the code, an account's model is estimated from its
+    own verified statements (\code{StatementModelSource}, ADR-029 step 2); personas keep their fixtures.
+  \item \textbf{Plain-text payloads.} ADR-033 step 2 says payloads written before encryption ``are still read''. Since
+    option B a value in clear is refused; an older file is upgraded and sealed at startup or by \code{migrate-data}.
+  \item \textbf{Status of the security suite.} The README's status list and document table mention S01--S12 and S01--S15;
+    \code{docs/SECURITY.md} and the tests cover S01--S23 plus the option B tests.
+  \item \textbf{``No accounts or personal data.''} The README ends with ``no real money, accounts or personal data''.
+    Accounts exist in accounts mode, and with open sign-up the software cannot guarantee that no personal data is stored;
+    \code{docs/SECURITY.md} now says so.
+  \item \textbf{Runtime modes.} The table in \code{docs/ARCHITECTURE.md} does not list \code{NL_DEPLOYMENT} (\cref{tab:modes}).
+  \item \textbf{Deployment files.} \code{docs/SECURITY.md} refers to the public demo's server and its deployment override;
+    that override, its nginx configuration and its runbook exist only on the unmerged branch
+    \code{ops/deploy-neural-ledger}, so what this document says about the edge (TLS, the tunnel, nginx headers) comes from
+    that branch, not from the commit described.
+  \item \textbf{Decision statuses.} Several records in \code{docs/DECISIONS.md} are ``Proposed'' although their code is
+    built and tested (\cref{sec:decisions}).
+\end{enumerate}

@@ -1,0 +1,74 @@
+\section{Privacy and Law 21.719}\label{sec:privacy}
+
+Chile's Law 19.628, as amended by Law 21.719 (published 2024-12-13, in force 2026-12-01), governs personal data. Bank
+statements are personal and financial data, and profiling a person's finances is likely high-risk processing. This
+section maps what the software does to the law's main duties. It is engineering evidence for counsel to review, not
+legal advice; article numbers follow the Library of Congress summary that \code{docs/SECURITY.md} cites.
+
+\subsection{What is processed, where and for how long}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}p{30mm}Xp{24mm}@{}}
+    \toprule
+    Data & What is kept & At rest \\
+    \midrule
+    Statements & Bank, period, each line's date, amount, kind and redacted description, balances, card obligations; names, RUTs and long numbers replaced by placeholders; account as its last four digits & sealed \\
+    Transactions & Date, amount, redacted merchant, category, the classifier and its confidence & sealed; date clear \\
+    Account & Email (found by an HMAC index), scrypt hash, creation time & sealed \\
+    Profile & Display name, language, questionnaire answers, declared tolerance & sealed \\
+    Proposals, authorizations, rules & Terms, amounts, signature, status, expiry & sealed \\
+    Audit trail & What happened, by whom (ids), when; counts, never statement text; no names, RUTs, emails or card numbers (C10) & sealed \\
+    Sessions & Reference, owner, token digest, times & clear (no content) \\
+    Conversations, snapshots & The last 40 chat entries per session; computed results & memory only \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Data inventory (\texttt{docs/PRIVACY.md}).}\label{tab:inventory}
+\end{table}
+
+There is no automatic retention period: data stays until the user deletes the account or the operator deletes the
+database. With the default settings nothing leaves the server. A provider receives data only when its setting is on
+(live mode): the language model receives the conversation and tool results; Jev receives chat messages and, for
+categories, redacted charge text, never a deposit; Azure AI Language receives raw line text before redaction. All of them
+are outside Chile.
+
+\subsection{Duties and rights}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}p{38mm}lX@{}}
+    \toprule
+    Duty or right & Article & In the software \\
+    \midrule
+    Proportionality, minimization & 3 c) & Redaction at import (C01, C02); card numbers kept as four digits \\
+    Access and portability & 5, 9 & Partly: statements, transactions and audit events are readable by their owner; no full export (gap G02) \\
+    Correction & 6 & Partly: a transaction's category (G04); line corrections are ADR-021, not built \\
+    Deletion & 7 & Built (G03): \code{DELETE /v1/account}, audit tombstones (\cref{sec:deletion}) \\
+    Opposition, blocking & 8, 8 ter & Not built (G05) \\
+    Consent & 12 & Not recorded per purpose (G06); sign-up records the sandbox notice only \\
+    Information & 14 ter & \code{docs/PRIVACY.md} (G12) \\
+    Security & 14 quinquies & Encryption at rest (G11), key off the volume, sessions, rate limits (G07), headers (G09) \\
+    Breach reporting & 14 sexies & Hash-chained audit (C10); incident runbook (G12) \\
+    Impact assessment & 15 ter & Not written; required before real users \\
+    Children & 16 quáter & No age check; users are assumed adults \\
+    International transfer & 27 & Off in offline mode; safeguards for live providers not documented \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Law 21.719 duties and the software (\texttt{tests/security/test\_compliance.py}).}\label{tab:law}
+\end{table}
+
+Each built control (C01--C13 and the G rows that are built) is a plain test, and each missing duty is a strict expected
+failure marked \code{GAP}: CI stays green, the gap stays visible, and the day a control lands its test passes
+unexpectedly and the run fails until the marker is removed. \code{test_every_compliance_test_is_in_the_security_map}
+keeps \code{docs/SECURITY.md} and the tests in step.
+
+\subsection{The sandbox posture}
+
+The public demo is a sandbox with open sign-up. Its privacy position rests on four things: the notice asks visitors not
+to store real data and records that they agreed; whatever is stored anyway is redacted at import and sealed at rest;
+its owner can delete it; and the operator has an incident runbook for real data found on the server
+(\code{docs/runbooks/INCIDENT_RESPONSE.md}). None of this prevents a visitor from uploading a real statement, and data
+uploaded under a shared persona is visible to every other visitor of that persona until someone resets it. Before any
+use with real users, the open gaps (G02, G05, G06), the impact assessment and the transfer safeguards must be closed.

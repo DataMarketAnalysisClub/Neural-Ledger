@@ -1,0 +1,180 @@
+\section{System architecture}\label{sec:architecture}
+
+\subsection{Layers and the dependency rule}\label{sec:layers}
+
+The backend is a clean (hexagonal) architecture in four packages (\cref{fig:architecture}). The rule is one-way:
+\code{adapters} depend on \code{application}, which depends on \code{domain}; \code{bootstrap} wires concrete adapters
+into use cases and nothing imports it. \code{domain} and \code{application} import only the Python standard library:
+no FastAPI, no SDK, no clock, no randomness, no file or network access. \code{tests/architecture/test_dependency_rule.py}
+parses every module's imports and fails the build on any violation; FastAPI may appear only in
+\code{adapters/inbound/http}.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/architecture}
+  \caption{Components. The web container serves the client and proxies \texttt{/api}; the api container holds the four
+  layers. Solid arrows inside the api are the dependency rule; dotted arrows are wiring by \texttt{bootstrap}. In a
+  deployment the data key arrives as a Docker secret, separate from the data volume.}\label{fig:architecture}
+\end{figure}
+
+Ports are \code{typing.Protocol} classes in \code{application/ports.py}. Each has at least one adapter that works
+offline, so swapping a provider means one adapter file and one registry entry in \code{bootstrap/container.py}
+(\cref{tab:ports}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{46mm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Port & Offline adapter & Other adapters \\
+    \midrule
+    \code{LanguageModel} & \code{ScriptedLanguageModel} & OpenRouter; Anthropic (deprecated, ADR-027), behind a fallback to the scripted model \\
+    \code{DecisionModel} & \code{RulesDecisionModel} (keyword rules) & Jev through OpenRouter or TypeSafe, first in \code{NL_DECISION_CHAIN} \\
+    \code{TransactionClassifier} & naive Bayes over character n-grams & Jev, in a fallback chain (ADR-032) \\
+    \code{PersonalDataDetector} & \code{NullDetector} (rules only) & Azure AI Language (ADR-028) \\
+    \code{FinancialModelSource} & persona fixtures; ledger estimators & a user's own statements (ADR-029) \\
+    \code{StatementStore}, \code{TransactionStore}, \code{ActionRepository}, \code{AuditLog}, \code{UserAccountStore}, \code{SessionStore}, \code{UserProfileStore} & in memory & SQLite, every personal payload sealed (\cref{sec:at-rest}) \\
+    \code{AccountWrites}, \code{ProfileWrites}, \code{TransactionWrites}, \code{AccountErasure} & in memory, all locks held & SQLite, one transaction each \\
+    \code{SandboxBank} & \code{SimulatedSandboxBank} & none: no real bank is ever called \\
+    \code{Signer}, \code{PasswordHasher}, \code{TokenGenerator} & HMAC-SHA256, scrypt, \code{secrets} & none \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Ports and their adapters (\texttt{application/ports.py}, \texttt{bootstrap/container.py}).}\label{tab:ports}
+\end{table}
+
+\subsection{Runtime modes and containers}\label{sec:runtime}
+
+Four independent settings decide how an instance runs (\code{bootstrap/config.py}); \code{GET /health} reports the first
+two so that a demo never runs in the wrong one.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{27mm}>{\raggedright\arraybackslash}p{17mm}X@{}}
+    \toprule
+    Setting & Values & Effect \\
+    \midrule
+    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, or \code{NL_PII_DETECTOR=azure}. Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
+    \code{NL_AUTH} & demo, accounts & \emph{demo}: the \code{X-User-Id} header names a persona, profiles are read-only, no auth routes (local runs and tests only). \emph{accounts}: sign-up, sign-in and an HttpOnly session cookie; the header is rejected. \\
+    \code{NL_PERSISTENCE} & memory, sqlite & In-process stores, or one SQLite file at \code{NL_SQLITE_PATH}. \\
+    \code{NL_DEPLOYMENT} & local, deployed & \emph{deployed} refuses to start without a data key from a secret or the environment, with a key on the data volume, while the old \code{<db>.key} exists, or with the development HMAC secret (\cref{sec:keys}). \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Runtime settings.}\label{tab:modes}
+\end{table}
+
+\code{docker-compose.yml} is the submission and CI path: it runs offline, in accounts mode, with SQLite on the
+\code{ledger-data} volume, and needs no key; without one the API creates a key file next to the database and prints a
+warning. A deployment adds \code{docker-compose.data-key.yml}, which mounts the data key as a Docker secret at
+\code{/run/secrets/nl_data_key} and sets \code{NL_DEPLOYMENT=deployed}. The public demo's own override (no host ports,
+Cloudflare Tunnel, security headers in nginx) lives in \code{deploy/docker-compose.deploy.yml} on the branch
+\code{ops/deploy-neural-ledger}, which is not merged at the commit described here.
+
+\subsection{HTTP surface and identity}\label{sec:http}
+
+\code{adapters/inbound/http/app.py} is thin: parse the request, call one use case, serialize with \code{to_primitive}.
+In accounts mode the pure ASGI middleware \code{IdentityGuard} (\code{identity.py}) runs before any route and before any
+body is read, in this order:
+\begin{enumerate}
+  \item any \code{X-User-Id} header, on any route but \code{GET /health}, is answered \code{400 IDENTITY_HEADER_REJECTED};
+  \item an unsafe method (POST, PUT, PATCH, DELETE) needs an \code{Origin} listed in \code{NL_APP_ORIGINS} or, without an
+    Origin, a JSON body, which a cross-site HTML form cannot send (\code{403 ORIGIN_REJECTED});
+  \item every route outside \code{PUBLIC_ROUTES} (health, chain verification, sign-up, sign-in, demo session) needs a
+    valid \code{nl_session} cookie (\code{401 UNAUTHENTICATED}); the resolved \code{Session} is the only source of the
+    user id.
+\end{enumerate}
+Sessions last twelve hours from creation and never slide; the cookie is \code{HttpOnly}, \code{SameSite=Strict},
+\code{Path=/}, and \code{Secure} over HTTPS. Only the SHA-256 digest of the token is stored. Outside the guard,
+\code{RateLimitMiddleware} counts per caller and per client IP in one-minute windows; \code{SecurityHeadersMiddleware}
+adds \code{X-Content-Type-Options: nosniff} and \code{Cache-Control: no-store} to every response.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabular}{@{}llrr@{}}
+    \toprule
+    Budget & Matches & Per caller & Per IP \\
+    \midrule
+    statements & \code{POST /v1/statements} & 10 & 30 \\
+    chat & \code{POST /v1/chat} & 20 & 60 \\
+    auth & \code{POST /v1/auth/*} & 10 & 10 \\
+    account & \code{DELETE /v1/account} & 5 & 10 \\
+    api & any other \code{/v1/*} & 300 & 900 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Rate limits per minute (\texttt{DEFAULT\_LIMITS} in \texttt{rate\_limit.py}); the first matching budget applies, and over it the answer is 429 with \texttt{Retry-After}.}\label{tab:rates}
+\end{table}
+
+\subsection{A chat turn}\label{sec:chat}
+
+The application, not the language model, owns the flow of a turn (ADR-003, \code{application/use_cases/chat.py},
+\cref{fig:chat}). The message is cut at 4{,}000 characters. A decision model (the rules, or Jev first and the rules
+behind it) classifies the raw text, independently of the language model, into an intent with a confidence and an
+injection flag. A deterministic gate (\code{domain/agent/policy.py}, policy \code{ap-0.2}) then decides: suspected
+injection is refused; a confident (at least 0.80) out-of-scope intent is refused; a confidence between 0.55 and 0.80
+gets a clarifying question and no tool; below 0.55, or when no decision model answered, the turn is read-only (tiers T0
+and T1, without the stateful proposal tools); at 0.80 or above, tiers up to T2 are allowed. The language model chooses
+among the tools of the allowed tiers, up to eight rounds. Its reply is checked by the
+verifier; an honest mistake (an unsupported number or a missing warning) may be repaired once, and anything else is
+replaced by a deterministic narration built from the facts. Every step is audited.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/chat}
+  \caption{One chat turn. Shaded steps are deterministic code; the language model only selects tools and writes prose.}\label{fig:chat}
+\end{figure}
+
+The tool catalog (\code{application/catalog.py}) is fixed; its tiers must match the \code{x-tier} annotation of each
+contract in \code{contracts/tools}, which a contract test checks (\cref{tab:tools}). Tool names that would grant a
+capability the agent must never have (add a beneficiary, transfer funds, change limits or credentials, override the
+policy, confirm an action, write the profile or the tolerance) are recognized and blocked as tier T3 with a reason
+(\code{PROHIBITED_CAPABILITIES} in \code{domain/permissions/policy.py}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{24mm}>{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Tier & Tools \\
+    \midrule
+    T0 read & \code{get_financial_state}, \code{get_commitments}, \code{get_user_profile}, \code{get_pending_actions}, \code{get_audit_events} \\
+    T1 analyze, suggest & \code{forecast_cashflow}, \code{simulate_purchase}, \code{compute_protected_surplus}, \code{assess_financial_capacity}, \code{assess_risk_tolerance}, \code{derive_permitted_profile}, \code{compute_savings_plan}, \code{propose_savings_rule} (stateful), \code{propose_liquidity_floor} (stateful) \\
+    T2 execute & \code{execute_sandbox_action} (only with a user-confirmed authorization) \\
+    T3 prohibited & always blocked and audited (\code{ACTION_BLOCKED}) \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Agent tools by permission tier. Stateful T1 tools are hidden in read-only turns.}\label{tab:tools}
+\end{table}
+
+\subsection{The confirmation contract}\label{sec:confirmation}
+
+Money can move (in the sandbox) only through three steps, each audited (\cref{fig:confirmation},
+\code{application/use_cases/actions.py}). \emph{Propose} creates a pending proposal valid for 30 minutes. A savings
+rule's amount comes from a stored plan snapshot, never from model text; a liquidity floor's amount is accepted only if
+the user wrote that number in the same turn (ADR-037). \emph{Confirm} is reachable only from the UI endpoint
+\code{POST /v1/actions/proposals/\{id\}/confirm} with the user as actor; the terms shown must equal the proposal's
+canonical terms. It creates an authorization whose \code{action_hash} is HMAC-SHA256 of the canonical terms under
+\code{NL_HMAC_SECRET}, valid for ten minutes. \emph{Execute} re-reads the terms from that authorization, passes the
+gate in \cref{alg:gate}, writes \code{EXECUTION_STARTED} (if the audit cannot be written, nothing executes), consumes
+the authorization atomically, and only then calls the sandbox bank.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/confirmation}
+  \caption{Propose, confirm, execute. Only the user crosses the middle step.}\label{fig:confirmation}
+\end{figure}
+
+\begin{algorithm}[htbp]
+  \caption{Execution gate (\texttt{check\_execution}, \texttt{domain/permissions/policy.py}).}\label{alg:gate}
+  \KwIn{authorization $a$ (or none), caller $u$, requested terms $q$ (optional), time $t$, policy $P$, signature check $s$}
+  \KwOut{allowed, or blocked with a reason}
+  \lIf{$a$ is none}{\Return blocked \code{AUTHORIZATION_NOT_FOUND}}
+  \lIf{$a.\mathit{user} \neq u$}{\Return blocked \code{WRONG_OWNER}}
+  \lIf{$t \geq a.\mathit{expires}$}{\Return blocked \code{AUTHORIZATION_EXPIRED}}
+  \lIf{$a$ was consumed}{\Return blocked \code{AUTHORIZATION_REPLAYED}}
+  \lIf{not $s$, i.e.\ HMAC of $a.\mathit{terms}$ $\neq a.\mathit{action\_hash}$}{\Return blocked \code{AUTHORIZATION_TAMPERED}}
+  \lIf{$q$ given and canonical($q$) $\neq$ canonical($a.\mathit{terms}$)}{\Return blocked \code{AUTHORIZATION_MISMATCH}}
+  \lIf{action, source or destination not allowed, or (action, source, destination) not a route of $P$}{\Return blocked (T3)}
+  \lIf{amount $>$ the action's limit (1{,}000{,}000 per transfer; 100{,}000{,}000 for a floor)}{\Return blocked \code{AMOUNT_OVER_LIMIT}}
+  \Return allowed (T2)\;
+\end{algorithm}
