@@ -7,8 +7,8 @@ from __future__ import annotations
 import re
 from datetime import date
 
+from ....domain.agent.amounts import extract_numbers
 from ....domain.agent.questions import Intent
-from ....domain.agent.verification import extract_numbers
 from ....domain.shared.month import Month
 
 # Order = precedence when several intents match.

@@ -20,6 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 
+from ...domain.agent.amounts import written_amounts
 from ...domain.agent.untrusted import sanitize, wrap_untrusted
 from ...domain.audit.events import Actor, AuditDraft, AuditKind
 from ...domain.finance.spending import LoggedSpend, SpendingCheck
@@ -44,7 +45,6 @@ from ...domain.receipts.model import (
     match_charges,
     receipt_id,
     total_of,
-    written_amounts,
 )
 from ...domain.shared.envelope import Caveat, Envelope, Fact
 from ...domain.shared.hashing import content_id

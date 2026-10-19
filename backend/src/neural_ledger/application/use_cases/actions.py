@@ -26,7 +26,7 @@ from ...domain.actions.terms import (
     terms_for_floor,
     terms_from_plan,
 )
-from ...domain.agent.verification import extract_numbers
+from ...domain.agent.amounts import extract_numbers
 from ...domain.audit.events import Actor, AuditDraft, AuditKind, DecisionCheck
 from ...domain.permissions.policy import (
     BlockReason,
