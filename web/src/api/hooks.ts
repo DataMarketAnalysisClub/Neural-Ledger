@@ -15,6 +15,12 @@ import type { PurchaseSimulation } from "@/contracts/outputs/purchase_simulation
 import type { Statements } from "@/contracts/outputs/statements";
 import type { Statement } from "@/contracts/outputs/statement";
 import type { StatementImport } from "@/contracts/outputs/statement_import";
+import type { DocumentIngest } from "@/contracts/outputs/document_ingest";
+import type { SpendingStatus } from "@/contracts/outputs/spending_status";
+import type { Receipts } from "@/contracts/outputs/receipts";
+import type { ReceiptCorrection } from "@/contracts/receipts/receipt_correction";
+import type { ExpenseConfirmation } from "@/contracts/expenses/expense_confirmation";
+import type { ExpenseProposal } from "@/contracts/outputs/expense_proposal";
 import type { Transactions } from "@/contracts/outputs/transactions";
 import type { CategoryUpdate } from "@/contracts/transactions/category_update";
 import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
@@ -22,7 +28,7 @@ import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
-export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate };
+export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate, DocumentIngest, SpendingStatus, Receipts };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -184,6 +190,17 @@ export function useAudit(sessionId?: string) {
   });
 }
 
+/** The spending check-in for the pay cycle of today (ADR-038): the same figures the copilot's get_spending_status reads. */
+export function useSpending() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "spending"], queryFn: () => requestEnvelope<SpendingStatus>("/v1/spending", { identity }) });
+}
+
+export function useReceipts() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "receipts"], queryFn: () => requestEnvelope<Receipts>("/v1/receipts", { identity }) });
+}
+
 export function useStatements() {
   const { identity } = usePersona();
   return useQuery({ queryKey: [identity.user_id, "statements"], queryFn: () => requestEnvelope<Statements>("/v1/statements", { identity }) });
@@ -248,6 +265,68 @@ export function useImportStatement() {
       void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
       void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
       void auth?.refreshMe(); // an import can turn an empty account into one with statements (ADR-029)
+    },
+  });
+}
+
+/**
+ * A file dropped on the copilot (ADR-038): the server decides whether it is a statement or a receipt, reads it,
+ * records it once and answers with every workflow step and the spending check-in.
+ */
+export function useIngestDocument() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  const auth = useOptionalAuth();
+  return useMutation({
+    /** `kind` is the user's own answer when the file was not recognized: "receipt" or "statement". */
+    mutationFn: ({ file, kind }: { file: Blob; kind?: "receipt" | "statement" }) =>
+      requestEnvelope<DocumentIngest>("/v1/documents", { identity, method: "POST", body: file, query: { session_id: sessionId, kind } }),
+    onSettled: () => {
+      for (const key of ["statements", "transactions", "audit", "spending", "receipts"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+      void auth?.refreshMe();
+    },
+  });
+}
+
+export type ReceiptView = Receipts[number];
+export type { ExpenseProposal };
+
+/**
+ * The user confirms an expense the copilot prepared from what they said (ADR-038), completing what it could not
+ * tell (cash or card, the category). The amount is the proposal's: this sends no amount. Nothing is stored before.
+ */
+export function useConfirmExpense() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ proposalId, ...choice }: { proposalId: string } & Omit<ExpenseConfirmation, "session_id">) =>
+      requestEnvelope<ReceiptView>(`/v1/expenses/${encodeURIComponent(proposalId)}/confirm`, {
+        identity,
+        method: "POST",
+        body: { ...choice, session_id: sessionId } satisfies ExpenseConfirmation,
+      }),
+    onSettled: () => {
+      for (const key of ["audit", "spending", "receipts"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+    },
+  });
+}
+
+/**
+ * The user's correction of a receipt's total or date (ADR-038). Not optimistic: the receipt, the spending figure and
+ * the receipts list are re-read when the API answers. Only this form corrects a receipt; the copilot only asks.
+ */
+export function useCorrectReceipt() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ receiptId, ...fix }: { receiptId: string } & Omit<ReceiptCorrection, "session_id">) =>
+      requestEnvelope<ReceiptView>(`/v1/receipts/${encodeURIComponent(receiptId)}`, {
+        identity,
+        method: "PATCH",
+        body: { ...fix, session_id: sessionId } satisfies ReceiptCorrection,
+      }),
+    onSettled: () => {
+      for (const key of ["audit", "spending", "receipts"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
     },
   });
 }
