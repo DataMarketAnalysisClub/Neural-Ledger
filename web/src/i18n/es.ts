@@ -433,6 +433,8 @@ export const es: Messages = {
       title: "Importar una cartola",
       hint: "Una exportación de Excel, un PDF o una foto de una cartola, de hasta 15 MB. Usa datos sintéticos en este sandbox.",
       choose: "Elegir archivo",
+      sandboxTitle: "Sandbox: no subas una cartola real",
+      sandboxBody: "Esto es un prototipo de hackathon. Sube solo cartolas sintéticas. Los nombres e identificadores se ocultan al importar, pero se guardan comercios, montos y fechas, y esos son datos personales si la cartola es real.",
       importing: "Leyendo {name}. Una cartola escaneada puede tardar unos minutos.",
       tooLarge: "El archivo pesa más de 15 MB. Exporta un período más corto o un escaneo más liviano.",
       failed: "No se pudo importar la cartola",
@@ -538,6 +540,11 @@ export const es: Messages = {
   },
   auth: {
     sandbox: "Solo sandbox. No uses información de cuentas reales.",
+    sandboxNotice: {
+      title: "Esto es un sandbox de hackathon",
+      body: "Neural Ledger es un prototipo de FinTechathon 2026, no un banco ni un servicio en producción. No subas cartolas reales ni ingreses datos personales reales: usa cartolas sintéticas o una persona de demostración.",
+      acknowledge: "Entiendo que esto es un sandbox y no subiré cartolas reales ni datos personales.",
+    },
     hero: {
       title: "Evalúa cualquier compra contra tus meses futuros.",
       lede: "Pronóstico, plan de ahorro y un copiloto que explica cada número.",
@@ -574,7 +581,7 @@ export const es: Messages = {
     signout: "Cerrar sesión",
     signingOut: "Cerrando sesión",
     mock: "Simulador local, no es un servicio de producción",
-    footer: "Cuenta sandbox. No se mueve dinero real. No es asesoría financiera.",
+    footer: "Cuenta sandbox. No subas cartolas reales ni datos personales. No se mueve dinero real. No es asesoría financiera.",
   },
   onboarding: {
     title: "Tus preferencias de ahorro",

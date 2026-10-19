@@ -16,7 +16,7 @@ function AuthProbe() {
   const auth = useAuth();
   return <div>
     <span data-testid="identity">{auth.me?.user_id ?? "anonymous"}</span>
-    <button type="button" onClick={() => void auth.signup({ email: "probe@example.invalid", password: "synthetic-password", display_name: "Probe" })}>Create</button>
+    <button type="button" onClick={() => void auth.signup({ email: "probe@example.invalid", password: "synthetic-password", display_name: "Probe", sandbox_acknowledged: true })}>Create</button>
     <button type="button" onClick={() => void auth.signin({ email: "probe@example.invalid", password: "synthetic-password" })}>Sign in</button>
     <button type="button" onClick={() => void auth.explore("camila")}>Explore</button>
     <button type="button" onClick={() => void auth.signout()}>Sign out</button>
@@ -186,5 +186,35 @@ describe("accounts session", () => {
     expect(results.violations).toEqual([]);
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "new-password");
+  });
+
+  it("shows the sandbox notice and sends sign-up only after it is acknowledged", async () => {
+    vi.stubEnv("VITE_ACCOUNTS_MOCK", "false");
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith("/health")) return new Response(JSON.stringify({ auth: "accounts", mode: "offline" }), { status: 200 });
+      if (path.endsWith("/v1/auth/signup")) return new Response(JSON.stringify({ user_id: "usr_probe", expires_at: expiry }), { status: 201 });
+      return new Response(JSON.stringify({ status: "UNAUTHENTICATED", message: "authentication required" }), { status: 401 });
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/signup"]}>
+      <AuthProvider><Routes><Route path="/signup" element={<SignUpPage />} /><Route path="/onboarding" element={<p>onboarding</p>} /></Routes></AuthProvider>
+    </MemoryRouter></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Create an account" })).toBeInTheDocument());
+
+    expect(screen.getByText("This is a hackathon sandbox")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /dismiss|close/i })).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Display name"), "Ana");
+    await userEvent.type(screen.getByLabelText("Email"), "ana@example.invalid");
+    await userEvent.type(screen.getByLabelText("Password"), "synthetic-password");
+    const submit = screen.getByRole("button", { name: "Create account" });
+    expect(submit).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /I understand this is a sandbox/ }));
+    await userEvent.click(submit);
+
+    await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/v1/auth/signup"))).toBe(true));
+    const call = fetch.mock.calls.find(([url]) => String(url).endsWith("/v1/auth/signup"));
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ email: "ana@example.invalid", sandbox_acknowledged: true });
   });
 });

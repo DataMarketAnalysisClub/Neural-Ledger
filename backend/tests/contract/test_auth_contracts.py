@@ -35,6 +35,8 @@ def test_new_schema_ids_are_distinct() -> None:
     ("relative", "body"),
     [
         ("auth/signup_request.schema.json", {"email": "ana@accounts.invalid", "password": "tenletters"}),
+        ("auth/signup_request.schema.json", {"email": "ana@accounts.invalid", "password": "tenletters", "display_name": "Ana"}),
+        ("auth/signup_request.schema.json", {"email": "ana@accounts.invalid", "password": "tenletters", "display_name": "Ana", "sandbox_acknowledged": False}),
         ("auth/signup_request.schema.json", {"email": "ana@accounts.invalid", "password": "short", "display_name": "Ana"}),
         ("auth/signup_request.schema.json", {"email": "ana@accounts.invalid", "password": "x" * 129, "display_name": "Ana"}),
         ("auth/signup_request.schema.json", {"email": "ana@accounts.invalid", "password": "tenletters", "display_name": "Ana", "language": "EN"}),
@@ -76,7 +78,7 @@ def test_signup_rejects_malformed_email_when_format_is_checked() -> None:
     validator = jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker())
 
     with pytest.raises(jsonschema.ValidationError):
-        validator.validate({"email": "not-an-email", "password": "tenletters", "display_name": "Ana"})
+        validator.validate({"email": "not-an-email", "password": "tenletters", "display_name": "Ana", "sandbox_acknowledged": True})
 
 
 def test_auth_error_http_status_annotation_matches_public_mapping() -> None:

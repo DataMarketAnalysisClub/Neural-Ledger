@@ -108,6 +108,9 @@ function ImportSection() {
 
   return (
     <Section id="import" title={t("statements.upload.title")} subtitle={t("statements.upload.hint")}>
+      <div className="mb-4">
+        <Notice tone="warning" icon={ShieldWarning} title={t("statements.upload.sandboxTitle")}>{t("statements.upload.sandboxBody")}</Notice>
+      </div>
       <input
         ref={input}
         type="file"

@@ -76,6 +76,7 @@ export async function mockRequest(
   }
   if (path === "/v1/auth/signup" && options.method === "POST") {
     const input = options.body as SignupInput;
+    if (input.sandbox_acknowledged !== true) invalid("sandbox_acknowledged", "Acknowledge the sandbox notice.");
     const email = input.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.invalid$/.test(email)) invalid("email", "Use a synthetic .invalid email in the local mock.");
     if (input.password.length < 10 || input.password.length > 128) invalid("password", "Password must have 10 to 128 characters.");

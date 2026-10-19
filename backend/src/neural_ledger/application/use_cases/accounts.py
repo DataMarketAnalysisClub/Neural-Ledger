@@ -56,6 +56,10 @@ UNKNOWN_PERSONA = AccountOutcome(AccountStatus.INVALID_INPUT, field="persona", m
 # The only public, read-only personas a demo session can open. Never an arbitrary user id.
 DEMO_PERSONAS: tuple[str, ...] = ("camila", "diego")
 
+# The sandbox notice a new account acknowledges at sign-up (no real statements, no personal data). Bump it when
+# the notice's wording changes, so USER_REGISTERED records which one the user accepted.
+SANDBOX_NOTICE = "sandbox-1"
+
 
 class AccountUseCases:
     def __init__(
@@ -83,8 +87,13 @@ class AccountUseCases:
         self._clock = clock
         self._ids = ids
 
-    def signup(self, email: str, password: str, display_name: str, language: str = "en") -> AccountOutcome:
-        """Creates the account, an empty profile (no tolerance, no questionnaire) and signs the user in."""
+    def signup(
+        self, email: str, password: str, display_name: str, language: str = "en", *, sandbox_notice: str | None = None
+    ) -> AccountOutcome:
+        """Creates the account, an empty profile (no tolerance, no questionnaire) and signs the user in.
+
+        sandbox_notice is the version of the sandbox notice the user acknowledged; the HTTP route refuses a sign-up
+        without the acknowledgement and passes SANDBOX_NOTICE, which USER_REGISTERED records."""
         try:
             normalized = normalize_email(email)
             validate_password(password)
@@ -98,7 +107,9 @@ class AccountUseCases:
         now = self._clock.now()
         token, session = self._new_session(user_id, now)
         events = (
-            self._draft(AuditKind.USER_REGISTERED, user_id, session.session_ref, None, now),
+            self._draft(
+                AuditKind.USER_REGISTERED, user_id, session.session_ref, f"sandbox_notice={sandbox_notice}" if sandbox_notice else None, now
+            ),
             self._draft(AuditKind.SESSION_STARTED, user_id, session.session_ref, "reason=signup", now),
         )
         if not self._writes.register(UserAccount(user_id, normalized, password_hash, now), replace(draft, user_id=user_id), session, events):

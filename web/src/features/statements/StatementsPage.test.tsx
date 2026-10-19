@@ -96,6 +96,12 @@ describe("StatementsPage", () => {
     expect(screen.getByText("Verified")).toBeInTheDocument();
   });
 
+  it("warns, above the upload button, not to upload a real bank statement", () => {
+    render(<StatementsPage />);
+    const upload = screen.getByRole("region", { name: "Import a statement" });
+    expect(within(upload).getByText("Sandbox: do not upload a real bank statement")).toBeInTheDocument();
+  });
+
   it("uploads the chosen file and shows what was hidden and posted", async () => {
     const { rerender } = render(<StatementsPage />);
     const file = new File(["x"], "cartola.xlsx");

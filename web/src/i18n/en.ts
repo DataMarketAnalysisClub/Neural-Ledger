@@ -436,6 +436,8 @@ export const en = {
       title: "Import a statement",
       hint: "An Excel export, a PDF or a photo of a statement, up to 15 MB. Use synthetic data in this sandbox.",
       choose: "Choose file",
+      sandboxTitle: "Sandbox: do not upload a real bank statement",
+      sandboxBody: "This is a hackathon prototype. Upload only synthetic statements. Names and identifiers are masked at import, but merchants, amounts and dates are kept, and they are personal data when the statement is real.",
       importing: "Reading {name}. A scanned statement can take a few minutes.",
       tooLarge: "The file is larger than 15 MB. Export a shorter period or a smaller scan.",
       failed: "The statement could not be imported",
@@ -543,6 +545,11 @@ export const en = {
   },
   auth: {
     sandbox: "Sandbox only. Do not use real account information.",
+    sandboxNotice: {
+      title: "This is a hackathon sandbox",
+      body: "Neural Ledger is a FinTechathon 2026 prototype, not a bank or a production service. Do not upload real bank statements and do not enter real personal data: use synthetic statements or a demo persona.",
+      acknowledge: "I understand this is a sandbox and I will not upload real bank statements or personal data.",
+    },
     email: "Email",
     password: "Password",
     passwordHint: "Use 10 to 128 characters.",
@@ -579,7 +586,7 @@ export const en = {
     signout: "Sign out",
     signingOut: "Signing out",
     mock: "Local mock, not a production service",
-    footer: "Sandbox account. No real money moves. Not financial advice.",
+    footer: "Sandbox account. Do not upload real bank statements or personal data. No real money moves. Not financial advice.",
   },
   onboarding: {
     title: "Your saving preferences",

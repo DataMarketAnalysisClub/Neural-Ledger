@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from ....application.facade import ApplicationServices
-from ....application.use_cases.accounts import AccountOutcome, AccountStatus, IssuedSession
+from ....application.use_cases.accounts import SANDBOX_NOTICE, AccountOutcome, AccountStatus, IssuedSession
 from ....application.use_cases.actions import ActorContext
 from ....application.use_cases.statements import MAX_STATEMENT_BYTES
 from ....domain.audit.events import Actor
@@ -230,12 +230,14 @@ def create_app(
         if accounts is None:
             return not_found()
         body = await _json_object(request)
-        _only(body, ("email", "password", "display_name"), ("language",))
+        _only(body, ("email", "password", "display_name", "sandbox_acknowledged"), ("language",))
+        if body["sandbox_acknowledged"] is not True:  # the sandbox notice, ticked in the form; checked here, not only in the UI
+            raise _BadBody("sandbox_acknowledged")
         email, password, display_name = _text(body, "email"), _text(body, "password"), _text(body, "display_name")
         language = _text(body, "language")
         if language is None:
             language = "en"
-        outcome = await run_in_threadpool(accounts.signup, email, password, display_name, language)
+        outcome = await run_in_threadpool(accounts.signup, email, password, display_name, language, sandbox_notice=SANDBOX_NOTICE)
         return issued(outcome, request, 201)
 
     @app.post("/v1/auth/signin")

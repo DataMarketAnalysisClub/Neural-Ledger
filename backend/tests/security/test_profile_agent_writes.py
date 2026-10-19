@@ -54,7 +54,7 @@ def test_s19_registry_blocks_profile_writes_as_t3_and_changes_nothing(auth, name
 def test_s19_user_profile_write_rejects_tolerance_and_unknown_fields_without_echo(body):
     services, adapters = _system("accounts")
     client = TestClient(create_app(services), headers={"Origin": ORIGIN})
-    signup = client.post("/v1/auth/signup", json={"email": "s19@accounts.invalid", "password": "synthetic-password-123", "display_name": "Ana"})
+    signup = client.post("/v1/auth/signup", json={"email": "s19@accounts.invalid", "password": "synthetic-password-123", "display_name": "Ana", "sandbox_acknowledged": True})
     assert signup.status_code == 201
     before = client.get("/v1/profile").json()
     events = adapters.audit_log.events()
