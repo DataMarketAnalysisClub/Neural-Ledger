@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
+
+from ..finance.paycycle import payday
+from ..shared.month import Month
 
 _NUMBER = re.compile(
     r"(?P<prefix>(?:CLP|USD|EUR|US\$|CL\$|\$)\s?)?"
@@ -68,3 +72,68 @@ def written_amounts(text: str) -> frozenset[int]:
         joined = again
     plain = {int(n) for n in re.findall(r"\d+", joined) if len(n) <= 9}
     return frozenset(plain | {int(n.value) for n in extract_numbers(text) if not n.is_percent and n.value == int(n.value)})
+
+
+# ---- a salary said in chat (ADR-047) --------------------------------------------------------------------------
+
+MAX_SALARY = 100_000_000  # CLP; mirrors contracts/memory/memory_value.schema.json (salary_net.amount.maximum)
+
+_MONTHS = {
+    "enero": 1, "january": 1, "febrero": 2, "february": 2, "marzo": 3, "march": 3, "abril": 4, "april": 4,
+    "mayo": 5, "may": 5, "junio": 6, "june": 6, "julio": 7, "july": 7, "agosto": 8, "august": 8,
+    "septiembre": 9, "setiembre": 9, "september": 9, "octubre": 10, "october": 10,
+    "noviembre": 11, "november": 11, "diciembre": 12, "december": 12,
+}
+_FROM = r"(?:desde|a partir de|from|starting(?: in| from)?|since|beginning(?: in)?)"
+_YEAR = r"(?:\s*,?\s*(?:de |del |of )?(?P<year>(?:19|20|21)\d{2})(?!\d))?"
+_NAMED = re.compile(
+    r"(?P<from>\b" + _FROM + r"\s+(?:(?:el |la |the )?(?:mes de |month of )?))?"
+    r"(?P<prep>\b(?:en|in|de|del|para|for|of)\s+)?"
+    r"\b(?P<name>" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\b" + _YEAR,
+    re.IGNORECASE,
+)
+_NUMERIC = re.compile(r"(?P<from>\b" + _FROM + r"\s+)?(?<![\d/-])(?:(?P<y1>(?:19|20|21)\d{2})-(?P<m1>0[1-9]|1[0-2])|(?P<m2>0?[1-9]|1[0-2])/(?P<y2>(?:19|20|21)\d{2}))(?![\d/-])", re.I)
+
+
+@dataclass(frozen=True, slots=True)
+class IncomeStatement:
+    """What a message says about a salary: amounts in the order written, and the pay month it starts in.
+
+    `read_as` says how the month was read, for the card to show: explicit_year (month and year written),
+    next_occurrence (a month without a year: its next occurrence, the current month included, never retroactive) or
+    next_payday (no month written: the month of the next payday). The model never picks among the candidates.
+    """
+
+    candidates: tuple[int, ...]
+    pay_month: Month
+    read_as: str
+
+
+def parse_income_statement(text: str, today: date) -> IncomeStatement:
+    """Read the user's current message only: never earlier messages, never anything a model wrote."""
+    candidates: list[int] = []
+    for n in extract_numbers(text):
+        if n.is_percent or n.value != int(n.value) or not 1 <= n.value <= MAX_SALARY:
+            continue
+        if int(n.value) not in candidates:
+            candidates.append(int(n.value))
+    return IncomeStatement(tuple(candidates), *_pay_month(text, today))
+
+
+def _pay_month(text: str, today: date) -> tuple[Month, str]:
+    mentions: list[tuple[bool, int, int, int | None]] = []  # (after "desde", position, month, year)
+    for m in _NUMERIC.finditer(text):
+        year, month = (m["y1"], m["m1"]) if m["y1"] else (m["y2"], m["m2"])
+        mentions.append((bool(m["from"]), m.start(), int(month), int(year)))
+    for m in _NAMED.finditer(text):
+        name = m["name"].lower()
+        if name == "may" and not (m["from"] or m["prep"] or m["year"]):
+            continue  # "may I…": the English month only after a preposition or before a year
+        mentions.append((bool(m["from"]), m.start(), _MONTHS[name], int(m["year"]) if m["year"] else None))
+    if mentions:
+        _, _, month, year = min(mentions, key=lambda x: (not x[0], x[1]))  # a month after "desde" wins, then the first
+        if year is not None:
+            return Month(year, month), "explicit_year"
+        return Month(today.year if month >= today.month else today.year + 1, month), "next_occurrence"
+    current = Month.of(today)
+    return (current if today <= payday(current) else current.plus(1)), "next_payday"
