@@ -450,6 +450,8 @@ export const en = {
       date: "Date",
       merchant: "Merchant",
       category: "Category",
+      setCategory: "Category for {merchant}",
+      byYou: "Set by you",
       kind: "Kind",
       amount: "Amount",
       spending: "Spending by category",

@@ -31,6 +31,24 @@ const ready = (data: unknown) => ({ isPending: false, isError: false, data: ok(d
 
 let importer: Record<string, unknown>;
 const mutate = vi.fn();
+let setCategory: Record<string, unknown>;
+const txn = (over: Record<string, unknown> = {}) => ({
+  txn_id: "t1",
+  account_id: "a",
+  date: "2026-09-01",
+  amount: -900,
+  currency: "CLP",
+  merchant: { untrusted_text: "<script>alert(1)</script> Transf a [PERSON]" },
+  kind: "purchase",
+  category: "uncategorized",
+  classifier: "naive_bayes@x",
+  confidence: 0.2,
+  statement_id: "stmt_1",
+  line_index: 0,
+  installment: { plan_id: "p", installment_number: 2, installment_total: 12, original_amount: 12000, monthly_rate: null },
+  ...over,
+});
+let transactions: unknown[];
 let auth: { mode: "demo" | "accounts"; me: { user_id: string; data_source: string; expires_at: string } | null } | null;
 
 vi.mock("@/features/auth/AuthProvider", () => ({ useOptionalAuth: () => auth }));
@@ -41,34 +59,25 @@ vi.mock("@/api/hooks", () => ({
   useStatement: () => ready({ statement: summary(), lines: [], daily_balances: [] }),
   useTransactions: () =>
     ready({
-      transactions: [
-        {
-          txn_id: "t1",
-          account_id: "a",
-          date: "2026-09-01",
-          amount: -900,
-          currency: "CLP",
-          merchant: { untrusted_text: "<script>alert(1)</script> Transf a [PERSON]" },
-          kind: "purchase",
-          category: "uncategorized",
-          classifier: "naive_bayes@x",
-          confidence: 0.2,
-          statement_id: "stmt_1",
-          line_index: 0,
-          installment: { plan_id: "p", installment_number: 2, installment_total: 12, original_amount: 12000, monthly_rate: null },
-        },
-      ],
+      transactions,
       spending: [{ category: "uncategorized", currency: "CLP", spent: 900, count: 1 }],
       income: [],
     }),
   useImportStatement: () => importer,
+  useSetCategory: () => setCategory,
 }));
 
 beforeEach(() => {
   mutate.mockReset();
   importer = { mutate, reset: vi.fn(), isPending: false, isError: false, error: null, data: undefined };
+  setCategory = { mutate: vi.fn(), isPending: false, isError: false, error: null };
+  transactions = [txn()];
   auth = null;
 });
+
+async function openTransactions() {
+  await userEvent.click(screen.getByRole("radio", { name: "Transactions" }));
+}
 
 const signedIn = (data_source: string) => ({ mode: "accounts" as const, me: { user_id: "usr_1", data_source, expires_at: "2026-10-16T08:00:00Z" } });
 
@@ -186,5 +195,42 @@ describe("StatementsPage", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(merchant).toHaveTextContent("2 of 12");
     expect(screen.getByText("CLP −900")).toBeInTheDocument();
+  });
+
+  it("lets the user correct a wrong category with the ones the kind can take (ADR-023)", async () => {
+    render(<StatementsPage />);
+    await openTransactions();
+    const picker = screen.getByRole("combobox", { name: /Category for .*Transf a/ });
+    expect(picker).toHaveDisplayValue("Uncategorized");
+    const offered = Array.from((picker as HTMLSelectElement).options).filter((o) => !o.disabled).map((o) => o.value);
+    expect(offered).toEqual(["groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other", "movement"]);
+
+    await userEvent.selectOptions(picker, "groceries");
+    expect(setCategory.mutate).toHaveBeenCalledWith({ txnId: "t1", category: "groceries" });
+  });
+
+  it("offers income or movement for a deposit, nothing for a card payment, and marks the user's own label", async () => {
+    transactions = [
+      txn({ txn_id: "t2", kind: "income", category: "income", classifier: "user", confidence: null, merchant: { untrusted_text: "Sueldo" }, installment: null }),
+      txn({ txn_id: "t3", kind: "card_payment", category: "movement", classifier: "rule", confidence: null, merchant: { untrusted_text: "Pago tarjeta" }, installment: null }),
+    ];
+    render(<StatementsPage />);
+    await openTransactions();
+    const income = screen.getByRole("combobox", { name: "Category for Sueldo" }) as HTMLSelectElement;
+    expect(Array.from(income.options).map((o) => o.value)).toEqual(["income", "movement"]);
+    expect(screen.getByText("Set by you")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Category for Pago tarjeta" })).toBeNull();
+    expect(screen.getByRole("row", { name: /Pago tarjeta/ })).toHaveTextContent("Own money movement");
+  });
+
+  it("disables the picker while saving and shows the API's refusal", async () => {
+    setCategory = { ...setCategory, isPending: true };
+    const { rerender } = render(<StatementsPage />);
+    await openTransactions();
+    expect(screen.getByRole("combobox", { name: /Category for/ })).toBeDisabled();
+
+    setCategory = { ...setCategory, isPending: false, isError: true, error: new ApiError(422, { status: "INVALID_INPUT", field: "category", allowed: ["income", "movement"], message: "a income can take only these categories" }) };
+    rerender(<StatementsPage />);
+    expect(screen.getByRole("alert")).toHaveTextContent("a income can take only these categories");
   });
 });
