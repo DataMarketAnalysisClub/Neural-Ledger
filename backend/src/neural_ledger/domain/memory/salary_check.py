@@ -47,6 +47,7 @@ class SalaryRules:
     tolerance: Fraction = Fraction(5, 100)
     window_business_days: int = 3
     conflict_cycles: int = 2
+    raise_confirm_cycles: int = 2  # matches a version needs before its own amount supports the conservative income
 
 
 PROPOSED_RULES = SalaryRules()
