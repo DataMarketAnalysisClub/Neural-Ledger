@@ -68,14 +68,14 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - [x] `tests/rag_eval/` (about 40 es/en questions → expected ids; recall@3 ≥ 0.8 lexical, ≥ 0.9 chroma; results to `evidence/rag_eval/`)
 
 ### WP3 · Agent integration
-- [ ] Contracts: tool input + output schemas
-- [ ] `EducationUseCases` returning the explanation envelope
-- [ ] `search_financial_concepts` in `catalog.py` (T0) and in the tools allowed on `Intent.EXPLAIN`
-- [ ] Lexicon: investing terms ("qué es un ETF") route to EXPLAIN, advice ("en qué invierto") still to OUT_OF_SCOPE
-- [ ] Prompt: answer only from the passages, name the concept, say it is general information, offer a link to the user's own numbers
-- [ ] Scripted model + narration: call the tool on EXPLAIN, narrate the top passage (replaces the fixed `narration.EXPLAIN`)
-- [ ] `tests/security/test_education_attacks.py`: injected text in a card or query, advice requests, invented numbers, a passage cannot reach T1/T2
-- [ ] `tests/application` chat tests for EXPLAIN in es and en
+- [x] Contracts: tool input + output schemas
+- [x] `EducationUseCases` returning the explanation envelope
+- [x] `search_financial_concepts` in `catalog.py` (T0) and in the tools allowed on `Intent.EXPLAIN`
+- [x] Lexicon: investing terms ("qué es un ETF") route to EXPLAIN, advice ("en qué invierto") still to OUT_OF_SCOPE
+- [x] Prompt: answer only from the passages, name the concept, say it is general information, offer a link to the user's own numbers
+- [x] Scripted model + narration: call the tool on EXPLAIN, narrate the top passage (replaces the fixed `narration.EXPLAIN`)
+- [x] `tests/security/test_education_attacks.py`: injected text in a card or query, advice requests, invented numbers, a passage cannot reach T1/T2
+- [x] `tests/application` chat tests for EXPLAIN in es and en
 
 ### WP4 · Docs
 - [x] ADR-039 in `docs/DECISIONS.md`
@@ -84,7 +84,7 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - [x] README: `pip install -e "backend[rag]"`, `NL_KNOWLEDGE_BASE=chroma,lexical`
 
 ### Integration (after the packages)
-- [ ] Merge WP2–WP4 into `c/education-rag`; `ruff check .`; `make test-all` green
+- [x] Merge WP2–WP4 into `c/education-rag`; `ruff check .`; `make test-all` green
 - [x] Run `tests/rag_eval` with Chroma and the real model; record in `evidence/rag_eval/`
 - [ ] Docker: decide whether the image ships the `rag` extra (size) or stays on `lexical`
 - [ ] PR `c/education-rag` → `staging`
@@ -95,6 +95,25 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - Score thresholds differ by method: lexical about 0.45, Chroma about 0.30 (off-topic max 0.379 and 0.23).
 - `rag` extra adds about 340 MB to site-packages plus the 240 MB model.
 - [x] Chroma miss: "how much money do I really have available" → paraphrased aliases on `protected_surplus`; Chroma recall@3 now 1.0
+
+## Integration notes (Oct 19)
+
+- Full suite: the 175 failures and errors are the same set as on `origin/staging`, all from packages missing locally
+  (`disposable-email-domains`, `email_validator`, receipt OCR). Nothing new fails. CI should be green; confirm on the PR.
+- Smoke test with the real cards and the scripted model, `lexical` and `chroma,lexical`: CAE, cuota, ETF and compound
+  interest are explained from their cards with the caveat; "¿En qué acción invierto?" is refused; an unknown term gets
+  "no card, not from memory".
+- Relevance floors live in `KB_MIN_SCORES` (container.py) and wrap each index before the fallback.
+
+## Open decisions (from WP3)
+
+- [ ] Cap EXPLAIN turns at T0 tools? Today T1/T2 are still offered; only the hard layer (no confirmed authorization) stops a model that obeys a card.
+- [ ] Filter instruction-like sentences in quoted card text, or rely on the card review pass?
+- [ ] Add the investing-definition and investing-advice examples to `tests/decision_eval/intents.jsonl`.
+- [ ] "Explain how you got that number" now searches the cards and gets the no-card reply; route it to the user's own numbers instead?
+- [ ] Narration cuts after two sentences, which can end on a lead-in ("Installments come in two common forms.").
+- [ ] The scope refusal is English-only; answer "¿En qué acción invierto?" in Spanish.
+- [ ] Merge commits `3022f5a` (contract) and `0b2b7e7` (registration) are separate; the first alone fails one contract test.
 
 ## Risks
 
