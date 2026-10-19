@@ -444,7 +444,7 @@ Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_ha
 
 - **Cuota:** one installment of a purchase paid over several months (like BNPL or 分期).
 - **Trough:** the balance just before payday, where liquidity is checked.
-- **Headroom:** trough minus the liquidity floor (150,000 CLP); negative means a breach.
+- **Headroom:** trough minus the liquidity floor (150,000 CLP, or the user's own floor rule, ADR-037); negative means a breach.
 - **Available (A):** income − commitments − variable spend in a cycle.
 - **Protected surplus:** the minimum conservative headroom over the horizon. Never called "safe".
 - **Tolerance / capacity / permitted profile:** what the user accepts / what the finances permit / the lower of the two plus hard rules.
