@@ -4,6 +4,8 @@ Liquidity is checked at each pay cycle's TROUGH: the balance just before salary 
     B_m = B_(m-1) + I_m - K_m - V_m - R_m - P_m - S_m        H_m = B_m - Floor
 A month breaches when H_m < 0. Typical: contracted/P50 income, P50 spend. Conservative:
 contracted/P20 income, P80 spend (used for every decision). Stress: conservative + one shock.
+I_m is read per cycle from the income model's calendar (ADR-040 §8), so a declared salary change
+reaches the cycle it funds; without a calendar it is the same every month.
 """
 
 from __future__ import annotations
@@ -85,11 +87,11 @@ def project(
     if scenario is Scenario.STRESS and shock is None:
         shock = Recurring(stress_shock(model, params), model.first_cycle, model.first_cycle)
     quantile = "p50" if scenario is Scenario.TYPICAL else "p80"
-    income = model.income.typical if scenario is Scenario.TYPICAL else model.income.conservative
 
     balance = model.balances.checking
     cycles: list[CycleProjection] = []
     for month in month_range(model.first_cycle, horizon):
+        income = model.income.for_month(scenario, month)
         commitments = model.commitments_due(month)
         variable = model.spend.total(month, quantile)
         available = income - commitments - variable
