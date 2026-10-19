@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/expense_proposal.schema.json",
   "title": "ExpenseProposal",
-  "description": "data of the propose_expense tool and pending_expense of a chat reply (ADR-038): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.",
+  "description": "data of the propose_expense tool and pending_expense of a chat reply (ADR-039): an expense prepared from what the user said, waiting for their confirmation. `missing` lists what the copilot asks and the card collects.",
   "type": "object",
   "required": ["proposal_id", "amount", "currency", "description", "spent_on", "category", "payment", "missing"],
   "properties": {

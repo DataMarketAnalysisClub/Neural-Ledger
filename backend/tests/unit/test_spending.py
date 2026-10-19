@@ -1,4 +1,4 @@
-"""ADR-038: the spending check-in for the pay cycle of today, against Camila's conservative forecast (P80 = 900,000
+"""ADR-039: the spending check-in for the pay cycle of today, against Camila's conservative forecast (P80 = 900,000
 a cycle outside December) and her protected surplus of 20,000 (E05)."""
 
 from __future__ import annotations

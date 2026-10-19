@@ -1,4 +1,4 @@
-"""ADR-038 over HTTP: drop a file, read the spending check-in and the receipts. The body is the raw file."""
+"""ADR-039 over HTTP: drop a file, read the spending check-in and the receipts. The body is the raw file."""
 
 from __future__ import annotations
 

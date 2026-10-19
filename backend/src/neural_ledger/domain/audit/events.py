@@ -40,7 +40,7 @@ class AuditKind(str, Enum):
     ACTION_FAILED = "ACTION_FAILED"
     ACTION_BLOCKED = "ACTION_BLOCKED"
     STATEMENT_IMPORTED = "STATEMENT_IMPORTED"
-    DOCUMENT_ROUTED = "DOCUMENT_ROUTED"  # a file dropped on the copilot was routed: statement, receipt or unknown (ADR-038)
+    DOCUMENT_ROUTED = "DOCUMENT_ROUTED"  # a file dropped on the copilot was routed: statement, receipt or unknown (ADR-039)
     RECEIPT_IMPORTED = "RECEIPT_IMPORTED"
     EXPENSE_LOGGED = "EXPENSE_LOGGED"  # the user confirmed an expense they told the copilot about (ADR-038)
     RECEIPT_CORRECTED = "RECEIPT_CORRECTED"  # the user typed a receipt's total or date the reader could not read (ADR-038)

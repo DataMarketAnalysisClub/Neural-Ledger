@@ -304,7 +304,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
     ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
-    # Documents dropped on the copilot (ADR-038): routed by the domain rules, then by the decision chain (Jev when set).
+    # Documents dropped on the copilot (ADR-039): routed by the domain rules, then by the decision chain (Jev when set).
     documents = DocumentUseCases(
         ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
         financial, audit_log, clock, ids, snapshots,

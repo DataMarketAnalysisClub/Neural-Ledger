@@ -56,7 +56,7 @@ class StatementRedactor:
         return replace(statement, account_ref=mask_account(statement.account_ref), lines=lines), report
 
     def redact_text(self, text: str) -> tuple[str, bool]:
-        """One text (a receipt's store name, ADR-038) through the same two layers; True when only the rules ran."""
+        """One text (a receipt's store name, ADR-039) through the same two layers; True when only the rules ran."""
         detected, degraded = self._detect([text])
         return apply(text, merge_spans((*find_spans(text), *detected[0]))), degraded
 

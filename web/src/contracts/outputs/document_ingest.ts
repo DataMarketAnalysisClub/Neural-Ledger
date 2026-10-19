@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of POST /v1/documents (ADR-038): a file dropped on the copilot, routed to the statement import or read as a receipt, with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.
+ * data of POST /v1/documents (ADR-039): a file dropped on the copilot, routed to the statement import or read as a receipt, with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.
  */
 export interface DocumentIngest {
   kind: "statement" | "receipt";

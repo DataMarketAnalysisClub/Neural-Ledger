@@ -457,7 +457,7 @@ def create_app(
 
     @app.post("/v1/documents")
     async def ingest_document(request: Request, session_id: str = Query("documents"), kind: str | None = Query(None)):
-        """A file dropped on the copilot (ADR-038): a statement or a receipt, decided by the server, never the
+        """A file dropped on the copilot (ADR-039): a statement or a receipt, decided by the server, never the
         Content-Type or the file name. Same size limit and threadpool as a statement import."""
         too_large = JSONResponse({"detail": "the file is larger than 15 MB"}, status_code=413)
         declared = request.headers.get("content-length")

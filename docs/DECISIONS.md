@@ -323,7 +323,8 @@ The gate for keeping Jev first: higher coverage on unseen merchants with a wrong
 5. **Demo personas are reset, not deleted** (ADR-033 step 6 proposed 403): they are shared fixtures without a password, so `confirm=RESET` erases what visitors stored for them (`DEMO_DATA_RESET`) and keeps the fixture and the visitors' sessions.
 **Consequences:** the server needs a one-time migration (`docs/SECURITY.md`, "Key management"; redeploy steps in the pull request). Losing the key loses every account. The host itself (SSH, Docker daemon, backups) is outside this decision. Sign-up stays open, so the notice is a rule, not a control; option A (closing sign-up) remains available as a later setting.
 
-### ADR-038 · Drop any document on the copilot: receipts, statements and a daily spending check-in · Built on `b/receipt-workflow` (needs Roles A, C and E review)
+### ADR-039 · Drop any document on the copilot: receipts, statements and a daily spending check-in · Built on `b/receipt-workflow` (needs Roles A, C and E review)
+*Numbered ADR-038 until 2026-10-19, when it was found to share that number with option B; commit 147b2fa and PR #44 cite it as ADR-038.*
 **Context:** feedback from a bank manager on 2026-10-19: the product is used once a month, when a cartola arrives, and the AI part looks small. Users should drop whatever they have (a cartola, a boleta) on the agent and get something they can use every day.
 **Decision:**
 - `POST /v1/documents` takes any file. The route is decided by the server: a spreadsheet is a statement; otherwise the printed words (domain rules, `kind_by_rules`); otherwise the decision chain (Jev when configured) on the **redacted** text, accepted only at confidence 0.80 or more. A statement goes through the unchanged statement import (ADR-028); a receipt through the new receipt path.
