@@ -295,6 +295,8 @@ export const en = {
     inputLabel: "Ask about your money",
     inputPlaceholder: "For example: can I afford a CLP 400,000 laptop in 12 cuotas?",
     send: "Send",
+    showMore: "Show more",
+    showLess: "Show less",
     suggestions: "Suggested questions",
     prompts: [
       "Will I be OK in December?",

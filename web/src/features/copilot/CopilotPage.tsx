@@ -300,12 +300,36 @@ function Conversation() {
   );
 }
 
+/**
+ * Text that folds when it is long, behind a Show more button, as messaging apps do. It wraps anywhere, so a token
+ * with no spaces can never push the bubble wider than the screen.
+ */
+function FoldableText({ text, maxChars, maxLines, tone }: { text: string; maxChars: number; maxLines: number; tone: "dark" | "light" }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > maxChars || text.split("\n").length > maxLines;
+  return (
+    <>
+      <p className={cn("whitespace-pre-line [overflow-wrap:anywhere]", long && !open && "line-clamp-6")}>{text}</p>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={cn("mt-1.5 text-sm font-medium underline underline-offset-2", tone === "dark" ? "text-white/80 hover:text-white" : "text-accent hover:text-accent-hover")}
+        >
+          {open ? t("copilot.showLess") : t("copilot.showMore")}
+        </button>
+      )}
+    </>
+  );
+}
+
 function UserBubble({ text }: { text: string }) {
   return (
     <li className="flex justify-end">
-      <div className="max-w-[65ch] rounded-control rounded-br-[2px] bg-ink px-4 py-3 text-sm text-white">
+      <div className="max-w-[min(65ch,100%)] min-w-0 rounded-control rounded-br-[2px] bg-ink px-4 py-3 text-sm text-white [overflow-wrap:anywhere]">
         <span className="sr-only">{t("copilot.you")}: </span>
-        {text}
+        <FoldableText text={text} maxChars={360} maxLines={8} tone="dark" />
       </div>
     </li>
   );
@@ -321,9 +345,9 @@ function CopilotTurn({ message, currency, avatarState, still }: { message: Messa
         <CopilotAvatar state={avatarState} still={still} className="size-7 sm:size-8" />
         <div className="min-w-0 flex-1">
           <p className="mb-1 text-xs font-medium text-ink-3">{t("copilot.voice")}</p>
-          <div className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink">
+          <div className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink [overflow-wrap:anywhere]">
             {/* Plain text only: model output is never rendered as markup. */}
-            <p className="whitespace-pre-line">{message.text}</p>
+            <FoldableText text={message.text} maxChars={1100} maxLines={14} tone="light" />
           </div>
         </div>
       </div>

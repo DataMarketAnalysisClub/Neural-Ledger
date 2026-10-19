@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { CopilotPage } from "./CopilotPage";
@@ -152,6 +152,52 @@ describe("CopilotPage", () => {
       expect(group()).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Will I be OK in December?" }));
       expect(group()).not.toBeInTheDocument();
+    });
+  });
+
+  describe("long messages", () => {
+    const send = async (text: string) => {
+      render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+      fireEvent.change(screen.getByLabelText("Ask about your money"), { target: { value: text } });
+      await userEvent.click(screen.getByRole("button", { name: "Send" }));
+    };
+    const reply = (text: string) => ({ text, actions: [], tools_called: [], facts: [], warnings: [], blocked_reason: null, fallback_used: false, verification: { ok: true } });
+
+    it("wraps a message with no spaces inside the bubble instead of running past the screen", async () => {
+      await send("x".repeat(300));
+      const bubble = screen.getByText("x".repeat(300)).closest("div")!;
+      expect(bubble.className).toContain("[overflow-wrap:anywhere]");
+      expect(bubble.className).toContain("min-w-0");
+    });
+
+    it("folds a long message behind Show more, like a messaging app, and opens it on demand", async () => {
+      const long = "word ".repeat(120).trim();
+      await send(long);
+      const more = screen.getByRole("button", { name: "Show more" });
+      expect(more).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByText(long)).toHaveClass("line-clamp-6");
+
+      await userEvent.click(more);
+      expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText(long)).not.toHaveClass("line-clamp-6");
+    });
+
+    it("also folds many short lines, and leaves a short message alone", async () => {
+      await send(Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n"));
+      expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
+    });
+
+    it("does not fold a short message", async () => {
+      await send("Will I be OK in December?");
+      expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+    });
+
+    it("folds a very long reply from the Copilot too", async () => {
+      const long = "A long answer. ".repeat(110).trim();
+      chat = { ...idle(), mutate: vi.fn((_m: string, options?: { onSuccess?: (r: unknown) => void }) => options?.onSuccess?.(reply(long))) };
+      await send("hello");
+      expect(screen.getAllByRole("button", { name: "Show more" })).toHaveLength(1);
+      expect(screen.getByText(long)).toHaveClass("line-clamp-6");
     });
   });
 });
