@@ -630,6 +630,7 @@ export const en = {
     description: "Your answers describe what you accept. The engine decides what your finances permit.",
     name: "Display name",
     language: "Language",
+    languageUnreviewed: "Simplified Chinese has not been reviewed by a native speaker yet.",
     save: "Save profile",
     saving: "Saving",
     readOnly: "This synthetic demo profile is read only.",

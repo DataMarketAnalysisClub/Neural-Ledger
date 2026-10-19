@@ -622,6 +622,7 @@ export const zh: Messages = {
     description: "你的回答描述你能接受什么。你的财务允许什么由引擎决定。",
     name: "显示名称",
     language: "语言",
+    languageUnreviewed: "简体中文译文尚未经母语人士审校，可能有不准确之处。",
     save: "保存个人资料",
     saving: "保存中",
     readOnly: "这个合成的演示个人资料是只读的。",
