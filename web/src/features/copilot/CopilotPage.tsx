@@ -61,7 +61,9 @@ function Conversation() {
   const shownProposal = proposal ?? pendingProposal;
 
   useEffect(() => {
-    logRef.current?.lastElementChild?.scrollIntoView({ block: "end" });
+    // Scroll the log only: scrollIntoView would also scroll the window.
+    const log = logRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
   }, [messages, chat.isPending]);
 
   function send(text: string) {
@@ -128,7 +130,7 @@ function Conversation() {
 
       <div className="grid gap-10 xl:grid-cols-[1fr_400px]">
         <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-15rem)] min-h-[440px] min-w-0 flex-col rounded-control border border-line bg-surface">
-          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
+          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="relative min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
             {messages.length === 0 && (
               <li className="text-sm text-ink-2">
                 <p>{t("copilot.empty")}</p>
