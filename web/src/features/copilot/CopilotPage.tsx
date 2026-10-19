@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
-import { ArrowUp, ChatText, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
+import { ArrowUp, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
 import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending, usePersona } from "@/api/hooks";
 import { ApiError, type ActionOutcome, type ChatReply } from "@/api/client";
 import { ProposalReceipt, VerdictBanner } from "@/components/actions";
+import { CopilotAvatar, type AvatarState } from "@/components/CopilotAvatar";
 import { Button, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
 import { t, tList } from "@/i18n";
 
@@ -50,6 +51,10 @@ function Conversation() {
   const [authorization, setAuthorization] = useState<Authorization | null>(null);
   const [receipt, setReceipt] = useState<ActionOutcome["receipt"]>(null);
   const nextId = useRef(1);
+  // The avatar answers for a moment when a reply lands, then rests.
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
+  const speakingTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(speakingTimer.current), []);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // After a reload nothing is in local state yet: show whatever the API says is pending for this
@@ -81,7 +86,11 @@ function Conversation() {
     setDraft("");
     chat.mutate(message, {
       onSuccess: (reply) => {
-        setMessages((m) => [...m, { id: nextId.current++, role: "copilot", text: reply.text, reply }]);
+        const id = nextId.current++;
+        setMessages((m) => [...m, { id, role: "copilot", text: reply.text, reply }]);
+        setSpeakingId(id);
+        clearTimeout(speakingTimer.current);
+        speakingTimer.current = setTimeout(() => setSpeakingId(null), 1600);
         if (reply.pending_proposal) {
           setProposal(reply.pending_proposal as Proposal);
           setAuthorization(null);
@@ -120,6 +129,7 @@ function Conversation() {
     });
   }
 
+  const lastCopilotId = [...messages].reverse().find((m) => m.role === "copilot")?.id;
   const blocked = useMemo(() => outcomeFrom(confirm.error) ?? outcomeFrom(execute.error), [confirm.error, execute.error]);
   const prompts = tList("copilot.prompts");
 
@@ -141,6 +151,7 @@ function Conversation() {
           <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="relative min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
             {messages.length === 0 && (
               <li className="text-sm text-ink-2">
+                <CopilotAvatar className="mb-3 size-10" />
                 <p>{t("copilot.empty")}</p>
                 <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-3">
                   <Info aria-hidden className="size-4" />
@@ -148,14 +159,16 @@ function Conversation() {
                 </p>
               </li>
             )}
-            {messages.map((m) => (m.role === "user" ? <UserBubble key={m.id} text={m.text} /> : <CopilotTurn key={m.id} message={m} currency={currency} />))}
+            {messages.map((m) =>
+              m.role === "user" ? (
+                <UserBubble key={m.id} text={m.text} />
+              ) : (
+                <CopilotTurn key={m.id} message={m} currency={currency} avatarState={m.id === speakingId ? "responding" : "idle"} still={m.id !== lastCopilotId} />
+              ),
+            )}
             {chat.isPending && (
               <li className="flex items-center gap-2 text-sm text-ink-2" role="status">
-                <span aria-hidden className="flex gap-1">
-                  <span className="size-1.5 animate-pulse rounded-full bg-ink-3 motion-reduce:animate-none" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-ink-3 [animation-delay:150ms] motion-reduce:animate-none" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-ink-3 [animation-delay:300ms] motion-reduce:animate-none" />
-                </span>
+                <CopilotAvatar state="thinking" className="size-7" />
                 {t("copilot.thinking")}
               </li>
             )}
@@ -238,13 +251,13 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-function CopilotTurn({ message, currency }: { message: Message; currency: string }) {
+function CopilotTurn({ message, currency, avatarState, still }: { message: Message; currency: string; avatarState: AvatarState; still: boolean }) {
   const reply = message.reply;
   const blockedAction = reply?.actions.find((a) => a.status === "BLOCKED");
   return (
     <li className="max-w-[72ch]">
       <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-3">
-        <ChatText aria-hidden className="size-4" />
+        <CopilotAvatar state={avatarState} still={still} className="size-6" />
         {t("copilot.voice")}
       </p>
       <div className="rounded-control rounded-tl-[2px] border border-accent/20 border-l-[3px] border-l-accent bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink">
