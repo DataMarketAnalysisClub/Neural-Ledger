@@ -51,3 +51,5 @@ web/playwright-report/
 
 # Real bank statements carry personal data: never commit them (tests use synthetic statements)
 cartolas/
+# The LaTeX documents' PDFs are committed (docs/latex/README.md)
+!docs/latex/build/

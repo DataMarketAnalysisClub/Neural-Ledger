@@ -1,0 +1,53 @@
+% Component diagram: containers, the four layers of the API and the dependency rule.
+\begin{tikzpicture}
+  % --- layer stack of the api container (x from 0 to 120 mm)
+  \tikzset{lay/.style={draw,rounded corners=2pt,align=left,text width=114mm,inner sep=3mm,anchor=north west}}
+  \node[lay,fill=white] (inbound) at (0,0)
+    {\textbf{adapters/inbound}\hfill HTTP (FastAPI) and CLI\\[1pt]
+     security headers $\cdot$ rate limits $\cdot$ CORS $\cdot$ identity guard (cookie session, Origin check) $\cdot$
+     CLI: demo, import, export-audit, seed, reset, migrate-data};
+  \node[lay,fill=nlfill] (application) at ($(inbound.south west)+(0,-4mm)$)
+    {\textbf{application}\hfill use cases, services, \textbf{ports}\\[1pt]
+     use cases: financial, actions, chat, statements, ledger, accounts, profile, audit $\cdot$
+     services: tool registry, decision chain, narration, redaction, posting};
+  \node[lay,fill=nlfilldark] (domain) at ($(application.south west)+(0,-4mm)$)
+    {\textbf{domain}\hfill \emph{Python standard library only}\\[1pt]
+     finance (forecast, surplus, plan, capacity, purchase) $\cdot$ permission gate $\cdot$ action terms $\cdot$
+     audit hash chain $\cdot$ response verifier $\cdot$ redaction rules $\cdot$ statement reconciliation};
+  \node[lay,fill=white] (outbound) at ($(domain.south west)+(0,-4mm)$)
+    {\textbf{adapters/outbound}\hfill implementations of the ports\\[1pt]
+     persistence (memory; SQLite + field cipher) $\cdot$ LLM (scripted, OpenRouter) $\cdot$ decision model (rules, Jev) $\cdot$
+     classifier $\cdot$ PII detector $\cdot$ statement reader $\cdot$ sandbox bank $\cdot$ HMAC signer $\cdot$ scrypt};
+  \node[box,anchor=north east,text width=20mm,minimum height=40mm] (bootstrap) at ($(application.north west)+(-9mm,0)$)
+    {\textbf{bootstrap}\\[3pt]config\\container\\data\_key\\migrate\\[3pt]\scriptsize wires every\\\scriptsize adapter};
+  \begin{scope}[on background layer]
+    \node[zone,fit=(inbound)(outbound)(bootstrap),inner sep=4mm] (api) {};
+  \end{scope}
+  \node[anchor=south west,font=\footnotesize\bfseries,inner sep=1pt] at ($(api.north west)+(3mm,1mm)$) {api container};
+
+  % dependency rule (left of the stack) and port implementation (right of the stack)
+  \draw[flow] ($(inbound.south west)+(8mm,0)$) -- node[label,right]{calls} ($(application.north west)+(8mm,0)$);
+  \draw[flow] ($(application.south west)+(8mm,0)$) -- node[label,right]{depends on} ($(domain.north west)+(8mm,0)$);
+  \draw[flow] (outbound.east) -- ++(4mm,0) |- node[label,pos=0.25,rotate=90,above]{implements ports} (application.east);
+  \draw[weak] (bootstrap.east) -- (application.west);
+  \draw[weak] (bootstrap.south) |- (outbound.west);
+  \draw[weak] (bootstrap.north) |- (inbound.west);
+
+  % --- above: clients, edge, web container
+  \node[box,anchor=south] (nginx) at ($(inbound.north)+(-30mm,12mm)$) {\textbf{web} container (nginx)\\UI files; \code{/api/*} $\rightarrow$ \code{api:8000}};
+  \node[ext,anchor=south] (browser) at ($(nginx.north)+(-22mm,8mm)$) {Browser\\React web UI};
+  \node[ext,anchor=south] (edge) at ($(nginx.north)+(22mm,8mm)$) {Cloudflare edge + tunnel\\(public demo: TLS)};
+  \node[ext,anchor=south] (cli) at ($(inbound.north)+(40mm,12mm)$) {Operator shell\\\texttt{docker compose run}};
+  \draw[flow] (browser.south) -- ++(0,-3mm) -| ($(nginx.north)+(-5mm,0)$);
+  \draw[flow] (edge.south) -- ++(0,-3mm) -| ($(nginx.north)+(5mm,0)$);
+  \draw[flow] (nginx.south) -- node[label,right]{HTTP, same origin} (nginx.south |- inbound.north);
+  \draw[flow] (cli.south) -- (cli.south |- inbound.north);
+
+  % --- below: storage, secret, providers
+  \node[store,anchor=north] (db) at ($(outbound.south)+(-40mm,-11mm)$) {SQLite\\\code{/app/var} volume};
+  \node[keybox,anchor=north] (secret) at ($(outbound.south)+(0mm,-12mm)$) {Docker secret\\\code{/run/secrets/nl_data_key}};
+  \node[ext,anchor=north] (providers) at ($(outbound.south)+(42mm,-12mm)$) {OpenRouter, Jev, Azure\\\emph{live mode only}};
+  \draw[flow] (db.north |- outbound.south) -- (db.north);
+  \draw[flow] (secret.north) -- node[label,right]{read at start} (secret.north |- outbound.south);
+  \draw[flow,dashed] (providers.north |- outbound.south) -- node[label,right]{HTTPS} (providers.north);
+\end{tikzpicture}

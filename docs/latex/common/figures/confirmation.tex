@@ -1,0 +1,15 @@
+% The confirmation contract (application/use_cases/actions.py, domain/permissions/policy.py).
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{sta/.style={box,text width=27mm,minimum height=15mm}}
+  \node[sta,core] (plan) at (0,0) {\textbf{Plan snapshot}\\stored by the\\plan use case};
+  \node[sta] (prop) at (44,0) {\textbf{Proposal}\\pending, 30 min;\\amount from the snapshot};
+  \node[sta] (auth) at (88,0) {\textbf{Authorization}\\signed terms;\\10 min, single use};
+  \node[sta,core] (exec) at (132,0) {\textbf{Executed}\\rule in the\\sandbox bank};
+  \draw[flow] (plan) -- node[label,above]{propose}node[label,below]{T1} (prop);
+  \draw[flow] (prop) -- node[label,above]{confirm}node[label,below]{user only} (auth);
+  \draw[flow] (auth) -- node[label,above]{execute}node[label,below]{T2 gate} (exec);
+  \node[box,dashed,text width=34mm,align=left] (ui) at (44,-27) {No confirm tool exists: the model cannot take this step (\code{confirm_action} is T3).};
+  \draw[weak] (ui.north east) -- ($(prop.east)!0.5!(auth.west)+(0,-6)$);
+  \node[box,dashed,text width=70mm,align=left] (gate) at (106,-30) {\textbf{Execution gate} (\code{check_execution}), in order: exists, owner, not expired, not consumed, signature valid, requested terms equal the stored ones, policy (action, source, destination, route, limit). A failure is \code{ACTION_BLOCKED} with its reason; nothing executes before \code{EXECUTION_STARTED} is written.};
+  \draw[weak] (gate.north -| exec.south) -- (exec.south);
+\end{tikzpicture}

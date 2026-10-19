@@ -1,0 +1,13 @@
+% The audit chain after an erasure (domain/audit/events.py: tombstone, erasure_detail, verify_chain).
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{ev/.style={box,text width=23mm,minimum height=17mm,font=\scriptsize}}
+  \node[ev] (e1) at (0,0) {\textbf{\#1} (user B)\\session started\\hash $h_1$};
+  \node[ev,fill=nlfilldark] (e2) at (31,0) {\textbf{\#2} ERASED\\was user A's\\$h_2$ kept};
+  \node[ev] (e3) at (62,0) {\textbf{\#3} (user B)\\statement imported\\hash $h_3$};
+  \node[ev,fill=nlfilldark] (e4) at (93,0) {\textbf{\#4} ERASED\\was user A's\\$h_4$ kept};
+  \node[ev,core,text width=31mm] (e5) at (128,0) {\textbf{\#5} \code{ACCOUNT_DELETED}\\no user id\\erased events: 2\\SHA-256 of ``2,4''};
+  \foreach \a/\b in {e1/e2,e2/e3,e3/e4,e4/e5} \draw[flow] (\a) -- (\b);
+  \draw[weak] (e5.south) to[out=-150,in=-40] node[label,pos=0.2]{commits to} (e2.south);
+  \draw[weak] (e5.south) to[out=-165,in=-40] (e4.south);
+  \node[text width=150mm,align=left,font=\scriptsize] at (64,-34) {Arrows are the \textit{prev\_hash} links. The links and hashes of \#2 and \#4 are unchanged, so \#3 and \#5 still verify. A tombstone is accepted only if a later erasure event commits to exactly the set of tombstones that name it.};
+\end{tikzpicture}
