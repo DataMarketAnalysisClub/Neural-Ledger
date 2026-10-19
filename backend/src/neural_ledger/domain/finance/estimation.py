@@ -83,7 +83,7 @@ from .paycycle import cycle_of, is_eve_of_payday
 
 # Input limits (mirrored in contracts/ledger/ledger.schema.json; a contract test keeps them aligned).
 # Constants, not FinanceParams: they reject malformed input and never change a computed number.
-SUPPORTED_CURRENCIES = frozenset({"CLP"})  # fc-0.1 amounts (floor, shock, rounding) are CLP
+SUPPORTED_CURRENCIES = frozenset({"CLP"})  # the fc parameters' amounts (floor, shock, rounding) are CLP
 MAX_ABS_AMOUNT = 1_000_000_000  # any single amount or balance above this is not a personal ledger
 
 SALARY_CATEGORY = "salary"
@@ -241,7 +241,7 @@ def validate_snapshot(snapshot: LedgerSnapshot) -> tuple[str, str, tuple[str, ..
     """First input problem as (field, message, allowed values), or None. Fields name the
     position in the input, e.g. `transactions[12].kind`. Nothing here estimates anything."""
     if snapshot.currency not in SUPPORTED_CURRENCIES:
-        return "currency", "fc-0.1 parameters are calibrated in CLP", tuple(sorted(SUPPORTED_CURRENCIES))
+        return "currency", "the financial core parameters are calibrated in CLP", tuple(sorted(SUPPORTED_CURRENCIES))
     if not is_eve_of_payday(snapshot.as_of):
         return "as_of", "as_of must be the day before a payday (last weekday of the month); partial cycles are not supported", ()
     accounts: dict[str, int] = {}

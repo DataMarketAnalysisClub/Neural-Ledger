@@ -1,0 +1,43 @@
+{
+  "model": "jev",
+  "classifier": "jev:jev-latest",
+  "seconds": 8.3,
+  "all": {
+    "n": 98,
+    "coverage": 0.898,
+    "precision": 0.966,
+    "wrong_accepted": 0.031
+  },
+  "seen": {
+    "n": 39,
+    "coverage": 0.949,
+    "precision": 1.0,
+    "wrong_accepted": 0.0
+  },
+  "unseen": {
+    "n": 59,
+    "coverage": 0.864,
+    "precision": 0.941,
+    "wrong_accepted": 0.051
+  },
+  "confusions": [
+    {
+      "expected": "dining",
+      "got": "shopping",
+      "count": 1
+    },
+    {
+      "expected": "utilities",
+      "got": "transport",
+      "count": 1
+    },
+    {
+      "expected": "other",
+      "got": "transport",
+      "count": 1
+    }
+  ],
+  "sources": {
+    "jev:typesafe/jev-1.14-20261014": 98
+  }
+}

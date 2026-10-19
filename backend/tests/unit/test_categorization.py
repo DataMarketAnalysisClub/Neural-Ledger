@@ -7,7 +7,10 @@ from datetime import UTC, date, datetime
 import pytest
 
 from neural_ledger.domain.ledger.categorization import (
+    CATEGORIES,
+    CATEGORY_QUESTION,
     INCOME,
+    MOVEMENT,
     RULE,
     UNCATEGORIZED,
     CategoryGuess,
@@ -67,6 +70,19 @@ def test_transaction_ids_are_stable_and_scoped_to_the_user():
     again = [p.transaction.txn_id for p in post_statement(_stored(), {0: CategoryGuess("dining", 1.0)}, "other-model")]
     assert once == again and len(set(once)) == 3
     assert set(once).isdisjoint(p.transaction.txn_id for p in post_statement(_stored(user_id="diego"), {}, "m"))
+
+
+def test_each_transaction_records_the_model_that_answered_its_line():
+    """A fallback chain may answer one line with Jev and the next with naive Bayes: each keeps its own source."""
+    guesses = {0: CategoryGuess("groceries", 0.9, source="jev:jev-1.14-20261014"), 1: CategoryGuess("shopping", 0.8)}
+    posted = post_statement(_stored(), guesses, "jev:jev-1.14-20261014+naive_bayes@abc")
+    assert [p.classifier for p in posted] == ["jev:jev-1.14-20261014", "jev:jev-1.14-20261014+naive_bayes@abc", RULE]
+
+
+def test_category_question_offers_exactly_the_vocabulary_with_a_note_each():
+    assert set(CATEGORY_QUESTION.options) == CATEGORIES and len(CATEGORY_QUESTION.options) == len(CATEGORIES)
+    assert len(CATEGORY_QUESTION.notes) == len(CATEGORY_QUESTION.options) and all(CATEGORY_QUESTION.notes)
+    assert not {INCOME, MOVEMENT, UNCATEGORIZED} & set(CATEGORY_QUESTION.options)  # rules decide those, never a model
 
 
 def test_missing_guess_leaves_the_charge_uncategorized():

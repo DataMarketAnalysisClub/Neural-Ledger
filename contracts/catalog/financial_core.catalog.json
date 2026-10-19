@@ -90,6 +90,7 @@
     {"status":"INVALID_INPUT","template":"income_profile.{field}","pattern":"^income_profile\\.(type|contracted_net|payday_rule)$","source":"ledger_source/estimation"},
     {"status":"INVALID_INPUT","template":"transactions[{i}].{field}","pattern":"^transactions\\[\\d+\\](\\.(txn_id|account_id|date|amount|merchant_raw|category|kind|installment)(\\.(plan_id|installment_number|installment_total|original_amount|monthly_rate))?)?$","source":"ledger_source/estimation"},
     {"status":"INVALID_INPUT","template":"{top}","pattern":"^(user_id|accounts|transactions|goals|buckets|income_profile|horizon_months|scenario|include_plan|amount|installments|first_installment_month|monthly_rate|tolerance|permitted_profile)$","source":"ledger_source/financial/purchase"},
-    {"status":"INSUFFICIENT_DATA","template":"{missing}","pattern":"^(financial_model|income|spend\\.categories|spend\\.essentials|spend\\.history \\(at least 6 months\\)|transactions|history \\(at least [0-9]+ months, found [0-9]+\\))$","source":"estimation/financial/capacity"}
+    {"status":"INSUFFICIENT_DATA","template":"{missing}","pattern":"^(financial_model|income|spend\\.categories|spend\\.essentials|spend\\.history \\(at least 6 months\\)|transactions|history \\(at least [0-9]+ months, found [0-9]+\\))$","source":"estimation/financial/capacity"},
+    {"status":"INSUFFICIENT_DATA","template":"{missing}","pattern":"^(statements|balance of [A-Za-z0-9_]+:[^ ]+)$","source":"statements (ADR-029)"}
   ]
 }

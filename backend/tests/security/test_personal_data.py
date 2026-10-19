@@ -111,7 +111,9 @@ def test_s15_personal_data_in_a_cartola_is_never_stored_or_returned(durable, tmp
         "PAGO TARJETA [NUMBER]",
         "[NUMBER] REMUNERACION EMPRESA SPA",
     ]
-    assert any("Compra Nacional MD SHOP ONE" in text for name, text in surfaces.items() if name.startswith("s15.db"))
+    # The database was scanned and holds the statement, sealed (G11): no line text in clear, not even a redacted one.
+    stored = "".join(text for name, text in surfaces.items() if name.startswith("s15.db"))
+    assert "nlenc1:" in stored and "Compra Nacional MD SHOP ONE" not in stored
     assert "STATEMENT_IMPORTED" in surfaces["audit export"]
 
     assert [leak for surface, text in surfaces.items() for leak in _leaks(surface, text)] == []

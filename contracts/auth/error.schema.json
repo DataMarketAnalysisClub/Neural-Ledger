@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/error.schema.json",
+  "title": "AuthError",
+  "description": "Error body for auth, identity and profile-write HTTP routes. Messages are generic and must never echo a supplied email, password or session token. INVALID_CREDENTIALS is identical for absent accounts, malformed email and wrong passwords. The x-http-status annotation maps status codes to HTTP responses; it is not a JSON body field.",
+  "x-http-status": {
+    "IDENTITY_HEADER_REJECTED": 400,
+    "UNAUTHENTICATED": 401,
+    "INVALID_CREDENTIALS": 401,
+    "ORIGIN_REJECTED": 403,
+    "PROFILE_READ_ONLY": 403,
+    "NOT_FOUND": 404,
+    "EMAIL_TAKEN": 409,
+    "INVALID_INPUT": 422
+  },
+  "type": "object",
+  "required": ["status", "message"],
+  "properties": {
+    "status": {"type": "string", "enum": ["IDENTITY_HEADER_REJECTED", "UNAUTHENTICATED", "INVALID_CREDENTIALS", "ORIGIN_REJECTED", "PROFILE_READ_ONLY", "NOT_FOUND", "EMAIL_TAKEN", "INVALID_INPUT"]},
+    "message": {"type": "string", "minLength": 1},
+    "field": {"type": "string", "minLength": 1}
+  },
+  "if": {"properties": {"status": {"const": "INVALID_INPUT"}}},
+  "then": {"required": ["field"]},
+  "additionalProperties": false,
+  "examples": [
+    {"status": "INVALID_CREDENTIALS", "message": "invalid credentials"},
+    {"status": "INVALID_INPUT", "message": "invalid input", "field": "persona"},
+    {"status": "EMAIL_TAKEN", "message": "email already registered", "field": "email"}
+  ]
+}

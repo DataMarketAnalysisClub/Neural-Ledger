@@ -119,12 +119,12 @@ export { Prohibit, SealCheck };
 
 export function PageHeader({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pb-8">
+    <header className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3 pb-5 sm:gap-y-4 sm:pb-8">
       <div className="max-w-3xl">
-        <h1 id="page-title" className="text-2xl font-semibold text-ink">
+        <h1 id="page-title" className="text-xl font-semibold text-ink sm:text-2xl">
           {title}
         </h1>
-        {subtitle && <p className="mt-2 text-base text-ink-2">{subtitle}</p>}
+        {subtitle && <p className="mt-2 text-sm text-ink-2 sm:text-base">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-3">{actions}</div>}
     </header>
@@ -149,7 +149,7 @@ export function Section({
 }) {
   const headingId = id ? `${id}-title` : undefined;
   return (
-    <section aria-labelledby={headingId} className={cn("min-w-0", className)}>
+    <section id={id} aria-labelledby={headingId} className={cn("min-w-0", className)}>
       {(title || aside) && (
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
           <div>
@@ -171,6 +171,22 @@ export function Section({
 export function Surface({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn("rounded-control border border-line bg-surface", className)}>{children}</div>;
 }
+
+/**
+ * A white box of fixed height that scrolls on its own, for long tables. `relative` keeps absolutely positioned
+ * descendants (sr-only text) inside it; without it they escape the box and stretch the page. Focusable, so the
+ * keyboard can scroll it too.
+ */
+export function ScrollBox({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div role="region" aria-label={label} tabIndex={0} className="relative max-h-[min(70vh,640px)] overflow-auto rounded-control border border-line bg-surface">
+      {children}
+    </div>
+  );
+}
+
+/** The header row of a table inside a ScrollBox: stays visible while the rows scroll. */
+export const stickyHead = "sticky top-0 z-10 bg-surface shadow-[0_1px_0_var(--color-line)]";
 
 // ---- Money with provenance -------------------------------------------------------------------------
 

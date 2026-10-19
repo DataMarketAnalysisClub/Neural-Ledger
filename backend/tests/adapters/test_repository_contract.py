@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from neural_ledger.adapters.outbound.persistence.field_cipher import FieldCipher
 from neural_ledger.adapters.outbound.persistence.memory import (
     InMemoryActionRepository,
     InMemoryAuditLog,
@@ -30,6 +31,7 @@ from neural_ledger.domain.actions.terms import (
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, verify_chain
 
 NOW = datetime(2026, 10, 29, 15, 0, tzinfo=UTC)
+TEST_CIPHER = FieldCipher(bytes(range(32)))
 TERMS = ActionTerms(ActionType.CREATE_SAVINGS_RULE, 100_000, "CLP", Frequency.MONTHLY, "checking", "sandbox_savings", date(2027, 1, 1))
 
 
@@ -117,7 +119,7 @@ def statement_store(request, tmp_path):
 
     if request.param == "memory":
         return InMemoryStatementStore()
-    return SqliteStatementStore(SqliteDatabase(tmp_path / "test.db"))
+    return SqliteStatementStore(SqliteDatabase(tmp_path / "test.db"), TEST_CIPHER)
 
 
 def _stored(statement_id: str = "stmt_1", user_id: str = "camila"):
@@ -208,7 +210,7 @@ def transaction_store(request, tmp_path):
 
     if request.param == "memory":
         return InMemoryTransactionStore()
-    return SqliteTransactionStore(SqliteDatabase(tmp_path / "test.db"))
+    return SqliteTransactionStore(SqliteDatabase(tmp_path / "test.db"), TEST_CIPHER)
 
 
 def _posted(user_id: str = "camila"):
@@ -261,6 +263,66 @@ def test_transactions_survive_a_restart(tmp_path):
 
     path = tmp_path / "ledger.db"
     db = SqliteDatabase(path)
-    SqliteTransactionStore(db).add(_posted())
+    SqliteTransactionStore(db, TEST_CIPHER).add(_posted())
     db.connection.close()
-    assert SqliteTransactionStore(SqliteDatabase(path)).for_user("camila") == _posted()
+    assert SqliteTransactionStore(SqliteDatabase(path), TEST_CIPHER).for_user("camila") == _posted()
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def transaction_writes(request, tmp_path):
+    """(store, writes, audit log) sharing one backing store, as the container wires them."""
+    from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryTransactionStore, InMemoryTransactionWrites
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteAuditLog, SqliteTransactionStore, SqliteTransactionWrites
+
+    if request.param == "memory":
+        store, audit = InMemoryTransactionStore(), InMemoryAuditLog()
+        return store, InMemoryTransactionWrites(store, audit), audit
+    db = SqliteDatabase(tmp_path / "test.db")
+    return SqliteTransactionStore(db, TEST_CIPHER), SqliteTransactionWrites(db, TEST_CIPHER), SqliteAuditLog(db)
+
+
+def _category_event(event_id: str, user_id: str = "camila"):
+    from datetime import UTC, datetime
+
+    from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind
+
+    return AuditDraft(event_id, datetime(2026, 10, 18, tzinfo=UTC), "s", Actor.USER, AuditKind.CATEGORY_CHANGED, user_id=user_id)
+
+
+def test_a_transaction_change_commits_with_its_audit_event_or_not_at_all(transaction_writes):
+    from neural_ledger.application.ports import IdCollision
+    from neural_ledger.domain.audit.events import verify_chain
+    from neural_ledger.domain.ledger.categorization import relabel
+
+    store, writes, audit = transaction_writes
+    posted = _posted()
+    store.add(posted)
+    first = posted[0]
+    assert store.get("camila", first.transaction.txn_id) == first
+    assert store.get("diego", first.transaction.txn_id) is None  # another user's id is not found
+
+    mine = relabel(first, "dining")
+    assert writes.update_transaction(first, mine, (_category_event("evt_1"),)) is True
+    assert store.get("camila", first.transaction.txn_id) == mine and len(audit.events()) == 1
+    assert store.for_user("camila") == (mine, posted[1])  # order and the other row unchanged
+
+    stale = writes.update_transaction(first, relabel(first, "health"), (_category_event("evt_2"),))
+    assert stale is False and store.get("camila", first.transaction.txn_id) == mine and len(audit.events()) == 1
+
+    with pytest.raises(IdCollision):  # a reused event id: neither the row nor the trail changes
+        writes.update_transaction(mine, relabel(first, "health"), (_category_event("evt_1"),))
+    assert store.get("camila", first.transaction.txn_id) == mine and len(audit.events()) == 1
+
+    theirs = _posted(user_id="diego")[0]
+    assert writes.update_transaction(theirs, relabel(theirs, "dining"), (_category_event("evt_3", "diego"),)) is False
+    with pytest.raises(ValueError):
+        writes.update_transaction(mine, relabel(posted[1], "movement"), (_category_event("evt_4"),))  # not the same transaction
+    with pytest.raises(ValueError):
+        writes.update_transaction(mine, relabel(first, "health"), (_category_event("evt_5", "diego"),))  # another user's event
+    assert len(audit.events()) == 1 and verify_chain(audit.events()).ok
+
+
+def test_has_transactions_is_per_user(transaction_store):
+    assert transaction_store.has_transactions("camila") is False
+    transaction_store.add(_posted())
+    assert transaction_store.has_transactions("camila") is True and transaction_store.has_transactions("diego") is False

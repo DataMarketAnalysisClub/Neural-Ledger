@@ -77,7 +77,7 @@
           },
           "classifier": {
             "type": "string",
-            "description": "What chose the category: a classifier name with its training-data hash, or \"rule\" for income and card payments."
+            "description": "What chose the category: a classifier name with its training-data hash, \"rule\" for income and card payments, or \"user\" when the user set it (PATCH /v1/transactions/{txn_id}, ADR-023)."
           },
           "confidence": {
             "type": [
@@ -86,7 +86,7 @@
             ],
             "minimum": 0,
             "maximum": 1,
-            "description": "The classifier's confidence, kept even when too low to accept; null for rules."
+            "description": "The classifier's confidence, kept even when too low to accept; null for rules and for the user."
           },
           "statement_id": {
             "type": "string"
@@ -140,7 +140,7 @@
     },
     "spending": {
       "type": "array",
-      "description": "Purchases and fees less refunds, per currency and category, largest first. Card payments are excluded.",
+      "description": "Purchases and fees less refunds, per currency and category, largest first. Movimientos (card payments, and anything the user marks movement) are excluded.",
       "items": {
         "$ref": "#/$defs/total"
       }

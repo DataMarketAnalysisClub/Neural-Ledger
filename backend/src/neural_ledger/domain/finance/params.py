@@ -36,7 +36,9 @@ class FinanceParams:
     profile_share: tuple[Fraction, Fraction, Fraction]  # conservative, moderate, aggressive
     rule_rounding: int  # savings rules are rounded down to this step
     approx_rounding: int  # "about" amounts (largest affordable purchase) are rounded down to this step
-    allowed_installments: tuple[int, ...]
+    max_installments: int  # any count from 1 (no cuotas) to this is accepted (fc-0.2)
+    interest_free_installments: int  # counts up to this are one charge, "sin cuotas": no interest, whatever the rate (fc-0.3)
+    suggested_installments: tuple[int, ...]  # the counts tried when suggesting another installment count
     default_monthly_rate: Decimal  # used only when the offer gives none; always flagged (A+E)
     max_purchase_amount: int
     alternative_defer_max_months: int
@@ -86,7 +88,7 @@ def _exact(value: object) -> object:
 
 
 FC_0_1 = FinanceParams(
-    version="fc-0.1",
+    version="fc-0.3",
     liquidity_floor=150_000,
     conservative_income_percentile=20,
     variable_spend_percentile=80,
@@ -105,7 +107,9 @@ FC_0_1 = FinanceParams(
     profile_share=(Fraction(2, 5), Fraction(3, 5), Fraction(4, 5)),
     rule_rounding=10_000,
     approx_rounding=1_000,
-    allowed_installments=(3, 6, 12, 18, 24),
+    max_installments=48,
+    interest_free_installments=1,
+    suggested_installments=(3, 6, 12, 18, 24),
     default_monthly_rate=Decimal("0.025"),
     max_purchase_amount=100_000_000,
     alternative_defer_max_months=6,

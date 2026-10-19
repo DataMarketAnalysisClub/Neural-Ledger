@@ -46,6 +46,7 @@ from ....domain.statements.model import (
 )
 from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import QuestionnaireAnswer, UserProfile
+from .field_cipher import FieldCipher
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -108,6 +109,20 @@ CREATE TABLE IF NOT EXISTS sessions (
 """
 
 
+# Literal statements per table (no SQL built from strings, ASVS V1). Whoever adds a table to _SCHEMA must add it here too.
+_RESET_SQL: dict[str, tuple[str, str]] = {
+    "proposals": ("SELECT COUNT(*) FROM proposals", "DELETE FROM proposals"),
+    "authorizations": ("SELECT COUNT(*) FROM authorizations", "DELETE FROM authorizations"),
+    "audit_events": ("SELECT COUNT(*) FROM audit_events", "DELETE FROM audit_events"),
+    "statements": ("SELECT COUNT(*) FROM statements", "DELETE FROM statements"),
+    "transactions": ("SELECT COUNT(*) FROM transactions", "DELETE FROM transactions"),
+    "savings_rules": ("SELECT COUNT(*) FROM savings_rules", "DELETE FROM savings_rules"),
+    "user_profiles": ("SELECT COUNT(*) FROM user_profiles", "DELETE FROM user_profiles"),
+    "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
+    "sessions": ("SELECT COUNT(*) FROM sessions", "DELETE FROM sessions"),
+}
+
+
 class SqliteDatabase:
     def __init__(self, path: str | Path) -> None:
         if str(path) != ":memory:":
@@ -127,6 +142,54 @@ class SqliteDatabase:
         with self.lock:
             return self.connection.execute(sql, params).fetchall()
 
+    def _tables(self) -> list[str]:
+        rows = self.connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name").fetchall()
+        return [name for (name,) in rows]
+
+    def _known_tables(self) -> list[str]:
+        """The tables to empty; refuses a table that _RESET_SQL does not know, so none is ever skipped silently."""
+        present = self._tables()
+        unknown = [name for name in present if name not in _RESET_SQL]
+        if unknown:
+            raise RuntimeError(f"no reset statements for table(s) {', '.join(unknown)}: add them to _RESET_SQL")
+        return present
+
+    def counts(self) -> dict[str, int]:
+        """Rows per table (read-only)."""
+        with self.lock:
+            return {t: self.connection.execute(_RESET_SQL[t][0]).fetchone()[0] for t in self._known_tables()}
+
+    def reset(self) -> dict[str, int]:
+        """Delete every row of every table in one transaction and return the rows deleted per table.
+
+        The file and the schema stay, so a process holding the same database keeps working (the audit chain restarts from genesis).
+        """
+        with self.lock:
+            tables = self._known_tables()
+            self.connection.execute("BEGIN IMMEDIATE")
+            try:
+                deleted: dict[str, int] = {}
+                for table in tables:
+                    count_sql, delete_sql = _RESET_SQL[table]
+                    deleted[table] = self.connection.execute(count_sql).fetchone()[0]
+                    self.connection.execute(delete_sql)
+                self.connection.execute("COMMIT")
+            except BaseException:
+                self.connection.execute("ROLLBACK")
+                raise
+            return deleted
+
+
+def _profile_from(payload: dict) -> UserProfile:
+    return UserProfile(
+        user_id=payload["user_id"],
+        display_name=payload["display_name"],
+        language=payload["language"],
+        declared_tolerance=RiskProfile(payload["declared_tolerance"]) if payload["declared_tolerance"] is not None else None,
+        questionnaire=tuple(QuestionnaireAnswer(**answer) for answer in payload["questionnaire"]),
+        questionnaire_version=payload["questionnaire_version"],
+    )
+
 
 class SqliteUserProfileStore:
     def __init__(self, db: SqliteDatabase) -> None:
@@ -134,17 +197,7 @@ class SqliteUserProfileStore:
 
     def get(self, user_id: str) -> UserProfile | None:
         row = self._db.fetchone("SELECT payload FROM user_profiles WHERE user_id = ?", (user_id,))
-        if row is None:
-            return None
-        payload = json.loads(row[0])
-        return UserProfile(
-            user_id=payload["user_id"],
-            display_name=payload["display_name"],
-            language=payload["language"],
-            declared_tolerance=RiskProfile(payload["declared_tolerance"]) if payload["declared_tolerance"] is not None else None,
-            questionnaire=tuple(QuestionnaireAnswer(**answer) for answer in payload["questionnaire"]),
-            questionnaire_version=payload["questionnaire_version"],
-        )
+        return _profile_from(json.loads(row[0])) if row else None
 
     def put(self, profile: UserProfile) -> None:
         with self._db.lock:
@@ -363,26 +416,42 @@ def _stored_statement_from(payload: dict) -> StoredStatement:
 
 
 class SqliteStatementStore:
-    def __init__(self, db: SqliteDatabase) -> None:
+    """Payloads are sealed with the data key (G11); ids and the owner stay in clear for lookups."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def add(self, stored: StoredStatement) -> bool:
+        payload = self._cipher.seal(json.dumps(to_primitive(stored)), _statement_aad(stored.user_id, stored.statement_id))
         with self._db.lock:
             cursor = self._db.connection.execute(
                 "INSERT OR IGNORE INTO statements (statement_id, user_id, payload) VALUES (?, ?, ?)",
-                (stored.statement_id, stored.user_id, json.dumps(to_primitive(stored))),
+                (stored.statement_id, stored.user_id, payload),
             )
             return cursor.rowcount == 1
 
     def get(self, user_id: str, statement_id: str) -> StoredStatement | None:
-        row = self._db.connection.execute(
-            "SELECT payload FROM statements WHERE user_id = ? AND statement_id = ?", (user_id, statement_id)
-        ).fetchone()
-        return _stored_statement_from(json.loads(row[0])) if row else None
+        row = self._db.fetchone(
+            "SELECT user_id, statement_id, payload FROM statements WHERE user_id = ? AND statement_id = ?", (user_id, statement_id)
+        )
+        return self._open(row) if row else None
 
     def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
-        rows = self._db.connection.execute("SELECT payload FROM statements WHERE user_id = ? ORDER BY sequence", (user_id,)).fetchall()
-        return tuple(_stored_statement_from(json.loads(r[0])) for r in rows)
+        rows = self._db.fetchall("SELECT user_id, statement_id, payload FROM statements WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(self._open(r) for r in rows)
+
+    def _open(self, row: tuple) -> StoredStatement:
+        user_id, statement_id, payload = row
+        return _stored_statement_from(json.loads(self._cipher.open(payload, _statement_aad(user_id, statement_id))))
+
+
+def _statement_aad(user_id: str, statement_id: str) -> str:
+    return f"statements|{user_id}|{statement_id}"
+
+
+def _transaction_aad(user_id: str, txn_id: str) -> str:
+    return f"transactions|{user_id}|{txn_id}"
 
 
 def _installment_info_from(payload: dict | None) -> InstallmentInfo | None:
@@ -420,11 +489,22 @@ def _posted_from(payload: dict) -> PostedTransaction:
 
 
 class SqliteTransactionStore:
-    def __init__(self, db: SqliteDatabase) -> None:
+    """Payloads are sealed with the data key (G11); the owner, id and posting date stay in clear for lookups and order."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def add(self, posted: Sequence[PostedTransaction]) -> int:
-        rows = [(p.transaction.txn_id, p.user_id, p.transaction.date.isoformat(), json.dumps(to_primitive(p))) for p in posted]
+        rows = [
+            (
+                p.transaction.txn_id,
+                p.user_id,
+                p.transaction.date.isoformat(),
+                self._cipher.seal(json.dumps(to_primitive(p)), _transaction_aad(p.user_id, p.transaction.txn_id)),
+            )
+            for p in posted
+        ]
         with self._db.lock:
             before = self._db.connection.total_changes
             self._db.connection.execute("BEGIN")
@@ -439,10 +519,22 @@ class SqliteTransactionStore:
             return self._db.connection.total_changes - before
 
     def for_user(self, user_id: str) -> tuple[PostedTransaction, ...]:
-        rows = self._db.connection.execute(
-            "SELECT payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,)
-        ).fetchall()
-        return tuple(_posted_from(json.loads(r[0])) for r in rows)
+        rows = self._db.fetchall("SELECT txn_id, payload FROM transactions WHERE user_id = ? ORDER BY posted_on, sequence", (user_id,))
+        return tuple(_posted_from(json.loads(self._cipher.open(payload, _transaction_aad(user_id, txn_id)))) for txn_id, payload in rows)
+
+    def get(self, user_id: str, txn_id: str) -> PostedTransaction | None:
+        row = self._db.fetchone("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id))
+        return None if row is None else self._open(user_id, txn_id, row[0])
+
+    def has_transactions(self, user_id: str) -> bool:
+        return self._db.fetchone("SELECT 1 FROM transactions WHERE user_id = ? LIMIT 1", (user_id,)) is not None
+
+    def _open(self, user_id: str, txn_id: str, payload: str) -> PostedTransaction:
+        return _open_transaction(self._cipher, user_id, txn_id, payload)
+
+
+def _open_transaction(cipher: FieldCipher, user_id: str, txn_id: str, payload: str) -> PostedTransaction:
+    return _posted_from(json.loads(cipher.open(payload, _transaction_aad(user_id, txn_id))))
 
 
 class SqliteSavingsRuleStore:
@@ -612,6 +704,22 @@ class SqliteAccountWrites:
                 _append_audit(conn, event)
             return True
 
+    def update_profile(self, expected: UserProfile, updated: UserProfile, events: Sequence[AuditDraft]) -> bool:
+        if updated.user_id != expected.user_id or any(event.user_id != expected.user_id for event in events):
+            raise ValueError("profile ownership mismatch")
+        # Raw connection only: the store and audit-log methods take db.lock, which this transaction already holds.
+        with _account_transaction(self._db) as conn:
+            row = conn.execute("SELECT payload FROM user_profiles WHERE user_id = ?", (expected.user_id,)).fetchone()
+            if row is None or _profile_from(json.loads(row[0])) != expected:
+                return False
+            self._check_events(conn, events)
+            conn.execute(
+                "UPDATE user_profiles SET payload = ? WHERE user_id = ?", (json.dumps(to_primitive(updated)), updated.user_id)
+            )
+            for event in events:
+                _append_audit(conn, event)
+            return True
+
     @staticmethod
     def _check_events(conn: sqlite3.Connection, events: Sequence[AuditDraft]) -> None:
         ids = [event.event_id for event in events]
@@ -628,6 +736,37 @@ class SqliteAccountWrites:
         ):
             raise IdCollision("generated identifier collision")
         cls._check_events(conn, events)
+
+
+def _check_transaction_change(expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> None:
+    owner = expected.user_id
+    if (owner, expected.transaction.txn_id) != (updated.user_id, updated.transaction.txn_id) or any(e.user_id != owner for e in events):
+        raise ValueError("transaction ownership mismatch")
+
+
+class SqliteTransactionWrites:
+    """A transaction change and its audit events in one SQLite transaction (ADR-023)."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def update_transaction(self, expected: PostedTransaction, updated: PostedTransaction, events: Sequence[AuditDraft]) -> bool:
+        _check_transaction_change(expected, updated, events)
+        user_id, txn_id = expected.user_id, expected.transaction.txn_id
+        # Raw connection only: the store and audit-log methods take db.lock, which this transaction already holds.
+        with _account_transaction(self._db) as conn:
+            row = conn.execute("SELECT payload FROM transactions WHERE user_id = ? AND txn_id = ?", (user_id, txn_id)).fetchone()
+            if row is None or _open_transaction(self._cipher, user_id, txn_id, row[0]) != expected:
+                return False
+            SqliteAccountWrites._check_events(conn, events)
+            conn.execute(
+                "UPDATE transactions SET payload = ? WHERE user_id = ? AND txn_id = ?",
+                (self._cipher.seal(json.dumps(to_primitive(updated)), _transaction_aad(user_id, txn_id)), user_id, txn_id),
+            )
+            for event in events:
+                _append_audit(conn, event)
+            return True
 
 
 class SqliteAuditLog:

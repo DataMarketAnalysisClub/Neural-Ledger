@@ -68,7 +68,7 @@ def test_outputs_match_contracts(services, call, output_schema):
 
 
 def test_errors_match_envelope(services):
-    validate(to_primitive(services.financial.simulate_purchase("camila", 400_000, 7)), "common/envelope.schema.json")
+    validate(to_primitive(services.financial.simulate_purchase("camila", 400_000, 49)), "common/envelope.schema.json")
     validate(to_primitive(services.financial.forecast("nobody")), "common/envelope.schema.json")
 
 

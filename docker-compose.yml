@@ -11,11 +11,19 @@ services:
     # Container-only settings are fixed here, not read from .env: they override env_file, so copying
     # .env.example (where NL_PERSISTENCE=memory suits local runs) cannot make the container forget its
     # audit log and sandbox bank on restart.
+    # NL_AUTH is fixed for the same reason: the deployed API identifies users by session cookie only, so a
+    # copied .env.example (NL_AUTH=demo, for local runs) cannot reopen the X-User-Id header. Set NL_APP_ORIGINS
+    # in .env to the public URL when the UI is served from anywhere but http://localhost:3000.
     environment:
+      NL_AUTH: accounts
       NL_PERSISTENCE: sqlite
       NL_SQLITE_PATH: /app/var/neural_ledger.db
       NL_DATA_DIR: /app/data
       NL_CONTRACTS_DIR: /app/contracts
+      # uvicorn takes the client IP from X-Forwarded-For only when the peer is in these ranges (the web
+      # container's nginx). Port 8000 is published for development, and a caller on it can set the header
+      # too: in a deployment publish only the web port.
+      FORWARDED_ALLOW_IPS: "127.0.0.1,172.16.0.0/12,192.168.0.0/16"
     ports:
       - "8000:8000"
     volumes:

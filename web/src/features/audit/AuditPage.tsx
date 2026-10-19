@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import { CheckCircle, LinkSimple, LinkBreak, Prohibit } from "@phosphor-icons/react";
-import { useAudit, useFinancialState, useVerifyChain } from "@/api/hooks";
+import { useAudit, useFinancialState, usePersona, useVerifyChain } from "@/api/hooks";
 import type { AuditEvent } from "@/api/client";
 import { VerdictBanner } from "@/components/actions";
-import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, Surface, cn } from "@/components/ui";
+import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, ScrollBox, Section, cn, stickyHead } from "@/components/ui";
 import { formatDate, shortHash } from "@/lib/format";
 import { t, tDynamic } from "@/i18n";
 
 type Filter = "all" | "actions" | "blocked";
+type Scope = "all" | "session";
+const selectClass =
+  "h-9 rounded-control border border-control bg-surface px-2 text-sm text-ink focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25";
 const ACTION_KINDS = new Set(["PROPOSAL_CREATED", "ACTION_CONFIRMED", "EXECUTION_STARTED", "ACTION_EXECUTED", "ACTION_FAILED", "ACTION_BLOCKED"]);
 
 /** The audit detail of a mismatch reads "AUTHORIZED: 100000 REQUESTED: 700000"; read it for display only. */
@@ -21,7 +24,9 @@ function isBlocked(e: AuditEvent) {
 }
 
 export function AuditPage() {
-  const audit = useAudit();
+  const { sessionId } = usePersona();
+  const [scope, setScope] = useState<Scope>("all");
+  const audit = useAudit(scope === "session" ? sessionId : undefined);
   const state = useFinancialState();
   const verify = useVerifyChain();
   const [filter, setFilter] = useState<Filter>("all");
@@ -91,29 +96,37 @@ export function AuditPage() {
         id="chain"
         title={t("nav.audit")}
         aside={
-          <label className="flex items-center gap-2 text-sm text-ink-2">
-            {t("audit.filter")}
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value as Filter)}
-              className="h-9 rounded-control border border-control bg-surface px-2 text-sm text-ink focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25"
-            >
-              {(["all", "actions", "blocked"] as const).map((f) => (
-                <option key={f} value={f}>
-                  {t(`audit.filters.${f}`)}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-ink-2">
+              {t("audit.scope")}
+              <select value={scope} onChange={(e) => setScope(e.target.value as Scope)} className={selectClass}>
+                {(["all", "session"] as const).map((s) => (
+                  <option key={s} value={s}>
+                    {t(`audit.scopes.${s}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink-2">
+              {t("audit.filter")}
+              <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} className={selectClass}>
+                {(["all", "actions", "blocked"] as const).map((f) => (
+                  <option key={f} value={f}>
+                    {t(`audit.filters.${f}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         }
       >
         {shown.length === 0 ? (
           <EmptyState title={t("audit.empty")} />
         ) : (
-          <Surface className="overflow-x-auto">
+          <ScrollBox label={t("audit.scrollBox")}>
             <table className="w-full min-w-[760px] text-sm">
               <caption className="sr-only">{t("nav.audit")}</caption>
-              <thead>
+              <thead className={stickyHead}>
                 <tr className="border-b border-line text-left text-xs text-ink-3">
                   <th scope="col" className="w-16 px-5 py-3 font-medium">
                     {t("audit.columns.sequence")}
@@ -179,7 +192,7 @@ export function AuditPage() {
                 })}
               </tbody>
             </table>
-          </Surface>
+          </ScrollBox>
         )}
       </Section>
     </>

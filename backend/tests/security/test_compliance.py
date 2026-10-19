@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient
 from neural_ledger.adapters.inbound.http.app import create_app
 from neural_ledger.bootstrap.config import DEV_SECRET, Settings
 from neural_ledger.bootstrap.container import build
+from neural_ledger.domain.audit.events import AuditKind
 from neural_ledger.domain.shared.serialization import to_primitive
 from tests.conftest import make_settings
 
@@ -152,7 +153,7 @@ def test_c04_a_user_cannot_reach_another_users_financial_records(services):
     assert client.get("/v1/transactions", headers=as_diego).json()["data"]["transactions"] == []
     foreign = client.get(f"/v1/statements/{statement_id}", headers=as_diego)
     missing = client.get("/v1/statements/stmt_does_not_exist", headers=as_diego)
-    assert foreign.status_code == missing.status_code == 409
+    assert foreign.status_code == missing.status_code == 404
     assert foreign.json()["message"] == missing.json()["message"]
     assert all(e["user_id"] == "diego" for e in client.get("/v1/audit", headers=as_diego).json()["events"])
 
@@ -234,12 +235,14 @@ def test_c08_sql_is_always_parameterized(tmp_path):
     ]
     assert built == [], f"SQL built from strings at lines {built}"
 
+    from neural_ledger.adapters.outbound.persistence.field_cipher import FieldCipher
     from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, SqliteStatementStore, SqliteTransactionStore
 
     db = SqliteDatabase(tmp_path / "inj.db")
     hostile = "x' OR '1'='1"
-    assert SqliteStatementStore(db).for_user(hostile) == ()
-    assert SqliteTransactionStore(db).for_user(hostile) == ()
+    cipher = FieldCipher(bytes(32))
+    assert SqliteStatementStore(db, cipher).for_user(hostile) == ()
+    assert SqliteTransactionStore(db, cipher).for_user(hostile) == ()
 
 
 def test_c09_the_language_model_never_receives_secrets(services, adapters):
@@ -283,6 +286,43 @@ def test_c12_consumer_information_is_traceable_and_warnings_are_never_dropped():
         assert f"def {name}(" in suite
 
 
+def test_c13_only_redacted_statement_text_is_sent_to_jev(monkeypatch):
+    """Ley 21.719 art. 3 c) (only the data the purpose needs), and the transfer of data to a provider abroad that
+    categorizing with Jev implies (ADR-032): Jev receives each charge's text after redaction, never a name, RUT,
+    e-mail, phone or card number, and never a deposit (income goes by rule)."""
+    from neural_ledger.adapters.outbound.classifier.jev import JevTransactionClassifier
+    from neural_ledger.bootstrap import container
+    from neural_ledger.domain.agent.questions import Judgment
+    from tests.statement_samples import santander_xlsx
+
+    sent: list[str] = []
+
+    class RecordingJev:
+        name = "jev:recording"
+
+        def judge(self, state, questions):
+            sent.append(state)
+            return {"category": Judgment("category", "other", (("other", 0.9),), 0.9, self.name)}
+
+    monkeypatch.setitem(container.CLASSIFIERS, "jev", lambda s: JevTransactionClassifier(RecordingJev()))
+    services, _ = build(make_settings(classifiers=("jev", "naive_bayes")))
+    movements = (
+        ("03/09", "O.Gerencia", "0071548293 Transf a JUAN PEREZ", "", -40_000),
+        ("03/09", "O.Gerencia", "Transf a 11.111.111-1 MARIA SOTO", "", -25_000),
+        ("05/09", "O.Gerencia", "TEF DE PEDRO ROJAS 12.345.678-5", "", 150_000),
+        ("09/09", "O.Gerencia", "Aviso maria.soto@mail.cl", "", -1_000),
+        ("10/09", "O.Gerencia", "Fono +56 9 8765 4321", "", -2_000),
+        ("15/09", "O.Gerencia", "PAGO TARJETA 4555 1234 5678 9012", "", -60_000),
+    )
+    (imported,) = services.statements.import_statement(USER, santander_xlsx(movements)).data.imports
+    assert imported.statement.verified and sent, "the charges must have been categorized by Jev"
+    personal = ("JUAN", "PEREZ", "MARIA", "SOTO", "PEDRO", "ROJAS", "ANA", "11.111.111-1", "12.345.678-5", "maria.soto@mail.cl",
+                "8765 4321", "4555 1234 5678 9012", "0071548293")  # fmt: skip
+    leaks = [(needle, text) for text in sent for needle in personal if needle in text]
+    assert leaks == []
+    assert not any("TEF DE" in text for text in sent)  # a deposit is income by rule: never sent
+
+
 # ------------------------------------------------------------------------------------------------
 # Gaps: duties not built yet (strict xfail)
 # ------------------------------------------------------------------------------------------------
@@ -306,9 +346,20 @@ def test_g03_a_user_can_delete_their_data(services):
     assert ("DELETE", "/v1/me/data") in _routes(services)
 
 
-@gap("no correction of a transaction (ADR-021, ADR-023). Ley 21.719 art. 6 (rectificación)")
 def test_g04_a_user_can_correct_their_records(services):
+    """Ley 21.719 art. 6 (rectificación). Built for categories (ADR-023): PATCH /v1/transactions/{txn_id}, audited
+    as a user action. Line corrections for unreconciled statements (ADR-021) are still to come."""
     assert any(method == "PATCH" and path.startswith("/v1/transactions/") for method, path in _routes(services))
+    assert "CATEGORY_CHANGED" in {kind.value for kind in AuditKind}
+
+
+def test_g04_no_agent_tool_can_set_a_category():
+    """ADR-023: a category is the user's correction, so it is set only through the UI route. The catalog never
+    reaches LedgerUseCases.set_category, and no tool contract offers it."""
+    catalog = (Path(__file__).parents[2] / "src/neural_ledger/application/catalog.py").read_text()
+    assert "set_category" not in catalog and "LedgerUseCases" not in catalog
+    tools = Path(__file__).parents[3] / "contracts/tools"
+    assert not [f.name for f in tools.glob("*.json") if "categor" in f.name]
 
 
 @gap("no way to oppose or block processing. Ley 21.719 arts. 8 (oposición) and 8 ter (bloqueo)")
@@ -322,26 +373,23 @@ def test_g06_importing_a_statement_requires_recorded_consent(services):
     assert response.status_code in (403, 428)
 
 
-@gap("no rate limiting. OWASP API4:2023, LLM10")
 def test_g07_bursts_are_rate_limited(services):
+    """OWASP API4:2023, LLM10. Built (ADR-033): a burst of uploads is cut off with 429 before any use case runs."""
     client = TestClient(create_app(services))
-    codes = {client.post("/v1/statements", content=b"x").status_code for _ in range(60)}
-    assert 429 in codes
+    codes = [client.post("/v1/statements", content=b"x").status_code for _ in range(60)]
+    assert codes[:10] == [422] * 10 and set(codes[10:]) == {429}
 
 
-@gap("CORS allows any origin by default (NL_CORS_ORIGINS=*). OWASP API8:2023")
 def test_g08_cors_is_not_open_by_default():
     assert "*" not in Settings().cors_origins
 
 
-@gap("no security headers on API responses. ASVS 5.0 V3 (web frontend security), OWASP API8:2023")
 def test_g09_responses_carry_security_headers(services):
     headers = TestClient(create_app(services)).get("/v1/transactions").headers
     assert headers.get("x-content-type-options") == "nosniff"
     assert "no-store" in headers.get("cache-control", "")
 
 
-@gap("live mode only warns about the development HMAC secret. ASVS 5.0 V13, Ley 21.719 art. 14 quinquies")
 def test_g10_live_mode_refuses_the_development_secret():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -350,16 +398,19 @@ def test_g10_live_mode_refuses_the_development_secret():
 
 
 @needs_pdf
-@gap("statements are stored in plaintext SQLite. Ley 21.719 art. 14 quinquies (security measures), ASVS 5.0 V14")
 def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
+    """Ley 21.719 art. 14 quinquies (security measures), ASVS 5.0 V14. Built (ADR-033): payloads are sealed
+    with AES-GCM and the key lives outside the database."""
     from tests.statement_samples import santander_xlsx
 
     services, _, path = sqlite_system
     services.statements.import_statement(USER, santander_xlsx())
-    assert "Compra Nacional VD SHOP ONE" not in _stored_bytes(path)
+    assert services.ledger.list_transactions(USER).data.transactions  # imported and readable through the API
+    stored = _stored_bytes(path)
+    assert "Compra Nacional VD SHOP ONE" not in stored and "SHOP ONE" not in stored
+    assert "nlenc1:" in stored
 
 
-@gap("no published privacy policy nor breach response runbook. Ley 21.719 arts. 14 ter and 14 sexies; Ley 21.663")
 def test_g12_privacy_policy_and_breach_runbook_exist():
     assert (ROOT / "docs/PRIVACY.md").is_file()
     assert (ROOT / "docs/runbooks/INCIDENT_RESPONSE.md").is_file()
@@ -371,4 +422,4 @@ def test_every_compliance_test_is_in_the_security_map():
     names = re.findall(r"^def (test_[cg]\d{2}_\w+)", Path(__file__).read_text(encoding="utf-8"), flags=re.M)
     security_md = (ROOT / "docs/SECURITY.md").read_text(encoding="utf-8")
     missing = [n for n in names if f"`{n.split('_')[1].upper()}`" not in security_md]
-    assert len(names) == 24 and missing == []
+    assert len(names) == 26 and missing == []

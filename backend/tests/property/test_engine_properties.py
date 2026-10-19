@@ -39,7 +39,7 @@ def _model(raw):
 
 purchases = st.tuples(
     st.integers(10, 2_000).map(lambda k: k * 1_000),
-    st.sampled_from(FC_0_1.allowed_installments),
+    st.sampled_from(FC_0_1.suggested_installments),
     st.integers(0, 6),
     st.sampled_from([Decimal("0"), Decimal("0.015"), Decimal("0.025")]),
 )

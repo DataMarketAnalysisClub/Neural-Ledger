@@ -24,3 +24,5 @@ Notes:
 
 ## `generator/`
 Superseded by `backend/tests/fixtures/ledger_generator.py` (kept next to the tests that consume it).
+
+Not to be confused with the **synthetic cartolas** (`neural-ledger cartola` / `seed`): random bank exports in `.xlsx` that are imported like an upload, for demos and manual testing. They are generated on demand, never committed here; see `docs/runbooks/SYNTHETIC_DATA.md`.

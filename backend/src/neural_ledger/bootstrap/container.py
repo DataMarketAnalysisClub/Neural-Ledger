@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import warnings
+import logging
+import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..adapters.outbound.bank.simulated import SimulatedSandboxBank
+from ..adapters.outbound.classifier.jev import JevTransactionClassifier
 from ..adapters.outbound.classifier.sklearn_text import SklearnTextClassifier, naive_bayes
 from ..adapters.outbound.decision.jev import OPENROUTER_BASE_URL, JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
@@ -15,43 +17,59 @@ from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
 from ..adapters.outbound.llm.openrouter import OpenRouterLanguageModel
 from ..adapters.outbound.llm.scripted import ScriptedLanguageModel
+from ..adapters.outbound.persistence.field_cipher import FieldCipher
 from ..adapters.outbound.persistence.memory import (
+    InMemoryAccountWrites,
     InMemoryActionRepository,
     InMemoryAuditLog,
     InMemoryConversationStore,
     InMemorySavingsRuleStore,
+    InMemorySessionStore,
     InMemorySnapshotStore,
     InMemoryStatementStore,
     InMemoryTransactionStore,
+    InMemoryTransactionWrites,
+    InMemoryUserAccountStore,
     InMemoryUserProfileStore,
 )
+from ..adapters.outbound.persistence.overlay import PersonaOverlayProfileStore
 from ..adapters.outbound.persistence.sqlite import (
+    SqliteAccountWrites,
     SqliteActionRepository,
     SqliteAuditLog,
     SqliteDatabase,
     SqliteSavingsRuleStore,
+    SqliteSessionStore,
     SqliteStatementStore,
     SqliteTransactionStore,
+    SqliteTransactionWrites,
+    SqliteUserAccountStore,
+    SqliteUserProfileStore,
 )
 from ..adapters.outbound.privacy.azure_language import AzureLanguageDetector
 from ..adapters.outbound.privacy.null import NullDetector
 from ..adapters.outbound.statements.reader import StatementFileReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
+from ..adapters.outbound.system.password import ScryptHasher
 from ..adapters.outbound.system.signer import HmacSigner
+from ..adapters.outbound.system.tokens import SecretsTokens
 from ..application.catalog import build_registry
-from ..application.facade import ApplicationServices
+from ..application.facade import ApplicationServices, AuthConfig
 from ..application.ports import PersonalDataDetector, TransactionClassifier
+from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
 from ..application.services.redaction import StatementRedactor
+from ..application.services.statement_model import FirstFoundModelSource, StatementModelSource
+from ..application.use_cases.accounts import DEMO_PERSONAS, AccountUseCases
 from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.ledger import LedgerUseCases
-from ..application.use_cases.profile import ProfileUseCases
+from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
 from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
 from ..domain.finance.params import FC_0_1
@@ -59,10 +77,14 @@ from ..domain.permissions.policy import PP_0_1
 from .config import DEV_SECRET, Settings
 from .contracts import load_tool_definitions
 
-# Spending classifiers for imported statements, by NL_CLASSIFIER. To change the method, add an entry
-# (any TransactionClassifier) and select it; to change the estimator, pass another pipeline factory.
-CLASSIFIERS: dict[str, Callable[[], TransactionClassifier]] = {
-    "naive_bayes": lambda: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
+logger = logging.getLogger(__name__)
+
+# Spending classifiers for imported statements, by NL_CLASSIFIER (comma-separated, tried in order: jev,naive_bayes).
+# To change the method, add an entry (any TransactionClassifier) and select it; to change the estimator, pass
+# another pipeline factory. jev sends each distinct line text, already redacted, to Jev (ADR-032).
+CLASSIFIERS: dict[str, Callable[[Settings], TransactionClassifier]] = {
+    "naive_bayes": lambda s: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
+    "jev": lambda s: JevTransactionClassifier(_jev(s)),
 }
 
 # Personal-data detectors, by NL_PII_DETECTOR: a second layer after the domain rules on every imported statement
@@ -91,10 +113,43 @@ def _jev(s: Settings) -> JevDecisionModel:
     return JevDecisionModel(s.typesafe_api_key, s.jev_model)
 
 
+def _data_cipher(s: Settings) -> FieldCipher:
+    """G11: the key that seals statement and transaction payloads in SQLite, never stored in the database.
+
+    Live mode needs NL_DATA_KEY. Offline runs (tests, docker compose, the demo) without it get a random key
+    in <db>.key, created once: the database alone, or a copy of it, reads nothing."""
+    if s.data_key:
+        return FieldCipher.from_hex(s.data_key)
+    if s.mode == "live":
+        raise ValueError("live mode with SQLite needs NL_DATA_KEY (64 hex characters) to encrypt statements at rest")
+    if s.sqlite_path == ":memory:":
+        return FieldCipher(secrets.token_bytes(32))  # the data dies with the process, and so does its key
+    return FieldCipher.from_key_file(f"{s.sqlite_path}.key")
+
+
+AUTH_MODES = ("demo", "accounts")
+COOKIE_SECURE = ("auto", "true", "false")
+
+
+def _auth_config(s: Settings) -> AuthConfig:
+    if s.auth not in AUTH_MODES:
+        raise ValueError(f"unknown NL_AUTH {s.auth!r} (demo | accounts)")
+    if s.cookie_secure not in COOKIE_SECURE:
+        raise ValueError(f"unknown NL_COOKIE_SECURE {s.cookie_secure!r} (auto | true | false)")
+    origins = tuple(s.app_origins)
+    if s.auth == "accounts" and (not origins or any(o in ("*", "null") or "://" not in o for o in origins)):
+        raise ValueError("NL_APP_ORIGINS must list exact origins (scheme://host[:port]) in accounts mode")
+    demo_personas = DEMO_PERSONAS if s.auth == "accounts" and s.demo_personas else ()
+    return AuthConfig(s.auth, origins, s.cookie_secure, demo_personas)
+
+
 def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapters]:
     s = settings or Settings.from_env()
     if s.hmac_secret == DEV_SECRET and s.mode == "live":
-        warnings.warn("NL_HMAC_SECRET is the development default; set a real secret", stacklevel=2)
+        raise ValueError(
+            "live mode refuses the development default for NL_HMAC_SECRET; set a real one, "
+            'e.g. python -c "import secrets; print(secrets.token_hex(32))"'
+        )
 
     clock = FixedClock(s.fixed_instant) if s.clock == "fixed" else SystemClock()
     ids = SequentialIds() if s.ids == "sequential" else UuidIds()
@@ -108,21 +163,47 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     else:
         raise ValueError(f"unknown NL_MODEL_SOURCE {s.model_source!r} (fixture | ledger)")
 
+    auth = _auth_config(s)
+    db: SqliteDatabase | None = None
     if s.persistence == "sqlite":
         db = SqliteDatabase(s.sqlite_path)
+        cipher = _data_cipher(s)
         actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
-        statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db)
-        transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db)
+        statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
+        transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
+        transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
+        writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
+        transaction_writes = InMemoryTransactionWrites(transaction_store, audit_log)
+        writable_profiles = InMemoryUserProfileStore()
 
     snapshots = InMemorySnapshotStore()
     conversations = InMemoryConversationStore()
     bank = SimulatedSandboxBank(rule_store)
-    profiles = InMemoryUserProfileStore([personas.profile(name) for name in personas.user_ids()])
+    # Personas are read-only fixtures in front of the writable store (account profiles), in both persistence modes.
+    profiles = PersonaOverlayProfileStore([personas.profile(name) for name in personas.user_ids()], writable_profiles)
+
+    accounts: AccountUseCases | None = None
+    profile_editing: ProfileEditing | None = None
+    if auth.accounts:
+        # Exactly one writes object over the SAME account, session, profile and audit objects the rest of the app uses,
+        # built before any request: InMemoryAccountWrites re-points their locks, and SQLite shares one database.
+        if db is not None:
+            account_store: InMemoryUserAccountStore | SqliteUserAccountStore = SqliteUserAccountStore(db)
+            session_store: InMemorySessionStore | SqliteSessionStore = SqliteSessionStore(db)
+            writes: InMemoryAccountWrites | SqliteAccountWrites = SqliteAccountWrites(db)
+        else:
+            account_store, session_store = InMemoryUserAccountStore(), InMemorySessionStore()
+            writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
+        accounts = AccountUseCases(
+            account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
+            demo_personas=frozenset(auth.demo_personas), transactions=transaction_store,
+        )
+        profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
 
     models = []
     for name in s.decision_chain:
@@ -135,6 +216,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     decisions = DecisionService(models, AP_0_1)
 
     if s.llm == "anthropic":
+        # Deprecated, not refused: ADR-027 (OpenRouter as the only live provider) is still Proposed.
+        logger.warning("NL_LLM=anthropic is deprecated (ADR-027): use NL_LLM=openrouter; this provider will be removed")
         llm = FallbackLanguageModel([AnthropicLanguageModel(s.anthropic_api_key or "", s.resolved_llm_model), ScriptedLanguageModel()])
     elif s.llm == "openrouter":
         llm = FallbackLanguageModel([OpenRouterLanguageModel(s.openrouter_api_key or "", s.resolved_llm_model), ScriptedLanguageModel()])
@@ -143,18 +226,23 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     else:
         raise ValueError(f"unknown NL_LLM {s.llm!r}")
 
-    financial = FinancialUseCases(source, snapshots, bank, profiles, FC_0_1)
+    # Personas keep their fixtures; every other user gets the model of their own statements (ADR-029).
+    accounts_source = StatementModelSource(statement_store, transaction_store, FC_0_1)
+    financial = FinancialUseCases(FirstFoundModelSource((source, accounts_source)), snapshots, bank, profiles, FC_0_1)
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
-    if s.classifier not in CLASSIFIERS:
-        raise ValueError(f"unknown NL_CLASSIFIER {s.classifier!r} (known: {', '.join(CLASSIFIERS)})")
-    posting = LedgerPosting(CLASSIFIERS[s.classifier](), transaction_store)
+    unknown = [name for name in s.classifiers if name not in CLASSIFIERS]
+    if unknown:
+        raise ValueError(f"unknown NL_CLASSIFIER {', '.join(unknown)!r} (known: {', '.join(CLASSIFIERS)})")
+    chain = [CLASSIFIERS[name](s) for name in s.classifiers]
+    classifier = chain[0] if len(chain) == 1 else FallbackClassifier(chain)
+    posting = LedgerPosting(classifier, transaction_store)
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
-    ledger = LedgerUseCases(transaction_store)
+    ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
@@ -174,7 +262,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         language_model=llm.name,
         decision_chain=decisions.chain,
         pii_detector=redactor.detector,
+        classifier=classifier.name,
         clock=clock,
+        auth=auth,
+        accounts=accounts,
+        profile_editing=profile_editing,
+        persistence=s.persistence,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source)
 

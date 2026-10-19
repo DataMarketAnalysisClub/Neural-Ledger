@@ -68,6 +68,8 @@ class PurchaseSimulation:
     verdict: Verdict
     impacts: tuple[ScenarioImpact, ...]
     alternatives: tuple[Alternative, ...]
+    offer_rate: Decimal  # the offer's monthly rate (given, or the default when assumed): what any count with cuotas pays
+    offer_rate_assumed: bool
 
     def impact(self, scenario: Scenario) -> ScenarioImpact:
         return next(i for i in self.impacts if i.scenario is scenario)
@@ -83,12 +85,8 @@ def validate_purchase(
 ) -> None:
     if isinstance(amount, bool) or not isinstance(amount, int) or not 1 <= amount <= params.max_purchase_amount:
         raise InvalidInput("amount", f"amount must be an integer from 1 to {params.max_purchase_amount}")
-    if installments not in params.allowed_installments:
-        raise InvalidInput(
-            "installments",
-            "installments must be one of the allowed counts",
-            tuple(str(n) for n in params.allowed_installments),
-        )
+    if isinstance(installments, bool) or not isinstance(installments, int) or not 1 <= installments <= params.max_installments:
+        raise InvalidInput("installments", f"installments must be an integer from 1 to {params.max_installments}")
     if first < model.first_cycle:
         raise InvalidInput("first_installment_month", f"first installment cannot be before {model.first_cycle}")
 
@@ -167,15 +165,15 @@ def simulate_purchase(
     plan: Recurring | None = None,
 ) -> PurchaseSimulation:
     validate_purchase(model, params, amount, installments, first)
-    rate_assumed = monthly_rate is None
-    rate = params.default_monthly_rate if monthly_rate is None else Decimal(monthly_rate)
-    if not Decimal(0) <= rate <= Decimal("0.2"):
+    offer_assumed = monthly_rate is None
+    offer = params.default_monthly_rate if monthly_rate is None else Decimal(monthly_rate)
+    if not Decimal(0) <= offer <= Decimal("0.2"):
         raise InvalidInput("monthly_rate", "monthly_rate must be between 0 and 0.2")
-    q = quote(amount, installments, rate, rate_assumed=rate_assumed)
+    q = _quote(params, amount, installments, offer, offer_assumed)
     verdict, impacts = _evaluate(model, params, q, first, plan)
     alternatives: tuple[Alternative, ...] = ()
     if verdict in (Verdict.FITS_TYPICAL_ONLY, Verdict.BREACHES_ALL):
-        alternatives = _alternatives(model, params, q, first, plan)
+        alternatives = _alternatives(model, params, q, first, plan, offer, offer_assumed)
     return PurchaseSimulation(
         quote=q,
         first_installment_month=first,
@@ -183,7 +181,16 @@ def simulate_purchase(
         verdict=verdict,
         impacts=impacts,
         alternatives=alternatives,
+        offer_rate=offer,
+        offer_rate_assumed=offer_assumed,
     )
+
+
+def _quote(params: FinanceParams, amount: int, installments: int, offer: Decimal, offer_assumed: bool) -> InstallmentQuote:
+    """A single charge ("sin cuotas") carries no interest, whatever the offer's rate; any count with cuotas pays it."""
+    if installments <= params.interest_free_installments:
+        return quote(amount, installments, Decimal(0), rate_assumed=False)
+    return quote(amount, installments, offer, rate_assumed=offer_assumed)
 
 
 def _as_alternative(kind: AlternativeKind, q: InstallmentQuote, first: Month) -> Alternative:
@@ -191,7 +198,13 @@ def _as_alternative(kind: AlternativeKind, q: InstallmentQuote, first: Month) ->
 
 
 def _alternatives(
-    model: FinancialModel, params: FinanceParams, q: InstallmentQuote, first: Month, plan: Recurring | None
+    model: FinancialModel,
+    params: FinanceParams,
+    q: InstallmentQuote,
+    first: Month,
+    plan: Recurring | None,
+    offer: Decimal,
+    offer_assumed: bool,
 ) -> tuple[Alternative, ...]:
     found: list[Alternative] = []
     # (a) the earliest first-installment month that fits
@@ -202,10 +215,10 @@ def _alternatives(
             break
     # (b) another installment count that fits, lowest total interest first
     fitting = []
-    for n in params.allowed_installments:
+    for n in params.suggested_installments:
         if n == q.installments:
             continue
-        candidate = quote(q.principal, n, q.monthly_rate, rate_assumed=q.rate_assumed)
+        candidate = _quote(params, q.principal, n, offer, offer_assumed)  # at the offer's rate, not the single charge's 0
         if _evaluate(model, params, candidate, first, plan)[0] is Verdict.FITS_ALL:
             fitting.append(candidate)
     if fitting:
@@ -234,7 +247,7 @@ def purchase_facts(sim: PurchaseSimulation, currency: str) -> tuple[Fact, ...]:
         Fact("purchase.installment", q.installment, currency, "P*r/(1-(1+r)^-n), rounded to the unit"),
         Fact("purchase.total_cost", q.total_cost, currency, "n * installment"),
         Fact("purchase.total_interest", q.total_interest, currency, "total cost - amount"),
-        Fact("purchase.monthly_rate_pct", percent(q.monthly_rate, 2), "%", "offer or assumed default"),
+        Fact("purchase.monthly_rate_pct", percent(q.monthly_rate, 2), "%", "offer or assumed default; 0 for a single charge"),
         Fact("purchase.effective_annual_rate_pct", percent(q.effective_annual_rate), "%", "(1+r)^12 - 1"),
         Fact("purchase.verdict", sim.verdict.value, "verdict", "typical and conservative re-run with the overlay"),
     ]
@@ -260,8 +273,9 @@ def purchase_facts(sim: PurchaseSimulation, currency: str) -> tuple[Fact, ...]:
 
 def purchase_caveats(sim: PurchaseSimulation) -> tuple[Caveat, ...]:
     caveats = []
-    if sim.quote.rate_assumed:
-        pct = percent(sim.quote.monthly_rate, 2)
+    priced_with_cuotas = sim.quote.rate_assumed or any(a.total_interest > 0 for a in sim.alternatives)
+    if sim.offer_rate_assumed and priced_with_cuotas:
+        pct = percent(sim.offer_rate, 2)
         text = f"{pct:g}%"
         caveats.append(
             Caveat(

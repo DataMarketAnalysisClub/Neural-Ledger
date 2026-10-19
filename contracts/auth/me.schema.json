@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/me.schema.json",
+  "title": "AuthenticatedUser",
+  "description": "GET /v1/me in accounts mode. data_source is empty for a new account, statements once the account has imported a statement that posted to its ledger (its financial model then comes from its own statements, ADR-029), persona for a demo session, and sample only when the later sample-data feature is enabled. Fetch GET /v1/profile for the wrapped display name; never expose email or a token here.",
+  "type": "object",
+  "required": ["user_id", "data_source", "expires_at"],
+  "properties": {
+    "user_id": {"type": "string", "minLength": 1},
+    "data_source": {"type": "string", "enum": ["empty", "sample", "persona", "statements"]},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"user_id": "usr_7f3a9c21", "data_source": "empty", "expires_at": "2026-10-15T12:00:00Z"},
+    {"user_id": "camila", "data_source": "persona", "expires_at": "2026-10-15T12:00:00Z"}
+  ]
+}

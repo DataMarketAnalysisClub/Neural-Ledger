@@ -1,10 +1,13 @@
 # Windows equivalent of the Makefile (no `make` needed). Run from the repository root:
-#   .\scripts\dev.ps1 install | test | test-all | test-property | test-golden | test-security | demo | demo-ledger | ledgers | backtest | evidence | api | up
+#   .\scripts\dev.ps1 install | test | test-all | test-property | test-golden | test-security | demo | demo-ledger | ledgers | backtest | evidence | api | up | cartola | seed | reset
+# cartola, seed and reset pass extra arguments on: .\scripts\dev.ps1 seed --user diego --seed 42 (docs/runbooks/SYNTHETIC_DATA.md)
 # Uses .venv\ (Python 3.12) when it exists; `install` creates it.
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("install", "test", "test-all", "test-property", "test-golden", "test-security", "demo", "demo-ledger", "ledgers", "backtest", "evidence", "api", "up")]
-    [string]$Task = "test"
+    [ValidateSet("install", "test", "test-all", "test-property", "test-golden", "test-security", "demo", "demo-ledger", "ledgers", "backtest", "evidence", "api", "up", "cartola", "seed", "reset")]
+    [string]$Task = "test",
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,6 +52,12 @@ switch ($Task) {
         Invoke-Py @("-m", "neural_ledger.bootstrap.cli", "demo-and-export", "--out", "../evidence/sandbox-logs/audit.jsonl") $Demo
         Invoke-Py @("-m", "pytest", "-o", "addopts=-q", "--junitxml=../evidence/test-results/junit.xml")
     }
+    "cartola" {
+        Invoke-Py (@("-m", "neural_ledger.bootstrap.cli", "cartola", "--out", "../var/samples") + $Rest) @{ PYTHONPATH = "src" }
+        Invoke-Py (@("-m", "neural_ledger.bootstrap.cli", "cartola", "--kind", "card", "--out", "../var/samples") + $Rest) @{ PYTHONPATH = "src" }
+    }
+    "seed" { Invoke-Py (@("-m", "neural_ledger.bootstrap.cli", "seed") + $Rest) @{ PYTHONPATH = "src"; NL_PERSISTENCE = "sqlite" } }
+    "reset" { Invoke-Py (@("-m", "neural_ledger.bootstrap.cli", "reset") + $Rest) @{ PYTHONPATH = "src"; NL_PERSISTENCE = "sqlite" } }
     "api" { Invoke-Py @("-m", "uvicorn", "neural_ledger.bootstrap.asgi:app", "--reload", "--port", "8000") @{ PYTHONPATH = "src" } }
     "up" {
         Push-Location $Root

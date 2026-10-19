@@ -1,6 +1,6 @@
 # Financial core: implemented behavior and handoff (Role A)
 
-**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-015 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.1`).
+**Status, Oct 10 2026:** Stage 1 and Stage 2 are implemented and tested offline. This describes code, not an accepted product policy. `docs/DECISIONS.md` ADR-011 through ADR-015 are **Proposed** pending team approval; the ledger default, the ADR-014 plan change, the freeze/tag and the merge remain **PENDING**. Money uses integer CLP minor units, with `Fraction`/`Decimal` until rounding (`domain/shared/numbers.py`). Parameters and the fingerprint lock are in `domain/finance/params.py` and `tests/unit/test_params_lock.py` (`fc-0.2` since ADR-034; the golden answers are unchanged from `fc-0.1`).
 
 ## 4.1 Commitments
 
@@ -24,7 +24,7 @@
 
 ## 4.6 Purchase simulation
 
-`domain/finance/purchase.py:simulate_purchase` validates amount, installment count, start and rate; `quote` prices equal installments and total `n × installment` (F2). It runs typical and conservative baselines and purchase overlays to produce verdicts, then deterministic deferral, alternate count or reduced-amount alternatives. `installment_cap` accounts for accumulated installments by taking minimum headroom divided by installments paid by each cycle (F3). Missing rate/first month yield tool warnings, not invented offer terms. See golden E02-E04.
+`domain/finance/purchase.py:simulate_purchase` validates amount, installment count, start and rate; `quote` prices equal installments and total `n × installment` (F2). It runs typical and conservative baselines and purchase overlays to produce verdicts, then deterministic deferral, alternate count or reduced-amount alternatives. `installment_cap` accounts for accumulated installments by taking minimum headroom divided by installments paid by each cycle (F3). Missing rate/first month yield tool warnings, not invented offer terms. A single charge (1 cuota, "sin cuotas") carries no interest whatever the rate (`interest_free_installments`, fc-0.3); the alternate-count alternative still pays the offer's rate, and `RATE_ASSUMED` is raised only when an assumed rate prices something. See golden E02-E04.
 
 ## 4.7 Financial capacity
 

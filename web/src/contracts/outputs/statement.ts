@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of GET /v1/statements/{id}: one imported bank statement with its lines. Descriptions are untrusted third-party text, with personal data replaced at import by placeholders (ADR-028). Money is integer minor units of `currency` (CLP: pesos; USD: cents); signs are the holder's: charges negative, money in positive, and a credit card's debt (opening and closing balance) negative.
+ * data of GET /v1/statements/{id}: one imported bank statement with its lines. A statement that is not the caller's, or does not exist, is 404 with an INSUFFICIENT_DATA envelope (missing ["statement"]), the same for both. Descriptions are untrusted third-party text, with personal data replaced at import by placeholders (ADR-028). Money is integer minor units of `currency` (CLP: pesos; USD: cents); signs are the holder's: charges negative, money in positive, and a credit card's debt (opening and closing balance) negative.
  */
 export interface Statement {
   statement: Summary;
@@ -22,9 +22,9 @@ export interface Statement {
      */
     confidence: number | null;
     /**
-     * What the bank says the line is, when its layout says it (credit cards). null: the sign decides.
+     * What the bank says the line is, when its layout says it (credit cards), or transfer_own when a checking layout's rule recognizes the holder's own money moving to their savings or card (ADR-024; posted as movement by rule). null: the sign decides.
      */
-    kind: "purchase" | "payment" | "refund" | "fee" | null;
+    kind: "purchase" | "payment" | "refund" | "fee" | "transfer_own" | null;
     /**
      * The printed subtotal the line belongs to (e.g. B, D, E on a card statement).
      */

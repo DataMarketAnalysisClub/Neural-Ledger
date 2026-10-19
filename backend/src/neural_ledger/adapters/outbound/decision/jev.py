@@ -14,7 +14,7 @@ Mapping:   ChoiceQuestion -> choice  (criteria: option -> note)   answer: choice
 
 A Noul has no confidence of its own, so its confidence is max(p, 1 - p), the same convention as the rules
 model. `jev-latest` is an alias that moves when a new release ships; the answering version is reported in
-`Judgment.source` ("jev:jev-1.13.0") so audit records show which model decided.
+`Judgment.source` ("jev:jev-1.14-20261014") so audit records show which model decided.
 
 Security notes:
 - The user's text goes in `state`, which Jev treats as data, but its docs warn that text arguing for its own

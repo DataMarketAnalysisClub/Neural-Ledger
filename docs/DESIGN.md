@@ -2,18 +2,21 @@
 name: Neural Ledger
 description: AI cash-flow copilot. The engine states facts in tabular figures, the copilot interprets in prose, and the user alone signs.
 colors:
-  cool-canvas: "#f4f5f7"
+  cool-canvas: "#f2f7f6"
   work-surface: "#ffffff"
-  rail-gray: "#eceef3"
-  hairline: "#dde1e6"
+  rail-gray: "#e6efed"
+  hairline: "#d8e5e3"
   control-stroke: "#7d8796"
-  context-gray: "#6f7a8a"
+  context-gray: "#5f7f7c"
   ink: "#14181f"
   ink-2: "#4a5361"
   ink-3: "#5f6875"
-  cobalt: "#3346c8"
-  cobalt-deep: "#2836a6"
-  cobalt-wash: "#eef0fb"
+  teal: "#0f766e"
+  teal-deep: "#115e59"
+  teal-wash: "#e0f2f0"
+  rail-ink: "#0b2f2e"
+  rail-text: "#f2f7f6"
+  rail-accent: "#5eead4"
   protected-green: "#0e7a4f"
   protected-green-wash: "#eaf5ef"
   caution-amber: "#9a5800"
@@ -80,13 +83,13 @@ spacing:
   2xl: "40px"
 components:
   button-primary:
-    backgroundColor: "{colors.cobalt}"
+    backgroundColor: "{colors.teal}"
     textColor: "{colors.work-surface}"
     rounded: "{rounded.control}"
     padding: "0 16px"
     height: "40px"
   button-primary-hover:
-    backgroundColor: "{colors.cobalt-deep}"
+    backgroundColor: "{colors.teal-deep}"
   button-secondary:
     backgroundColor: "{colors.work-surface}"
     textColor: "{colors.ink}"
@@ -160,7 +163,7 @@ components:
 
 # Design System: Neural Ledger
 
-Direction pinned by user (minimalist, flat surfaces, cobalt on cool neutrals); no concept roll. Recorded from the shipped build in `web/src` (tokens in `web/src/index.css`), mode Operate, code-led.
+Direction pinned by user (minimalist, flat surfaces, teal on cool neutrals); no concept roll. Recorded from the shipped build in `web/src` (tokens in `web/src/index.css`), mode Operate, code-led.
 
 ## Overview
 
@@ -168,13 +171,13 @@ Direction pinned by user (minimalist, flat surfaces, cobalt on cool neutrals); n
 
 Two voices share one screen. The engine states facts in tabular figures; the copilot interprets them in prose; only the user signs. The system makes that division visible: numbers are set in ink with tabular figures and carry their ISO code and provenance, the copilot's prose sits in a softer bordered bubble, and the one thing that gains weight, depth and a seal is the receipt the user confirms.
 
-The ground is a cool neutral canvas with white work surfaces separated by 1px hairlines, and a slightly cooler side rail. Everything is flat at rest. Cobalt is rare by design: it appears only where the user can act, where focus is, what is selected, and which step is current. Data is drawn in ink and gray, never in the accent, so the accent never competes with a figure. Status colors exist only as states and never travel without an icon and words.
+The ground is a cool neutral canvas with white work surfaces separated by 1px hairlines, and a dark rail (ink teal) that holds the brand and the navigation. Everything is flat at rest. Teal is rare by design: it appears only where the user can act, where focus is, what is selected, and which step is current. Data is drawn in ink and gray, never in the accent, so the accent never competes with a figure. Status colors exist only as states and never travel without an icon and words.
 
-Density is that of a working tool: a fixed rem type scale, 6px corners, sections separated by space and rules rather than nested cards. The interface refuses the fintech default of three equal KPI tiles, a navy rail with a teal accent, and a chat that looks like it decides.
+Density is that of a working tool: a fixed rem type scale, 6px corners, sections separated by space and rules rather than nested cards. The interface refuses the fintech default of three equal KPI tiles and a chat that looks like it decides.
 
 **Key Characteristics:**
 - Cool neutral canvas, white surfaces, 1px hairlines; flat at rest.
-- Cobalt only for action, focus, selection and the current step.
+- Teal only for action, focus, selection and the current step.
 - Ink for the data that matters, gray for context; status color only with icon and words.
 - Geist throughout with tabular figures; Geist Mono only for hashes, ids and codes.
 - Every amount carries its ISO code: `CLP 1,500,000`.
@@ -182,32 +185,33 @@ Density is that of a working tool: a fixed rem type scale, 6px corners, sections
 
 ## Colors
 
-A three-layer palette (primitives, semantic roles, component tokens in `web/src/index.css`): cool grays, one cobalt, and three state hues. Components consume only semantic roles, never primitives.
+A three-layer palette (primitives, semantic roles, component tokens in `web/src/index.css`): cool grays, one teal, and three state hues. Components consume only semantic roles, never primitives.
 
 ### Primary
-- **Cobalt** (cobalt): primary buttons, focus outline (2px, offset 2px), caret, text selection wash (15% cobalt), the current step in the receipt stepper, the active nav icon. White on cobalt measures 7.37:1.
-- **Deep Cobalt** (cobalt-deep): hover state of cobalt actions (white on it 9.68:1).
-- **Cobalt Wash** (cobalt-wash): the accent tone of badges and notices; cobalt text on it 6.49:1.
+- **Teal** (teal): primary buttons, focus outline (2px, offset 2px), caret, text selection wash (15% teal), the current step in the receipt stepper, the active nav icon. White on teal measures 5.47:1.
+- **Deep Teal** (teal-deep): hover state of teal actions (white on it 7.58:1).
+- **Teal Wash** (teal-wash): the copilot reply bubble (with a 3px teal edge, so the interpreting voice reads apart from the engine's figures) and the accent tone of badges and notices; teal text on it 4.72:1.
 
 ### Neutral
-- **Cool Canvas** (cool-canvas): page ground, secondary-button hover, copilot reply bubble, segmented-control track.
+- **Cool Canvas** (cool-canvas): page ground, secondary-button hover, segmented-control track.
 - **Work Surface** (work-surface): cards, inputs, receipt, popovers, the selected segment or nav item.
-- **Rail Gray** (rail-gray): the side rail, skeletons, neutral badges, quiet-button hover.
+- **Rail Gray** (rail-gray): skeletons, neutral badges, quiet-button hover.
+- **Rail Ink** (rail-ink): the dark rail, the sidebar from `lg` and the header on a phone. Inside it the semantic roles are remapped (`.rail` in `web/src/index.css`): rail-text 13.29:1, mist text 9.85:1 and 6.95:1, rail-accent (the active icon and the mark's point) 9.72:1.
 - **Hairline** (hairline): every 1px rule and container border; chart gridlines.
 - **Control Stroke** (control-stroke): input and secondary-button borders, the zero axis, connectors (3.63:1 on white, non-text only).
 - **Ink** (ink): primary text, the focus data series, bridge totals, completed steps, the user's chat bubble. 17.79:1 on white.
-- **Ink 2** (ink-2): secondary text (7.77:1 on white, 6.70:1 on rail).
-- **Ink 3** (ink-3): tertiary text, captions, axis labels (5.64:1 on white, 4.86:1 on rail).
-- **Context Gray** (context-gray): the context data series and negative cash-flow steps in the bridge only; never text.
+- **Ink 2** (ink-2): secondary text (7.77:1 on white, 6.64:1 on rail gray).
+- **Ink 3** (ink-3): tertiary text, captions, axis labels (5.64:1 on white, 4.82:1 on rail gray).
+- **Context Gray** (context-gray, a sea gray; 4.36:1 on white, non-text only): the context data series and negative cash-flow steps in the bridge only; never text.
 
 ### Tertiary (states only)
 - **Protected Green** (protected-green): protected / verified / on track (5.36:1 on white, 4.80:1 on its wash).
 - **Caution Amber** (caution-amber): clarification needed, validity nearing expiry (5.11:1 on its wash).
 - **Breach Red** (breach-red): the safety floor line, breaches, refusals, expired terms, field errors (6.57:1 on white, 5.92:1 on its wash).
-- Each state hue has a wash (protected-green-wash, caution-amber-wash, breach-red-wash) used as the badge and notice ground.
+- Each state hue has a wash (protected-green-wash, caution-amber-wash, breach-red-wash) used as the badge and notice ground, and as the ground of the Overview bridge card: green wash when a surplus is protected, red wash when there is a shortfall.
 
 ### Named Rules
-**The Reserved Cobalt Rule.** Cobalt marks action, focus, selection and the current step. It is never a data series, a decorative fill, or a heading color.
+**The Reserved Accent Rule.** Teal marks action, focus, selection and the current step. It is never a data series, a decorative fill, or a heading color.
 
 **The Ink-Not-Accent Data Rule.** The series that matters is drawn in ink (solid, 2.5px); context is gray and also distinguished by line style (dashed). Text never wears a series color.
 
@@ -243,7 +247,7 @@ The scale is fixed rem (ratio about 1.2) for product UI; only the hero figure is
 
 ## Layout
 
-- **Shell:** at `lg` (1024px) and up, a 248px sticky side rail (rail-gray, full viewport height) beside the content column; below `lg` the rail stacks on top and the nav becomes a grid (3 columns, 6 from `sm`) so no item hides off-screen. Nav targets are at least 44px tall on touch layouts.
+- **Shell:** at `lg` (1024px) and up, a 248px sticky dark rail (rail-ink, full viewport height) beside the content column. Below `lg` the rail is replaced by a sticky dark header (brand, the profile on the right, the sandbox seal or the demo persona switch under them) and a fixed bottom bar; see Navigation. Touch targets are at least 44px.
 - **Content column:** a thin top bar (sandbox seal, mode, as-of date, right-aligned) above `main`, max width 1280px, padding 24px (40px from `lg`), vertical padding 32px (40px from `lg`).
 - **Rhythm:** a 4px base. Common steps are 8, 12, 16, 24 and 32px; page header to content 32px; section heading to content 16px; receipt internal blocks 20 to 24px.
 - **Sections** are separated by space and hairlines, not nested cards. A white surface is used for a working object (the bridge, the chat, the receipt, tables), not as a default wrapper for every block.
@@ -260,7 +264,7 @@ Flat by default. Depth is conveyed by ground changes (canvas, white surface, rai
 ### Named Rules
 **The Earned Depth Rule.** Nothing is lifted at rest. The receipt gains its shadow (and a stronger ink border) only after confirmation; overlays carry it because they float. No card, button or panel gets a shadow for decoration.
 
-**The Ring-Not-Shadow Selection Rule.** A selected segment or active nav item becomes a white surface with a 1px hairline ring. Selection never uses a shadow or a fill of cobalt.
+**The Ring-Not-Shadow Selection Rule.** A selected segment or active nav item becomes a white surface with a 1px hairline ring. Selection never uses a shadow or a fill of teal.
 
 ## Shapes
 
@@ -271,7 +275,7 @@ Gently squared corners. Controls and containers use 6px (control); 10px (object)
 ### Buttons
 Restrained and exact; color does the work, not decoration.
 - **Shape:** gently squared (6px), sizes 32 / 40 / 44px high with 12 / 16 / 20px side padding, 14px medium label (16px at the large size).
-- **Primary:** cobalt with white text; hover deepens to cobalt-deep; press scales to 0.97.
+- **Primary:** teal with white text; hover deepens to teal-deep; press scales to 0.97.
 - **Money:** the primary look without the press scale, for any action that moves or commits money (confirm terms, execute). Only color changes.
 - **Secondary:** white surface, 1px control-stroke border, ink text; hover shifts to canvas.
 - **Quiet:** ink-2 text with no ground; hover reveals rail gray and ink text.
@@ -279,7 +283,7 @@ Restrained and exact; color does the work, not decoration.
 - **Busy:** a spinning notch icon precedes the label; disabled uses the control-stroke ground or 60% opacity.
 
 ### Chips
-- **Status badge:** pill, wash ground with its state hue as text, a bold 14px icon and a 13px medium label. Tones: positive, warning, danger, neutral (rail / ink-2), accent (cobalt wash / cobalt).
+- **Status badge:** pill, wash ground with its state hue as text, a bold 14px icon and a 13px medium label. Tones: positive, warning, danger, neutral (rail / ink-2), accent (teal wash / teal).
 - **Suggestion chip (copilot):** pill, 32px tall, canvas ground, hairline border, ink-2 text; hover darkens border and text.
 - **Redaction chip:** marks personal data removed from a statement at import (ADR-028). An inline pill on rail gray with ink-2 text, a bold 12px eye-slash icon and a 12px medium label that says what was hidden ("Name hidden"). It sits in the line of text it replaces, never wraps and carries no state color.
 
@@ -293,13 +297,13 @@ Restrained and exact; color does the work, not decoration.
 
 ### Inputs / Fields
 - **Style:** 40px tall, white, 1px control-stroke border, 6px radius, 12px side padding, ink-3 placeholder.
-- **Focus:** border turns cobalt plus a 2px cobalt ring at 25% opacity.
+- **Focus:** border turns teal plus a 2px teal ring at 25% opacity.
 - **Error:** border turns breach red; the error text is linked by `aria-describedby`.
 
 ### Navigation
-- **Style:** rail items 40px tall at `lg`, icon (18px) plus 14px label, ink-2 text; hover lifts to a 60% white ground.
-- **Active:** white surface, 1px hairline ring, medium ink label, the icon filled and cobalt.
-- **Mobile:** a grid of stacked icon-over-label tiles (min 44px), every item visible.
+- **Style:** rail items 40px tall at `lg`, icon (18px) plus 14px label, light text on the rail; hover lifts to a 60% ground.
+- **Active:** a 10% light surface, 1px hairline ring, medium label, the icon filled and in rail-accent.
+- **Mobile (below `lg`):** a fixed bottom bar of five slots: Overview, Commitments, the Copilot raised in the middle as the one teal control, Plan, and More. More opens a sheet that unfolds upward with the remaining screens (Purchase check, Statements, Audit trail) and Sign out. The profile lives in the header. The bar respects the safe area; the active tab shows a 2px teal line, a filled icon and its label. The app opens on the Copilot the first time on a phone. Motion is 150 to 240ms and off under reduced motion.
 - **Persona switcher:** a segmented control on a canvas track; the selected persona is a white segment with a hairline ring.
 
 ### Liquidity Bridge (signature)
@@ -312,7 +316,7 @@ Today's balance stepping down, payday cycle by payday cycle, to the lowest point
 One receipt changes state from Proposal to Confirmed to Executed; terms are read-only rows over hairlines, introduced by a lock icon.
 - **Pending:** white, 10px corners, hairline border, flat.
 - **Confirmed / Executed:** the border strengthens to 20% ink and the object shadow appears; a 44px round seal medallion (ink, or green once executed) stamps in with a 200ms scale from 0.85.
-- **Stepper:** three 4px bars; done is ink with a check, current is cobalt and semibold, upcoming is hairline.
+- **Stepper:** three 4px bars; done is ink with a check, current is teal and semibold, upcoming is hairline.
 - **Validity:** a tabular countdown in ink-2, amber near expiry, red when expired.
 - **Actions:** full-width money buttons at the large size; execution is always a separate step after confirmation.
 
@@ -331,7 +335,7 @@ User messages are ink bubbles with white text (6px, tail corner 2px at bottom ri
 ## Do's and Don'ts
 
 ### Do:
-- **Do** reserve cobalt (#3346C8) for action, focus, selection and the current step.
+- **Do** reserve teal (#3346C8) for action, focus, selection and the current step.
 - **Do** draw the data that matters in ink and its context in gray, distinguished by line style as well as tone.
 - **Do** pair every green, amber or red with an icon and words.
 - **Do** show the ISO code on every amount (`CLP 1,500,000`) with a real minus sign; drop it only where a header carries it once.
@@ -343,9 +347,9 @@ User messages are ink bubbles with white text (6px, tail corner 2px at bottom ri
 - **Do** keep strings in `web/src/i18n/en.ts`, English first.
 
 ### Don't:
-- **Don't** use cobalt as a chart series, a decorative fill or a heading color.
+- **Don't** use teal as a chart series, a decorative fill or a heading color.
 - **Don't** lift any surface with a shadow except the confirmed receipt and floating overlays.
-- **Don't** compose three equal KPI tiles, a navy rail with a teal accent, or a chat that looks like it decides.
+- **Don't** compose three equal KPI tiles or a chat that looks like it decides.
 - **Don't** animate money counting up, timer digits, block alerts or success celebrations.
 - **Don't** apply a press scale to buttons that move or commit money.
 - **Don't** set money in mono or show a bare currency symbol.

@@ -158,7 +158,8 @@ flowchart LR
 | `ActionRepository` | Proposals and single-use authorizations | memory, SQLite | Postgres |
 | `AuditLog` | Append-only, hash-chained | memory, SQLite | Postgres |
 | `SnapshotStore` | Computed plans by snapshot id (where proposal amounts come from) | memory | SQLite |
-| `UserProfileStore` | Typed user record | memory (seeded from fixtures) | SQLite |
+| `UserProfileStore` | Typed user record | Read-only persona overlay over a writable memory or SQLite store | Postgres |
+| `ProfileWrites` | Compare-and-set profile and audit event in one transaction | memory, SQLite | Postgres |
 | `ConversationStore` | Session history | memory | SQLite |
 | `Signer` | HMAC over canonical terms | `HmacSigner` (env secret) | KMS |
 | `StatementReader` | Bank statement file → `BankStatement` | `OcrStatementReader` (ocr_tabular + one `Bank` per layout; offline) | more banks |
@@ -315,14 +316,22 @@ neural-ledger/
 | S11 | Duplicate execution | Atomic consume (8 concurrent attempts → exactly 1 execution) |
 | S12 | Malformed input | Typed parsing → `INVALID_INPUT`; unknown user → `INSUFFICIENT_DATA` |
 | S15 | Personal data in an imported cartola read back through the API, the audit export, the database files or the logs (S13 and S14 test Jev; see `SECURITY.md`) | Removed once at import by deterministic rules (+ an optional detector); only placeholders and a masked account are stored (ADR-028) |
+| S16 | Forged identity (`X-User-Id`, forged cookie, no cookie) | Accounts mode: identity only from the `nl_session` cookie; the header is 400 everywhere but `GET /health`; every non-public route is 401 without a session |
+| S17 | Stolen or replayed session | 12-hour absolute expiry, revoked at sign-out, `HttpOnly; SameSite=Strict` cookie, only `sha256(token)` stored |
+| S18 | Reading another account or persona | Every read is scoped to the session's user; demo sessions open only the allowlisted personas |
+| S19 | The model writes the profile or tolerance | The 4 profile-write names are T3 `SELF_ESCALATION`; profile writes are user-only HTTP routes, atomic with their audit event |
+| S20 | Account enumeration at sign-in | Identical 401 bodies and the same scrypt work for an absent email and a wrong password |
+| S21 | Instructions in a display name | Letters-only names; wrapped as untrusted text for the model |
 
-Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_hash` (a hash chain), so any edit is detectable (`/v1/audit/verify`). Hidden model reasoning is never logged. **Known risks for the self-assessment:** sandbox identity is a header (no real authentication; since ADR-028 statements expose financial data only); the rules decision model is keyword-based; there is no rate limiting; the HMAC secret is environment-based (not a KMS).
+**Identity (`NL_AUTH`).** `demo` (code default: local runs, tests, the recorded demo) keeps the `X-User-Id` header, read-only profiles and no auth routes. `accounts` (docker compose) adds sign-up, sign-in, sign-out and demo sessions (`/v1/auth/*`, `GET /v1/me`) with an HttpOnly `nl_session` cookie, rejects the header, checks the Origin of unsafe requests against `NL_APP_ORIGINS`, and opens the profile writes (`PUT /v1/profile`, `POST /v1/profile/questionnaire`) to account users only. Each profile write commits with its `PROFILE_UPDATED` audit event or not at all. The deployed UI must speak accounts mode, so the API and web changes merge and deploy together.
+
+Audit events carry the Spec v0 fields plus `sequence`, `prev_hash` and `event_hash` (a hash chain), so any edit is detectable (`/v1/audit/verify`). Hidden model reasoning is never logged. **Known risks for the self-assessment:** demo mode identifies the user by a header and must not be exposed publicly (since ADR-028 statements expose financial data only); demo personas are shared by every visitor; sign-in has no rate limit or lockout; the rules decision model is keyword-based; there is no rate limiting; the HMAC secret is environment-based (not a KMS).
 
 ## 8. Financial core (summary of Bruno's design, as implemented)
 
 - **Stage 1, estimation** (ledger → model): Role A, `domain/finance/estimation.py`. Implemented: commitments (4.1), income (4.2), spend (4.3) over pay cycles. It reproduces `data/personas/camila.json` and `diego.json` field by field from `data/ledgers/*.json`, and E01–E14 pass on the estimated models. Switch the app with `NL_MODEL_SOURCE=ledger` (default stays `fixture`). Implementation choices: F9–F15.
 - **Stage 2, projection** (model → answers): implemented in `domain/finance/` as a reference for Role A to own, review or replace. Trough recurrence `B_m = B_(m-1) + I − K − V − R − P − S`; protected surplus = minimum conservative headroom; rule sizing `R = floor_10k(share × min A over [s, s+5])` with H5; cuota `c = P·r/(1−(1+r)^−n)`; capacity = weakest band.
-- **Parameters** `fc-0.1` live in `domain/finance/params.py`. Changing one means a new version, which the audit log records.
+- **Parameters** `fc-0.3` live in `domain/finance/params.py` (`fc-0.1` plus any installment count from 1 to 48, and no interest on a single charge, ADR-034). Changing one means a new version, which the audit log records.
 - **All 14 golden answers (E01–E14) reproduce** on fixture and ledger sources. Unit invariant, malformed-ledger/robustness and hypothesis property suites guard the implementation; ADR-014 retains two strict counterexample xfails and two non-strict xpasses. The opt-in synthetic backtest (F16-F17) is implementation validation only; see `docs/FINANCIAL_CORE.md` and `docs/BACKTEST.md`.
 
 ## 9. What the review found

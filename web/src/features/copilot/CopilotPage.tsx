@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
-import { ArrowUp, ChatText, Info, SealCheck, Wrench } from "@phosphor-icons/react";
-import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending } from "@/api/hooks";
+import { ArrowUp, ChatText, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
+import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending, usePersona } from "@/api/hooks";
 import { ApiError, type ActionOutcome, type ChatReply } from "@/api/client";
 import { ProposalReceipt, VerdictBanner } from "@/components/actions";
 import { Button, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
@@ -22,7 +22,19 @@ function outcomeFrom(error: unknown): ActionOutcome | null {
   return null;
 }
 
+/**
+ * One conversation per session_id. A new conversation (or another persona) remounts it, so the log, the pending
+ * proposal and every request state start empty; the API then answers for the new session only.
+ * shortcut: the log lives only in this component, so a reload or a new conversation drops it; replace with
+ * GET /v1/chat/history when the backend stores conversations (plan item D2).
+ */
 export function CopilotPage() {
+  const { sessionId } = usePersona();
+  return <Conversation key={sessionId} />;
+}
+
+function Conversation() {
+  const { newSession } = usePersona();
   const location = useLocation();
   const initialPrompt = (location.state as { prompt?: string } | null)?.prompt ?? "";
   const state = useFinancialState();
@@ -49,8 +61,18 @@ export function CopilotPage() {
   const shownProposal = proposal ?? pendingProposal;
 
   useEffect(() => {
-    logRef.current?.lastElementChild?.scrollIntoView({ block: "end" });
+    // Scroll the log only: scrollIntoView would also scroll the window.
+    const log = logRef.current;
+    if (log) log.scrollTop = log.scrollHeight;
   }, [messages, chat.isPending]);
+
+  // Below xl the receipt sits under the chat: bring a new proposal into view so the terms are never missed.
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const proposalId = proposal?.proposal_id;
+  useEffect(() => {
+    if (!proposalId || typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 1279px)").matches) return;
+    receiptRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, [proposalId]);
 
   function send(text: string) {
     const message = text.trim();
@@ -103,11 +125,20 @@ export function CopilotPage() {
 
   return (
     <>
-      <PageHeader title={t("copilot.title")} subtitle={t("copilot.subtitle")} />
+      <PageHeader
+        title={t("copilot.title")}
+        subtitle={<span className="hidden sm:inline">{t("copilot.subtitle")}</span>}
+        actions={
+          <Button variant="secondary" size="sm" onClick={newSession}>
+            <NotePencil aria-hidden className="size-4" />
+            {t("copilot.newConversation")}
+          </Button>
+        }
+      />
 
       <div className="grid gap-10 xl:grid-cols-[1fr_400px]">
-        <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-15rem)] min-h-[440px] min-w-0 flex-col rounded-control border border-line bg-surface">
-          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
+        <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-20rem)] min-h-[360px] min-w-0 flex-col rounded-control border border-line bg-surface lg:h-[calc(100dvh-15rem)] lg:min-h-[440px]">
+          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="relative min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
             {messages.length === 0 && (
               <li className="text-sm text-ink-2">
                 <p>{t("copilot.empty")}</p>
@@ -131,20 +162,21 @@ export function CopilotPage() {
           </ol>
 
           {chat.isError && (
-            <div className="px-6 pb-3">
+            <div className="px-4 pb-3 sm:px-6">
               <ErrorState error={chat.error} />
             </div>
           )}
 
-          <div className="border-t border-line p-4">
-            <div className="-mx-1 mb-3 flex flex-wrap gap-2 px-1" role="group" aria-label={t("copilot.suggestions")}>
+          <div className="border-t border-line p-3 sm:p-4">
+            {/* One scrolling row on a phone, so the suggestions never push the composer off screen. */}
+            <div className="-mx-3 mb-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:-mx-1 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={t("copilot.suggestions")}>
               {prompts.map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => send(p)}
                   disabled={chat.isPending}
-                  className="h-8 shrink-0 rounded-full border border-line bg-canvas px-3 text-xs whitespace-nowrap text-ink-2 transition-colors duration-150 hover:border-control hover:text-ink disabled:opacity-50"
+                  className="h-9 shrink-0 snap-start rounded-full border border-line bg-canvas px-3 text-xs whitespace-nowrap text-ink-2 transition-colors duration-150 hover:border-control hover:text-ink disabled:opacity-50"
                 >
                   {p}
                 </button>
@@ -176,7 +208,7 @@ export function CopilotPage() {
           </div>
         </section>
 
-        <div className="min-w-0 xl:sticky xl:top-6 xl:self-start">
+        <div ref={receiptRef} className="min-w-0 scroll-mt-28 xl:sticky xl:top-6 xl:self-start">
           <ProposalReceipt
             proposal={shownProposal}
             authorization={shownAuthorization}
@@ -215,7 +247,7 @@ function CopilotTurn({ message, currency }: { message: Message; currency: string
         <ChatText aria-hidden className="size-4" />
         {t("copilot.voice")}
       </p>
-      <div className="rounded-control rounded-tl-[2px] border border-line bg-canvas px-4 py-3 text-[15px] leading-relaxed text-ink">
+      <div className="rounded-control rounded-tl-[2px] border border-accent/20 border-l-[3px] border-l-accent bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink">
         {/* Plain text only: model output is never rendered as markup. */}
         <p className="whitespace-pre-line">{message.text}</p>
       </div>
