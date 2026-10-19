@@ -10,6 +10,7 @@ import {
   Receipt,
   UserCircle,
 } from "@phosphor-icons/react";
+import { BrandMark } from "@/components/BrandMark";
 import { CopilotGlyph, type NavIcon } from "@/components/CopilotGlyph";
 import { useFinancialState, useHealth, usePersona } from "@/api/hooks";
 import type { PersonaId } from "@/api/client";
@@ -36,22 +37,6 @@ const NAV: NavItem[] = [
   { to: "/statements", label: "nav.statements", icon: Files },
   { to: "/profile", label: "auth.account", icon: UserCircle },
 ];
-
-/** The product mark: an N built from the bridge's steps, over the dashed safety floor, with the accent point the user signs. It sits on the rail, so its roles are the rail's. */
-function Mark() {
-  return (
-    <svg aria-hidden viewBox="0 0 64 64" className="size-8 shrink-0">
-      <rect width="64" height="64" rx="14" fill="var(--text)" />
-      <g fill="var(--bg-rail)">
-        <rect x="16" y="14" width="7" height="32" />
-        <rect x="41" y="14" width="7" height="32" />
-        <polygon points="16,14 23,14 48,46 41,46" />
-      </g>
-      <line x1="14" y1="53" x2="40" y2="53" stroke="var(--bg-rail)" strokeOpacity="0.55" strokeWidth="2.5" strokeDasharray="6 3" />
-      <circle cx="49.5" cy="53" r="4.5" fill="var(--accent)" />
-    </svg>
-  );
-}
 
 function PersonaSwitcher({ group = "persona", compact = false }: { group?: string; compact?: boolean }) {
   const { persona, setPersona } = usePersona();
@@ -142,7 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside className="rail hidden border-line bg-rail lg:sticky lg:top-0 lg:flex lg:h-dvh lg:flex-col lg:border-r">
         <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
-          <Mark />
+          <BrandMark />
           <span className="text-base font-semibold tracking-[-0.01em] text-ink">{t("app.name")}</span>
         </div>
         {!isAccount && <div className="px-4 pb-4"><PersonaSwitcher /></div>}
@@ -180,7 +165,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header ref={headerRef} className="rail sticky top-0 z-30 border-b border-line bg-rail pt-[env(safe-area-inset-top)] lg:hidden">
           <div className="flex h-14 items-center justify-between gap-3 pr-2 pl-4">
             <div className="flex min-w-0 items-center gap-2.5">
-              <Mark />
+              <BrandMark />
               <span className="truncate text-base font-semibold tracking-[-0.01em] text-ink">{t("app.name")}</span>
             </div>
             {isAccount && <div className="flex items-center gap-1">
