@@ -320,7 +320,7 @@ export const es: Messages = {
       source: "Desde",
       destination: "Hacia",
       effective: "Comienza",
-      actions: { create_savings_rule: "Crear una regla de ahorro" },
+      actions: { create_savings_rule: "Crear una regla de ahorro", set_liquidity_floor: "Fijar tu piso de liquidez" },
       frequencies: { monthly: "Mensual", weekly: "Semanal" },
       accounts: { checking: "Cuenta corriente", sandbox_savings: "Ahorro del sandbox" },
       fromPlan: "Construida desde el plan guardado {snapshot}",
@@ -341,6 +341,13 @@ export const es: Messages = {
     executed: "Regla {reference} creada. Tu saldo no cambió.",
     confirmed: "Confirmaste estos términos. Todavía no se ha ejecutado nada.",
     newProposal: "Preparar una nueva propuesta",
+    floor: {
+      title: "Piso de liquidez",
+      confirmNote: "Confirmar todavía no cambia nada. Activar el piso es un paso aparte.",
+      execute: "Activar el piso de {amount}",
+      executeNote: "Guarda el piso como una regla. No se mueve dinero; desde entonces las proyecciones, los planes y la revisión de compras usan este piso en vez del predeterminado.",
+      executed: "Piso {reference} activo. Tu saldo no cambió.",
+    },
   },
   blocked: {
     title: "Bloqueado",
