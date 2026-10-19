@@ -26,6 +26,9 @@ ocr = ["neural-ledger[pdf]", "pymupdf>=1.24", "Pillow>=10", "numpy>=1.26", "easy
 receipts = ["zxing-cpp>=2.2", "Pillow>=10", "numpy>=1.26"]
 # Spending categories for imported statement lines (naive Bayes, trained at first use from package data).
 ml = ["scikit-learn>=1.4"]
+# Concept retrieval on ChromaDB (ADR-039). fastembed runs the multilingual embedding model on ONNX Runtime, without torch;
+# the model (~240 MB) is downloaded at first use into NL_KB_DIR. Without the extra the offline `lexical` index answers.
+rag = ["chromadb>=0.5", "fastembed>=0.5"]
 
 [project.scripts]
 neural-ledger = "neural_ledger.bootstrap.cli:main"
