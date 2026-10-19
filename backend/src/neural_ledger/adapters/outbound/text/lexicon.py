@@ -16,6 +16,11 @@ INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
     (Intent.OUT_OF_SCOPE, re.compile(
         r"\b(stocks?|shares|acciones|crypto\w*|bitcoin|btc|ethereum|cripto\w*|forex|trading|invest(?:ing|ment|ments)?|"
         r"invert\w*|inversi[oó]n\w*|tax(?:es)?|impuestos?)\b", re.I)),
+    # Before the others: "saldo" and "balance" alone mean a forecast, "regla" alone an action (ADR-037).
+    (Intent.SET_LIQUIDITY_FLOOR, re.compile(
+        r"\b(piso|saldo m[ií]nimo|m[ií]nimo de saldo|liquidity floor|floor|minimum balance|"
+        r"(?:never|not) (?:go|goes|drop|drops|fall|falls) below|(?:baje|bajar|quede) (?:de|bajo|por debajo)|"
+        r"(?:keep|mantener|mant[eé]n) (?:at least|al menos|como m[ií]nimo))\b", re.I)),
     (Intent.EXECUTE_ACTION, re.compile(
         r"\b(execute|ejecut\w*|go ahead|adelante|do it|hazlo|activate|activa\w*|transfer\w*|transfi\w*|move|mueve|send|env[ií]a)\b", re.I)),
     (Intent.EXPLAIN, re.compile(r"\b(what is an?|what's an?|what are|qu[eé] (?:es|son)|explain (?:what|how)|expl[ií]came|define)\b", re.I)),

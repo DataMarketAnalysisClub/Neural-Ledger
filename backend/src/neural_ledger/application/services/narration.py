@@ -245,6 +245,15 @@ def _action(p: Payload, cur: str) -> list[str]:
     outcome = p.get("outcome", {})
     status = outcome.get("status")
     terms = (outcome.get("proposal") or outcome.get("authorization") or {}).get("terms") or {}
+    floor = terms.get("action") == "set_liquidity_floor"
+    if status == "PROPOSED" and floor:
+        return [
+            f"Please review and confirm in the app: a liquidity floor rule of {_money(terms['amount'], cur)}, the minimum "
+            f"balance your checking account keeps every month, starting {terms['effective_date']}. "
+            "Once it is active, forecasts, plans and purchase checks use it instead of the default floor. Nothing changes until you confirm."
+        ]
+    if status == "EXECUTED" and floor:
+        return [f"Done: your liquidity floor of {_money(terms['amount'], cur)} is now active."]
     if status == "PROPOSED":
         return [
             f"Please review and confirm in the app: a {terms['frequency']} transfer of {_money(terms['amount'], cur)} "
@@ -299,6 +308,7 @@ _HANDLERS = {
     "derive_permitted_profile": _permitted,
     "compute_savings_plan": _plan,
     "propose_savings_rule": _action,
+    "propose_liquidity_floor": _action,
     "execute_sandbox_action": _action,
     "get_pending_actions": _pending,
     "get_audit_events": _audit,

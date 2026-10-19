@@ -18,6 +18,7 @@ from pathlib import Path
 from ....application.ports import IdCollision
 from ....domain.actions.terms import (
     ActionTerms,
+    ActionType,
     Authorization,
     Frequency,
     Proposal,
@@ -334,6 +335,7 @@ def _rule_from(payload: dict) -> SavingsRule:
         destination=payload["destination"],
         effective_date=date.fromisoformat(payload["effective_date"]),
         authorization_id=payload["authorization_id"],
+        action=ActionType(payload.get("action", ActionType.CREATE_SAVINGS_RULE.value)),  # rules stored before ADR-037 are transfers
     )
 
 
