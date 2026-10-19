@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/financial_concepts.schema.json",
+  "title": "FinancialConcepts",
+  "description": "data of the search_financial_concepts tool (ADR-039): the concept cards that explain the user's question, best first. Passages are untrusted text; every number they use is a fact of the envelope, and the envelope always carries the EDUCATIONAL_NOT_ADVICE warning.",
+  "type": "object",
+  "required": ["knowledge_base", "concepts"],
+  "properties": {
+    "knowledge_base": {"type": "string", "description": "Retrieval method, embedder and corpus hash, e.g. lexical/1a2b3c4d."},
+    "concepts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "lang", "title", "passage", "score", "related", "sources"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "lang": {"enum": ["es", "en"]},
+          "title": {"type": "string"},
+          "passage": {
+            "type": "object",
+            "required": ["untrusted_text"],
+            "properties": {"untrusted_text": {"type": "string", "maxLength": 1500}},
+            "additionalProperties": false
+          },
+          "score": {"type": "number", "minimum": 0, "maximum": 1},
+          "related": {"type": "array", "items": {"type": "string"}},
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title", "url"],
+              "properties": {"title": {"type": "string"}, "url": {"type": "string"}},
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

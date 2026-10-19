@@ -70,6 +70,7 @@ from ..application.ports import EmailDomainCheck, KnowledgeBase, PersonalDataDet
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.knowledge_fallback import FallbackKnowledgeBase
+from ..application.services.knowledge_threshold import ThresholdKnowledgeBase
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
 from ..application.services.redaction import StatementRedactor
@@ -79,6 +80,7 @@ from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.documents import DocumentUseCases
+from ..application.use_cases.education import EducationUseCases
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
@@ -135,6 +137,12 @@ class Adapters:
     audit_log: InMemoryAuditLog | SqliteAuditLog
     source: PersonaFixtureSource | LedgerModelSource
     knowledge_base: KnowledgeBase | None = None
+
+
+# Relevance floor per index, by NL_KNOWLEDGE_BASE name (ADR-039): scores are on different scales, so each index in the
+# chain is wrapped with its own floor (ThresholdKnowledgeBase) before the fallback. From the WP2 eval on the 70 cards:
+# lexical answerable min 0.573 / off-topic max 0.379; chroma answerable min 0.425 / off-topic max 0.23.
+KB_MIN_SCORES: dict[str, float] = {"lexical": 0.45, "chroma": 0.30}
 
 
 # NL_EMAIL_CHECKS, applied in order at sign-up: disposable (offline blocklist) and dns (the domain receives mail).
@@ -304,7 +312,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if unknown:
         raise ValueError(f"unknown NL_KNOWLEDGE_BASE {', '.join(unknown)!r} (known: {', '.join(KNOWLEDGE_BASES)})")
     cards = load_cards()
-    kb_chain = [KNOWLEDGE_BASES[name](s, cards) for name in s.knowledge_bases]
+    kb_chain = [ThresholdKnowledgeBase(KNOWLEDGE_BASES[name](s, cards), KB_MIN_SCORES[name]) for name in s.knowledge_bases]
     knowledge_base = kb_chain[0] if len(kb_chain) == 1 else FallbackKnowledgeBase(kb_chain)
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
@@ -316,8 +324,10 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
         financial, audit_log, clock, ids, snapshots,
     )
+    # The floor is applied per index (KB_MIN_SCORES, ThresholdKnowledgeBase) when the chain is built, so 0 here.
+    education = EducationUseCases(knowledge_base, 0.0, profiles)
     registry = build_registry(
-        financial, actions, profile_uc, audit_uc, documents, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
+        financial, actions, profile_uc, audit_uc, documents, education, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
     chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
 

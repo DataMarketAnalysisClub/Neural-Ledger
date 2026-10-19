@@ -10,9 +10,9 @@ from neural_ledger.adapters.outbound.knowledge.corpus_loader import load_cards
 from neural_ledger.adapters.outbound.knowledge.lexical import LexicalKnowledgeBase
 from neural_ledger.domain.education.concepts import LANGUAGES, ConceptCard, Passage
 from tests.rag_eval.run import K, answerable, load_questions, score
-from tests.unit.test_concept_cards import PLANNED
 
 QUESTIONS = load_questions()
+CARD_IDS = frozenset(c.id for c in load_cards())
 
 
 def test_every_question_is_well_formed_and_unique():
@@ -20,11 +20,11 @@ def test_every_question_is_well_formed_and_unique():
     for q in QUESTIONS:
         assert set(q) == {"q", "lang", "expected"}
         assert q["lang"] in LANGUAGES and q["q"].strip() and isinstance(q["expected"], list)
-        assert all(i in PLANNED for i in q["expected"]), q
+        assert all(i in CARD_IDS for i in q["expected"]), q
 
 
-def test_the_set_covers_every_planned_concept_both_languages_and_off_topic_questions():
-    assert {i for q in QUESTIONS for i in q["expected"]} == PLANNED
+def test_the_set_covers_every_concept_both_languages_and_off_topic_questions():
+    assert {i for q in QUESTIONS for i in q["expected"]} == CARD_IDS
     assert min(Counter(q["lang"] for q in QUESTIONS).values()) >= 15
     assert sum(1 for q in QUESTIONS if not q["expected"]) >= 4
 
