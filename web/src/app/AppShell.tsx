@@ -17,6 +17,7 @@ import type { PersonaId } from "@/api/client";
 import { t, type MessageKey } from "@/i18n";
 import { formatDate } from "@/lib/format";
 import { Button, ErrorState, StatusBadge, cn } from "@/components/ui";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { MobileBar, ProfileLink } from "./MobileNav";
 import { useMarkLanded } from "./mobileLanding";
@@ -179,13 +180,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <div className="hidden flex-wrap items-center justify-between gap-3 border-b border-line px-10 py-3 lg:flex">
           <SandboxSeal showData={showData} />
-          {isAccount && <div className="flex flex-wrap items-center gap-3 text-sm">
-            {isMock && <StatusBadge tone="warning">{t("auth.mock")}</StatusBadge>}
-            <Button asChild variant="quiet" size="sm"><Link to="/profile">{t("auth.account")}</Link></Button>
-            <Button variant="quiet" size="sm" onClick={() => signout.mutate()} disabled={signout.isPending} busy={signout.isPending}>
-              {signout.isPending ? t("auth.signingOut") : t("auth.signout")}
-            </Button>
-          </div>}
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <LanguagePicker />
+            {isAccount && <>
+              {isMock && <StatusBadge tone="warning">{t("auth.mock")}</StatusBadge>}
+              <Button asChild variant="quiet" size="sm"><Link to="/profile">{t("auth.account")}</Link></Button>
+              <Button variant="quiet" size="sm" onClick={() => signout.mutate()} disabled={signout.isPending} busy={signout.isPending}>
+                {signout.isPending ? t("auth.signingOut") : t("auth.signout")}
+              </Button>
+            </>}
+          </div>
         </div>
         {signout.isError && <div className="px-4 pt-4 sm:px-6 lg:px-10"><ErrorState error={signout.error} /></div>}
         <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1280px] flex-1 px-4 py-6 outline-none sm:px-6 lg:px-10 lg:py-10">

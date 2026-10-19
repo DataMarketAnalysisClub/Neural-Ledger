@@ -46,6 +46,7 @@ export const en = {
     until: "until {month}",
     ongoing: "Ongoing",
     askCopilot: "Ask the copilot",
+    minus: "minus {amount}",
   },
   errors: {
     network: "The API did not answer. Check that it is running on port 8000, then try again.",
@@ -501,6 +502,7 @@ export const en = {
       amount: "Amount",
       spending: "Spending by category",
       income: "Income",
+      savings: "Savings, set aside less withdrawn",
       count: "{count} movements",
     },
     categories: {
@@ -514,6 +516,7 @@ export const en = {
       other: "Other",
       income: "Income",
       movement: "Own money movement",
+      savings: "Savings",
       uncategorized: "Uncategorized",
     },
   },

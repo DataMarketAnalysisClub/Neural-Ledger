@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button, Notice, describeError } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { t, tList } from "@/i18n";
 import { useAuth } from "./AuthProvider";
 import { LoginPreview } from "./LoginPreview";
@@ -25,6 +26,9 @@ function AuthLayout({ title, description, children }: { readonly title: string; 
     <div className="flex min-h-dvh flex-col [--u:1px] lg:grid lg:grid-cols-[1.15fr_1fr] lg:[--u:clamp(1px,calc(100vw/1216),1.7px)]">
       <main className="order-2 flex flex-1 items-center justify-center bg-surface px-3.5 pt-[18px] pb-[26px] lg:p-[calc(28*var(--u))]">
         <div className="w-full max-w-[calc(400*var(--u))] rounded-[calc(8*var(--u))] border border-line bg-surface px-[18px] py-[22px] lg:p-[calc(28*var(--u))]">
+          <div className="mb-[calc(14*var(--u))] flex justify-end">
+            <LanguagePicker />
+          </div>
           <h1 className="m-0 mb-[calc(2*var(--u))] text-[calc(22*var(--u))] leading-normal font-semibold tracking-[-0.02em] text-ink">{title}</h1>
           <p className="m-0 mb-[calc(18*var(--u))] text-[calc(14*var(--u))] text-ink-2">{description}</p>
           {children}

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "@/api/client";
 import { StatementsPage } from "./StatementsPage";
@@ -49,6 +49,7 @@ const txn = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 let transactions: unknown[];
+let savings: unknown[];
 let auth: { mode: "demo" | "accounts"; me: { user_id: string; data_source: string; expires_at: string } | null } | null;
 
 vi.mock("@/features/auth/AuthProvider", () => ({ useOptionalAuth: () => auth }));
@@ -62,6 +63,7 @@ vi.mock("@/api/hooks", () => ({
       transactions,
       spending: [{ category: "uncategorized", currency: "CLP", spent: 900, count: 1 }],
       income: [],
+      savings,
     }),
   useImportStatement: () => importer,
   useSetCategory: () => setCategory,
@@ -72,6 +74,7 @@ beforeEach(() => {
   importer = { mutate, reset: vi.fn(), isPending: false, isError: false, error: null, data: undefined };
   setCategory = { mutate: vi.fn(), isPending: false, isError: false, error: null };
   transactions = [txn()];
+  savings = [];
   auth = null;
 });
 
@@ -203,13 +206,22 @@ describe("StatementsPage", () => {
     const picker = screen.getByRole("combobox", { name: /Category for .*Transf a/ });
     expect(picker).toHaveDisplayValue("Uncategorized");
     const offered = Array.from((picker as HTMLSelectElement).options).filter((o) => !o.disabled).map((o) => o.value);
-    expect(offered).toEqual(["groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other", "movement"]);
+    expect(offered).toEqual(["groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other", "movement", "savings"]);
 
     await userEvent.selectOptions(picker, "groceries");
     expect(setCategory.mutate).toHaveBeenCalledWith({ txnId: "t1", category: "groceries" });
   });
 
-  it("offers income or movement for a deposit, nothing for a card payment, and marks the user's own label", async () => {
+  it("shows savings as their own total, apart from spending", async () => {
+    savings = [{ category: "savings", currency: "CLP", spent: 240000, count: 24 }];
+    render(<StatementsPage />);
+    await openTransactions();
+    const section = screen.getByRole("heading", { name: "Savings, set aside less withdrawn" }).closest("section") as HTMLElement;
+    expect(within(section).getByText("Savings")).toBeInTheDocument();
+    expect(within(section).getByText("24 movements")).toBeInTheDocument();
+  });
+
+  it("offers income, movement or savings for a deposit, nothing for a card payment, and marks the user's own label", async () => {
     transactions = [
       txn({ txn_id: "t2", kind: "income", category: "income", classifier: "user", confidence: null, merchant: { untrusted_text: "Sueldo" }, installment: null }),
       txn({ txn_id: "t3", kind: "card_payment", category: "movement", classifier: "rule", confidence: null, merchant: { untrusted_text: "Pago tarjeta" }, installment: null }),
@@ -217,7 +229,7 @@ describe("StatementsPage", () => {
     render(<StatementsPage />);
     await openTransactions();
     const income = screen.getByRole("combobox", { name: "Category for Sueldo" }) as HTMLSelectElement;
-    expect(Array.from(income.options).map((o) => o.value)).toEqual(["income", "movement"]);
+    expect(Array.from(income.options).map((o) => o.value)).toEqual(["income", "movement", "savings"]);
     expect(screen.getByText("Set by you")).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Category for Pago tarjeta" })).toBeNull();
     expect(screen.getByRole("row", { name: /Pago tarjeta/ })).toHaveTextContent("Own money movement");

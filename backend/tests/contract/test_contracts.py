@@ -150,11 +150,13 @@ def test_card_and_spreadsheet_statements_match_contracts(services):
 
 
 def test_transaction_categories_match_the_domain_vocabulary():
-    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, MOVEMENT, UNCATEGORIZED
+    from neural_ledger.domain.ledger.categorization import CATEGORIES, INCOME, OWN_MONEY, UNCATEGORIZED, user_categories
     from neural_ledger.domain.ledger.entities import TransactionKind
 
     schema = json.loads((CONTRACTS / "outputs/transactions.schema.json").read_text())
-    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | {INCOME, MOVEMENT, UNCATEGORIZED}
+    assert set(schema["$defs"]["category"]["enum"]) == CATEGORIES | OWN_MONEY | {INCOME, UNCATEGORIZED}
+    update = json.loads((CONTRACTS / "transactions/category_update.schema.json").read_text())
+    assert set(update["properties"]["category"]["enum"]) == set().union(*(user_categories(k) for k in TransactionKind))
     posted_kinds = {TransactionKind.INCOME, TransactionKind.PURCHASE, TransactionKind.CARD_PAYMENT, TransactionKind.REFUND, TransactionKind.FEE}
     assert set(schema["properties"]["transactions"]["items"]["properties"]["kind"]["enum"]) == {k.value for k in posted_kinds}
 
