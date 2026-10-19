@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/connections/connection.schema.json",
+  "title": "Connection",
+  "description": "A read-only connection the user added (ADR-047): an MCP server they chose, or their bank through an aggregator. Only the server's host is shown, never the full address or the token. Tool names and descriptions are the server's text: untrusted data.",
+  "type": "object",
+  "required": ["connection_id", "kind", "name", "host", "created_at", "last_synced_at", "tools"],
+  "properties": {
+    "connection_id": {"type": "string"},
+    "kind": {"enum": ["mcp", "bank"]},
+    "name": {"type": "string", "maxLength": 60, "description": "The user's label."},
+    "host": {"type": "string", "description": "The MCP server's host, or the aggregator's name for a bank."},
+    "created_at": {"type": "string"},
+    "last_synced_at": {"type": ["string", "null"]},
+    "tools": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/tool"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "required": ["name", "description", "read_only_hint", "destructive_hint", "blocked", "enabled"],
+      "properties": {
+        "name": {"type": "string"},
+        "description": {"type": "object", "required": ["untrusted_text"], "properties": {"untrusted_text": {"type": "string"}}, "additionalProperties": false},
+        "read_only_hint": {"type": ["boolean", "null"], "description": "What the server declares; never trusted alone."},
+        "destructive_hint": {"type": ["boolean", "null"]},
+        "blocked": {
+          "oneOf": [{"enum": ["NOT_READ_ONLY", "DESTRUCTIVE", "WRITE_VERB", "NEEDS_ARGUMENTS"]}, {"type": "null"}],
+          "description": "Why this tool can never be enabled; null if the user may enable it."
+        },
+        "enabled": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

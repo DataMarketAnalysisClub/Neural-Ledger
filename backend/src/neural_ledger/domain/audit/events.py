@@ -44,6 +44,10 @@ class AuditKind(str, Enum):
     RECEIPT_IMPORTED = "RECEIPT_IMPORTED"
     EXPENSE_LOGGED = "EXPENSE_LOGGED"  # the user confirmed an expense they told the copilot about (ADR-038)
     RECEIPT_CORRECTED = "RECEIPT_CORRECTED"  # the user typed a receipt's total or date the reader could not read (ADR-038)
+    CONNECTION_ADDED = "CONNECTION_ADDED"  # the user connected an MCP server or their bank, with consent (ADR-047)
+    CONNECTION_UPDATED = "CONNECTION_UPDATED"  # the user changed which read-only tools a connection may call
+    CONNECTION_SYNCED = "CONNECTION_SYNCED"  # the user's sync read the connection; detail has counts and codes, never content
+    CONNECTION_REMOVED = "CONNECTION_REMOVED"  # the user disconnected; its stored results and secret are gone
     CATEGORY_CHANGED = "CATEGORY_CHANGED"  # the user set a transaction's category (ADR-023)
     PROFILE_UPDATED = "PROFILE_UPDATED"
     USER_REGISTERED = "USER_REGISTERED"

@@ -496,6 +496,54 @@ def create_app(
         """The spending check-in the copilot's get_spending_status tool reads (T0)."""
         return _envelope_response(_documents().spending_status(user(request)))
 
+    # ---- read-only connections (ADR-047): every route is the user's; the agent only reads /data's content ----------
+
+    @app.get("/v1/connections")
+    def connections(request: Request):
+        return _envelope_response(_connections().list(user(request)))
+
+    @app.get("/v1/connections/data")
+    def connected_data(request: Request):
+        """What the copilot's get_connected_data tool reads (T0): the last sync's answers, untrusted."""
+        return _envelope_response(_connections().connected_data(user(request)))
+
+    @app.post("/v1/connections")
+    def add_connection(request: Request, body: dict[str, Any] = Body(...)):
+        """Add an MCP server (contracts/connections/connection_create). The token is never echoed."""
+        session = str(body.get("session_id") or "connections")[:120]
+        result = _connections().add_mcp(user(request), session, body.get("name"), body.get("url"), body.get("token"), body.get("consent"))
+        return _envelope_response(result)
+
+    @app.post("/v1/connections/bank/start")
+    def start_bank(request: Request):
+        """A one-time widget token for the bank aggregator; null in fixture mode."""
+        return _envelope_response(_connections().bank_start(user(request)))
+
+    @app.post("/v1/connections/bank")
+    def connect_bank(request: Request, body: dict[str, Any] = Body(...)):
+        """Connect the user's bank with the widget's exchange token (contracts/connections/bank_exchange)."""
+        session = str(body.get("session_id") or "connections")[:120]
+        return _envelope_response(_connections().connect_bank(user(request), session, body.get("exchange_token"), body.get("consent")))
+
+    @app.put("/v1/connections/{connection_id}/tools")
+    def set_connection_tools(connection_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        session = str(body.get("session_id") or "connections")[:120]
+        return _found_response(_connections().set_tools(user(request), session, connection_id, body.get("enabled")), "connection")
+
+    @app.post("/v1/connections/{connection_id}/sync")
+    def sync_connection(connection_id: str, request: Request, session_id: str = Query("connections")):
+        """Only the user syncs: no agent tool reaches a connected service."""
+        return _found_response(_connections().sync(user(request), session_id[:120], connection_id), "connection")
+
+    @app.delete("/v1/connections/{connection_id}")
+    def remove_connection(connection_id: str, request: Request, session_id: str = Query("connections")):
+        return _found_response(_connections().remove(user(request), session_id[:120], connection_id), "connection")
+
+    def _connections():
+        if services.connections is None:
+            raise HTTPException(status_code=503, detail="connections are not configured")
+        return services.connections
+
     def _documents():
         if services.documents is None:
             raise HTTPException(status_code=503, detail="documents are not configured")
