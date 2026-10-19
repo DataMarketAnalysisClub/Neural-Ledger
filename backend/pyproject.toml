@@ -35,6 +35,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "neural_ledger.adapters.outbound.classifier" = ["training/*.csv"]
+"neural_ledger.adapters.outbound.knowledge" = ["corpus/*/*.md"]
 
 [tool.ruff]
 line-length = 140
