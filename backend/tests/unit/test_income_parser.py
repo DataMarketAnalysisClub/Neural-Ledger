@@ -8,7 +8,8 @@ from datetime import date
 
 import pytest
 
-from neural_ledger.domain.agent.amounts import MAX_SALARY, parse_income_statement
+from neural_ledger.domain.agent.amounts import parse_income_statement
+from neural_ledger.domain.memory.catalog import MAX_SALARY_NET
 from neural_ledger.domain.shared.month import Month
 from tests.conftest import CONTRACTS
 
@@ -75,7 +76,7 @@ def test_a_month_without_a_year_rolls_over_the_new_year():
 def test_the_parser_agrees_with_the_contracts():
     proposal = json.loads((CONTRACTS / "memory/income_proposal.schema.json").read_text(encoding="utf-8"))
     value = json.loads((CONTRACTS / "memory/memory_value.schema.json").read_text(encoding="utf-8"))
-    assert MAX_SALARY == value["$defs"]["salary_net"]["properties"]["amount"]["maximum"]
-    assert MAX_SALARY == proposal["properties"]["candidates"]["items"]["maximum"]
+    assert MAX_SALARY_NET == value["$defs"]["salary_net"]["properties"]["amount"]["maximum"]
+    assert MAX_SALARY_NET == proposal["properties"]["candidates"]["items"]["maximum"]
     read_as = {parse_income_statement(t, TODAY).read_as for t in ("1M", "desde marzo 1M", "desde marzo 2027 1M")}
     assert read_as == set(proposal["properties"]["effective_from"]["properties"]["read_as"]["enum"])
