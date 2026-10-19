@@ -36,7 +36,7 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 | Use case | `application/use_cases/education.py` | `EducationUseCases(knowledge_base, min_score).explain(user_id, query, lang, k)` → `Envelope` |
 | Tool | `contracts/tools/search_financial_concepts.input.schema.json`, `catalog.py` | T0; input `query` (string, ≤ 300), `lang` (`es`/`en`, optional), `k` (1–5, default 3) |
 | Output contract | `contracts/outputs/financial_concepts.schema.json` | the envelope `data` above |
-| Extra | `pyproject.toml` | `rag = ["chromadb>=0.5", <embedding runtime>]` |
+| Extra | `pyproject.toml` | `rag = ["chromadb>=0.5", "fastembed>=0.5"]` (ONNX, no torch; model about 240 MB in `NL_KB_DIR/models`) |
 
 ## Work packages (run in parallel)
 
@@ -59,13 +59,13 @@ verifier runs, card text is untrusted data, and the answer is education, never a
     - [ ] `debt_to_income_ratio`: source the "carga financiera" mention or drop it
 
 ### WP2 · Retrieval adapters and wiring
-- [ ] `corpus_loader.py` + package data for `corpus/**/*.md`
-- [ ] `LexicalKnowledgeBase` (standard library BM25 over title, aliases, body)
-- [ ] `ChromaKnowledgeBase` with the multilingual embedder; persistent at `NL_KB_DIR`, rebuilt when the corpus hash changes
-- [ ] `FallbackKnowledgeBase`, `KNOWLEDGE_BASES`, settings, `rag` extra, `.env.example`
-- [ ] `tests/adapters/test_knowledge_base.py` (one contract test, both adapters; Chroma with a fake embedder, skipped without the extra)
-- [ ] `tests/unit/test_concept_cards.py` (every card parses; ids match across languages; numbers in the body are declared; banned words; word count; sources have a licence)
-- [ ] `tests/rag_eval/` (about 40 es/en questions → expected ids; recall@3 ≥ 0.8 lexical, ≥ 0.9 chroma; results to `evidence/rag_eval/`)
+- [x] `corpus_loader.py` + package data for `corpus/**/*.md`
+- [x] `LexicalKnowledgeBase` (standard library BM25 over title, aliases, body)
+- [x] `ChromaKnowledgeBase` with the multilingual embedder; persistent at `NL_KB_DIR`, rebuilt when the corpus hash changes
+- [x] `FallbackKnowledgeBase`, `KNOWLEDGE_BASES`, settings, `rag` extra, `.env.example`
+- [x] `tests/adapters/test_knowledge_base.py` (one contract test, both adapters; Chroma with a fake embedder, skipped without the extra)
+- [x] `tests/unit/test_concept_cards.py` (every card parses; ids match across languages; numbers in the body are declared; banned words; word count; sources have a licence)
+- [x] `tests/rag_eval/` (about 40 es/en questions → expected ids; recall@3 ≥ 0.8 lexical, ≥ 0.9 chroma; results to `evidence/rag_eval/`)
 
 ### WP3 · Agent integration
 - [ ] Contracts: tool input + output schemas
@@ -85,9 +85,16 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 
 ### Integration (after the packages)
 - [ ] Merge WP2–WP4 into `c/education-rag`; `ruff check .`; `make test-all` green
-- [ ] Run `tests/rag_eval` with Chroma and the real model; record in `evidence/rag_eval/`
+- [x] Run `tests/rag_eval` with Chroma and the real model; record in `evidence/rag_eval/`
 - [ ] Docker: decide whether the image ships the `rag` extra (size) or stays on `lexical`
 - [ ] PR `c/education-rag` → `staging`
+
+## Results so far
+
+- Retrieval eval (52 questions, 70 cards): lexical recall@3 1.0, MRR 0.979; Chroma recall@3 0.979, MRR 0.944 (`evidence/rag_eval/`).
+- Score thresholds differ by method: lexical about 0.45, Chroma about 0.30 (off-topic max 0.379 and 0.23).
+- `rag` extra adds about 340 MB to site-packages plus the 240 MB model.
+- [ ] Chroma miss: "how much money do I really have available" → add an alias to `protected_surplus`
 
 ## Risks
 
