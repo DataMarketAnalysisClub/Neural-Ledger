@@ -4,6 +4,8 @@
  * code; the only arithmetic here is shifting the decimal point for display.
  */
 
+import { dateLocale } from "@/i18n";
+
 const MINUS = "−"; // a real minus sign, not a hyphen
 
 const fractionDigitsCache = new Map<string, number>();
@@ -45,18 +47,18 @@ export function formatNumber(value: number, digits = 2): string {
   return `${value < 0 ? MINUS : ""}${body}`;
 }
 
-/** "2026-12" -> "Dec 2026". Always with the year: "Dec 26" is ambiguous. */
+/** "2026-12" -> "Dec 2026" (in the UI language). Always with the year: "Dec 26" is ambiguous. */
 export function formatMonth(month: string, style: "short" | "long" = "short"): string {
   const [y, m] = month.split("-").map(Number);
   if (!y || !m) return month;
-  return new Intl.DateTimeFormat("en-US", { month: style, year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, m - 1, 1));
+  return new Intl.DateTimeFormat(dateLocale, { month: style, year: "numeric", timeZone: "UTC" }).format(Date.UTC(y, m - 1, 1));
 }
 
 /** "2027-01-01" -> "Jan 1, 2027". */
 export function formatDate(iso: string): string {
   const d = new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: iso.length === 10 ? "UTC" : undefined }).format(d);
+  return new Intl.DateTimeFormat(dateLocale, { month: "short", day: "numeric", year: "numeric", timeZone: iso.length === 10 ? "UTC" : undefined }).format(d);
 }
 
 /** "a1f3c9...9c" style truncation for hashes and ids shown in mono. */

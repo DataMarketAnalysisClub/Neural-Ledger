@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { Button, Notice, Surface, describeError } from "@/components/ui";
 import { t } from "@/i18n";
 import { useAuth } from "./AuthProvider";
@@ -10,7 +11,10 @@ function AuthLayout({ title, description, children }: { readonly title: string; 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas px-6 py-10 sm:justify-center">
       <main className="mx-auto w-full max-w-md">
-        <p className="mb-8 text-sm font-semibold text-ink">{t("app.name")}</p>
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <p className="text-sm font-semibold text-ink">{t("app.name")}</p>
+          <LanguagePicker />
+        </div>
         <h1 className="text-2xl font-semibold text-ink">{title}</h1>
         <p className="mt-2 text-base text-ink-2">{description}</p>
         <Surface className="mt-8 p-6 sm:p-8">{children}</Surface>

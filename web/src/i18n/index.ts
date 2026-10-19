@@ -1,9 +1,45 @@
 import { en, type Messages } from "./en";
+import { es } from "./es";
+import { zh } from "./zh";
 
-/** Registered locales. To add a language: create ./xx.ts exporting `Messages`, then register it here. */
-const locales: Record<string, Messages> = { en };
-export const locale = "en";
-const messages: Messages = locales[locale] ?? en;
+/**
+ * Registered locales, each named in its own language for the picker. To add a language: create ./xx.ts
+ * exporting `Messages`, then register it here and in DATE_LOCALES.
+ */
+export const LOCALES = { en: "English", es: "Español", zh: "中文" } as const;
+export type Locale = keyof typeof LOCALES;
+const locales: Record<Locale, Messages> = { en, es, zh };
+/** Dates follow the language. Numbers do not: money reads `CLP 1,500,000` in every language (lib/format). */
+const DATE_LOCALES: Record<Locale, string> = { en: "en-US", es: "es-CL", zh: "zh-CN" };
+const STORAGE_KEY = "nl.locale";
+
+function storedLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved && saved in locales ? (saved as Locale) : "en";
+  } catch {
+    return "en"; // storage blocked: the default language still works
+  }
+}
+
+export const locale: Locale = storedLocale();
+export const dateLocale = DATE_LOCALES[locale];
+const messages: Messages = locales[locale];
+if (typeof document !== "undefined") document.documentElement.lang = locale;
+
+/**
+ * shortcut: switching reloads the page, because t() reads the language once at load. Make the messages
+ * reactive if losing unsaved input (a copilot draft, a form) on a switch ever matters.
+ */
+export function setLocale(next: Locale): void {
+  if (next === locale) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, next);
+  } catch {
+    return; // nowhere to keep the choice: a reload would only bring the old language back
+  }
+  window.location.reload();
+}
 
 type Leaves<T, P extends string = ""> = T extends string
   ? P
@@ -22,7 +58,10 @@ function lookup(path: string): unknown {
 export function t(key: MessageKey, vars?: Vars): string {
   const raw = lookup(key);
   const text = typeof raw === "string" ? raw : key;
-  return vars ? text.replace(/\{(\w+)\}/g, (_, name: string) => (name in vars ? String(vars[name]) : `{${name}}`)) : text;
+  if (!vars) return text;
+  const filled = text.replace(/\{(\w+)\}/g, (_, name: string) => (name in vars ? String(vars[name]) : `{${name}}`));
+  // A sentence that opens with a value still starts with a capital: Spanish months are lowercase ("diciembre de 2026").
+  return text.startsWith("{") ? filled.charAt(0).toLocaleUpperCase(locale) + filled.slice(1) : filled;
 }
 
 /** Translate a dynamic key from the API (a block reason, an event kind). Falls back when unknown. */
