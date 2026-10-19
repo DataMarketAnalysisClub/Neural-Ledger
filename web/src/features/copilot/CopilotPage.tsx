@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
-import { ArrowUp, ChatText, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
+import { ArrowUp, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
 import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending, usePersona } from "@/api/hooks";
 import { ApiError, type ActionOutcome, type ChatReply } from "@/api/client";
 import { ProposalReceipt, VerdictBanner } from "@/components/actions";
-import { Button, ErrorState, PageHeader, StatusBadge } from "@/components/ui";
+import { CopilotAvatar, type AvatarState } from "@/components/CopilotAvatar";
+import { Button, ErrorState, PageHeader, StatusBadge, cn } from "@/components/ui";
 import { t, tList } from "@/i18n";
+import { useMediaQuery } from "@/lib/useMediaQuery";
+
+/** The tallest the phone's input grows before it scrolls inside: about six lines. */
+const PHONE_INPUT_MAX = 144;
 
 type Proposal = NonNullable<ActionOutcome["proposal"]>;
 type Authorization = NonNullable<ActionOutcome["authorization"]>;
@@ -50,6 +55,10 @@ function Conversation() {
   const [authorization, setAuthorization] = useState<Authorization | null>(null);
   const [receipt, setReceipt] = useState<ActionOutcome["receipt"]>(null);
   const nextId = useRef(1);
+  // The avatar answers for a moment when a reply lands, then rests.
+  const [speakingId, setSpeakingId] = useState<number | null>(null);
+  const speakingTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(speakingTimer.current), []);
   const logRef = useRef<HTMLOListElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // After a reload nothing is in local state yet: show whatever the API says is pending for this
@@ -67,11 +76,12 @@ function Conversation() {
   }, [messages, chat.isPending]);
 
   // Below xl the receipt sits under the chat: bring a new proposal into view so the terms are never missed.
-  const receiptRef = useRef<HTMLDivElement>(null);
+  const receiptEl = useRef<HTMLElement | null>(null);
+  const receiptRef = (el: HTMLElement | null) => { receiptEl.current = el; };
   const proposalId = proposal?.proposal_id;
   useEffect(() => {
     if (!proposalId || typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 1279px)").matches) return;
-    receiptRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    receiptEl.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
   }, [proposalId]);
 
   function send(text: string) {
@@ -81,7 +91,11 @@ function Conversation() {
     setDraft("");
     chat.mutate(message, {
       onSuccess: (reply) => {
-        setMessages((m) => [...m, { id: nextId.current++, role: "copilot", text: reply.text, reply }]);
+        const id = nextId.current++;
+        setMessages((m) => [...m, { id, role: "copilot", text: reply.text, reply }]);
+        setSpeakingId(id);
+        clearTimeout(speakingTimer.current);
+        speakingTimer.current = setTimeout(() => setSpeakingId(null), 1600);
         if (reply.pending_proposal) {
           setProposal(reply.pending_proposal as Proposal);
           setAuthorization(null);
@@ -120,8 +134,139 @@ function Conversation() {
     });
   }
 
+  const lastCopilotId = [...messages].reverse().find((m) => m.role === "copilot")?.id;
   const blocked = useMemo(() => outcomeFrom(confirm.error) ?? outcomeFrom(execute.error), [confirm.error, execute.error]);
   const prompts = tList("copilot.prompts");
+
+  // Below lg the screen is the chat and the box to write in, between the header and the bottom bar; the receipt
+  // then joins the conversation instead of sitting in a panel of its own.
+  const phone = useMediaQuery("(max-width: 1023px)");
+  const showReceipt = Boolean(shownProposal || shownAuthorization || receipt);
+
+  // Like a messaging app: the box grows with the message, upward (the chat above gives it room), up to a limit and
+  // then scrolls inside. The chat stays at its end if it was there, so the last message is never pushed out of sight.
+  useLayoutEffect(() => {
+    const box = inputRef.current;
+    if (!phone || !box) return;
+    const log = logRef.current;
+    const atEnd = !log || log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, PHONE_INPUT_MAX)}px`;
+    box.style.overflowY = box.scrollHeight > PHONE_INPUT_MAX ? "auto" : "hidden";
+    if (log && atEnd) log.scrollTop = log.scrollHeight;
+  }, [draft, phone]);
+  const receiptPanel = (
+    <ProposalReceipt
+      proposal={shownProposal}
+      authorization={shownAuthorization}
+      receipt={receipt}
+      onConfirm={onConfirm}
+      onExecute={onExecute}
+      confirming={confirm.isPending}
+      executing={execute.isPending}
+      error={confirm.error ?? execute.error}
+      blocked={blocked}
+      onBack={() => inputRef.current?.focus()}
+    />
+  );
+
+  const log = (
+    <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className={cn("relative min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6", phone && "pt-16")}>
+      {messages.length === 0 && (
+        <li className="text-sm text-ink-2">
+          <CopilotAvatar className="mb-3 size-10" />
+          <p>{t("copilot.empty")}</p>
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-3">
+            <Info aria-hidden className="size-4" />
+            {t("copilot.untrustedNote")}
+          </p>
+        </li>
+      )}
+      {messages.map((m) =>
+        m.role === "user" ? (
+          <UserBubble key={m.id} text={m.text} />
+        ) : (
+          <CopilotTurn key={m.id} message={m} currency={currency} avatarState={m.id === speakingId ? "responding" : "idle"} still={m.id !== lastCopilotId} />
+        ),
+      )}
+      {chat.isPending && (
+        <li className="flex items-end gap-2.5 text-sm text-ink-2" role="status">
+          <CopilotAvatar state="thinking" className="size-7 sm:size-8" />
+          <span className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-2.5">{t("copilot.thinking")}</span>
+        </li>
+      )}
+      {phone && showReceipt && (
+        <li ref={receiptRef} className="scroll-mt-4">
+          {receiptPanel}
+        </li>
+      )}
+    </ol>
+  );
+
+  const composer = (
+    <div className={cn("border-t border-line p-3 sm:p-4", phone && "pb-[calc(var(--phone-bar-h)+1.5rem)]")}>
+      {/* One scrolling row on a phone, so the suggestions never push the composer off screen; once the conversation starts they leave. */}
+      {(!phone || messages.length === 0) && (
+        <div className="-mx-3 mb-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:-mx-1 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={t("copilot.suggestions")}>
+          {prompts.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => send(p)}
+              disabled={chat.isPending}
+              className="h-9 shrink-0 snap-start rounded-full border border-line bg-canvas px-3 text-xs whitespace-nowrap text-ink-2 transition-colors duration-150 hover:border-control hover:text-ink disabled:opacity-50"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+      <form onSubmit={onSubmit} className="flex items-end gap-2">
+        <label htmlFor="copilot-input" className="sr-only">
+          {t("copilot.inputLabel")}
+        </label>
+        <textarea
+          id="copilot-input"
+          ref={inputRef}
+          rows={1}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // A phone keyboard has no Shift: there Enter is a new line and the arrow button sends.
+            if (e.key === "Enter" && !e.shiftKey && !phone) {
+              e.preventDefault();
+              send(draft);
+            }
+          }}
+          placeholder={t("copilot.inputPlaceholder")}
+          className={cn("min-h-11 flex-1 border border-control bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25", phone ? "resize-none rounded-3xl px-4" : "max-h-40 resize-y rounded-control")}
+        />
+        <Button type="submit" variant="primary" size="lg" className={cn("w-11 px-0", phone && "size-11 rounded-full")} disabled={!draft.trim() || chat.isPending} aria-label={t("copilot.send")}>
+          <ArrowUp aria-hidden weight="bold" className="size-5" />
+        </Button>
+      </form>
+    </div>
+  );
+
+  if (phone) {
+    return (
+      <div className="-mx-4 -my-6 sm:-mx-6">
+        <h1 id="page-title" className="sr-only">{t("copilot.title")}</h1>
+        <section aria-label={t("copilot.title")} className="relative flex h-[calc(100dvh-var(--phone-header-h,6.5rem))] min-w-0 flex-col bg-surface">
+          <Button variant="quiet" size="sm" onClick={newSession} aria-label={t("copilot.newConversation")} className="absolute top-2 right-2 z-10 size-10 rounded-full bg-surface/90 px-0 ring-1 ring-line">
+            <NotePencil aria-hidden className="size-5" />
+          </Button>
+          {log}
+          {chat.isError && (
+            <div className="px-4 pb-3">
+              <ErrorState error={chat.error} />
+            </div>
+          )}
+          {composer}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -137,92 +282,44 @@ function Conversation() {
       />
 
       <div className="grid gap-10 xl:grid-cols-[1fr_400px]">
-        <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-20rem)] min-h-[360px] min-w-0 flex-col rounded-control border border-line bg-surface lg:h-[calc(100dvh-15rem)] lg:min-h-[440px]">
-          <ol ref={logRef} role="log" aria-live="polite" aria-relevant="additions" className="relative min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
-            {messages.length === 0 && (
-              <li className="text-sm text-ink-2">
-                <p>{t("copilot.empty")}</p>
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-3">
-                  <Info aria-hidden className="size-4" />
-                  {t("copilot.untrustedNote")}
-                </p>
-              </li>
-            )}
-            {messages.map((m) => (m.role === "user" ? <UserBubble key={m.id} text={m.text} /> : <CopilotTurn key={m.id} message={m} currency={currency} />))}
-            {chat.isPending && (
-              <li className="flex items-center gap-2 text-sm text-ink-2" role="status">
-                <span aria-hidden className="flex gap-1">
-                  <span className="size-1.5 animate-pulse rounded-full bg-ink-3 motion-reduce:animate-none" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-ink-3 [animation-delay:150ms] motion-reduce:animate-none" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-ink-3 [animation-delay:300ms] motion-reduce:animate-none" />
-                </span>
-                {t("copilot.thinking")}
-              </li>
-            )}
-          </ol>
-
+        <section aria-label={t("copilot.title")} className="flex h-[calc(100dvh-15rem)] min-h-[440px] min-w-0 flex-col rounded-control border border-line bg-surface">
+          {log}
           {chat.isError && (
-            <div className="px-4 pb-3 sm:px-6">
+            <div className="px-6 pb-3">
               <ErrorState error={chat.error} />
             </div>
           )}
-
-          <div className="border-t border-line p-3 sm:p-4">
-            {/* One scrolling row on a phone, so the suggestions never push the composer off screen. */}
-            <div className="-mx-3 mb-3 flex snap-x gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none] sm:-mx-1 sm:flex-wrap sm:overflow-visible sm:px-1 sm:pb-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={t("copilot.suggestions")}>
-              {prompts.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => send(p)}
-                  disabled={chat.isPending}
-                  className="h-9 shrink-0 snap-start rounded-full border border-line bg-canvas px-3 text-xs whitespace-nowrap text-ink-2 transition-colors duration-150 hover:border-control hover:text-ink disabled:opacity-50"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-            <form onSubmit={onSubmit} className="flex items-end gap-2">
-              <label htmlFor="copilot-input" className="sr-only">
-                {t("copilot.inputLabel")}
-              </label>
-              <textarea
-                id="copilot-input"
-                ref={inputRef}
-                rows={1}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send(draft);
-                  }
-                }}
-                placeholder={t("copilot.inputPlaceholder")}
-                className="max-h-40 min-h-11 flex-1 resize-y rounded-control border border-control bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25"
-              />
-              <Button type="submit" variant="primary" size="lg" className="w-11 px-0" disabled={!draft.trim() || chat.isPending} aria-label={t("copilot.send")}>
-                <ArrowUp aria-hidden weight="bold" className="size-5" />
-              </Button>
-            </form>
-          </div>
+          {composer}
         </section>
 
         <div ref={receiptRef} className="min-w-0 scroll-mt-28 xl:sticky xl:top-6 xl:self-start">
-          <ProposalReceipt
-            proposal={shownProposal}
-            authorization={shownAuthorization}
-            receipt={receipt}
-            onConfirm={onConfirm}
-            onExecute={onExecute}
-            confirming={confirm.isPending}
-            executing={execute.isPending}
-            error={confirm.error ?? execute.error}
-            blocked={blocked}
-            onBack={() => inputRef.current?.focus()}
-          />
+          {receiptPanel}
         </div>
       </div>
+    </>
+  );
+}
+
+/**
+ * Text that folds when it is long, behind a Show more button, as messaging apps do. It wraps anywhere, so a token
+ * with no spaces can never push the bubble wider than the screen.
+ */
+function FoldableText({ text, maxChars, maxLines, tone }: { text: string; maxChars: number; maxLines: number; tone: "dark" | "light" }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > maxChars || text.split("\n").length > maxLines;
+  return (
+    <>
+      <p className={cn("whitespace-pre-line [overflow-wrap:anywhere]", long && !open && "line-clamp-6")}>{text}</p>
+      {long && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={cn("mt-1.5 text-sm font-medium underline underline-offset-2", tone === "dark" ? "text-white/80 hover:text-white" : "text-accent hover:text-accent-hover")}
+        >
+          {open ? t("copilot.showLess") : t("copilot.showMore")}
+        </button>
+      )}
     </>
   );
 }
@@ -230,27 +327,31 @@ function Conversation() {
 function UserBubble({ text }: { text: string }) {
   return (
     <li className="flex justify-end">
-      <div className="max-w-[65ch] rounded-control rounded-br-[2px] bg-ink px-4 py-3 text-sm text-white">
+      <div className="max-w-[min(65ch,100%)] min-w-0 rounded-control rounded-br-[2px] bg-ink px-4 py-3 text-sm text-white [overflow-wrap:anywhere]">
         <span className="sr-only">{t("copilot.you")}: </span>
-        {text}
+        <FoldableText text={text} maxChars={360} maxLines={8} tone="dark" />
       </div>
     </li>
   );
 }
 
-function CopilotTurn({ message, currency }: { message: Message; currency: string }) {
+function CopilotTurn({ message, currency, avatarState, still }: { message: Message; currency: string; avatarState: AvatarState; still: boolean }) {
   const reply = message.reply;
   const blockedAction = reply?.actions.find((a) => a.status === "BLOCKED");
   return (
     <li className="max-w-[72ch]">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-3">
-        <ChatText aria-hidden className="size-4" />
-        {t("copilot.voice")}
-      </p>
-      <div className="rounded-control rounded-tl-[2px] border border-accent/20 border-l-[3px] border-l-accent bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink">
-        {/* Plain text only: model output is never rendered as markup. */}
-        <p className="whitespace-pre-line">{message.text}</p>
+      {/* Like a messaging app: the avatar sits to the left of the reply, level with the bottom of the bubble. */}
+      <div className="flex items-end gap-2.5">
+        <CopilotAvatar state={avatarState} still={still} className="size-7 sm:size-8" />
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-xs font-medium text-ink-3">{t("copilot.voice")}</p>
+          <div className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink [overflow-wrap:anywhere]">
+            {/* Plain text only: model output is never rendered as markup. */}
+            <FoldableText text={message.text} maxChars={1100} maxLines={14} tone="light" />
+          </div>
+        </div>
       </div>
+      <div className="pl-[2.375rem] sm:pl-[2.625rem]">
       {reply?.blocked_reason && (
         <div className="mt-3">
           <VerdictBanner
@@ -284,6 +385,7 @@ function CopilotTurn({ message, currency }: { message: Message; currency: string
           )}
         </div>
       )}
+      </div>
     </li>
   );
 }

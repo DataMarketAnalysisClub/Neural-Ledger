@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import * as Popover from "@radix-ui/react-popover";
-import { CalendarDots, ChartLineDown, ChatText, DotsThreeCircle, Files, LinkSimple, PiggyBank, Receipt, SignOut, UserCircle, type Icon } from "@phosphor-icons/react";
+import { CalendarDots, ChartLineDown, DotsThreeCircle, Files, LinkSimple, PiggyBank, Receipt, SignOut, UserCircle, type Icon } from "@phosphor-icons/react";
+import { CopilotAvatar } from "@/components/CopilotAvatar";
 import { t, type MessageKey } from "@/i18n";
 import { Button, cn } from "@/components/ui";
 import { LanguagePicker } from "@/components/LanguagePicker";
@@ -20,7 +21,7 @@ const LEFT: readonly Tab[] = [
   { to: "/", label: "nav.overview", icon: ChartLineDown },
   { to: "/commitments", label: "nav.commitments", icon: CalendarDots },
 ];
-const COPILOT: Tab = { to: "/copilot", label: "nav.copilot", icon: ChatText };
+const COPILOT = { to: "/copilot", label: "nav.copilot" } as const;
 const RIGHT: readonly Tab[] = [{ to: "/plan", label: "nav.planShort", icon: PiggyBank }];
 const MORE: readonly Tab[] = [
   { to: "/simulator", label: "nav.simulator", icon: Receipt },
@@ -54,15 +55,14 @@ function BarLink({ tab }: { tab: Tab }) {
   );
 }
 
-/** The Copilot is the product's main action, so it is the one cobalt control in the bar and sits above it. */
-function FeaturedLink({ tab }: { tab: Tab }) {
-  const Glyph = tab.icon;
+/** The Copilot is the product's main action: its round avatar sits in the middle of the bar, raised above it. */
+function FeaturedLink({ tab }: { tab: typeof COPILOT }) {
   return (
     <NavLink to={tab.to} data-featured="true" className={({ isActive }) => cn("group relative -mt-5 flex w-full flex-col items-center gap-1 pb-1.5 text-[11px] leading-none font-semibold transition-colors", isActive ? "text-accent" : "text-ink-2")}>
       {({ isActive }) => (
         <>
-          <span className={cn("flex size-14 items-center justify-center rounded-full bg-accent text-on-accent ring-4 ring-surface transition-transform duration-200 ease-out group-hover:bg-accent-hover group-active:scale-90 motion-reduce:group-active:scale-100", isActive && "scale-105")}>
-            <Glyph aria-hidden weight="fill" className="size-7" />
+          <span className={cn("rounded-full ring-4 ring-surface transition-transform duration-200 ease-out group-active:scale-90 motion-reduce:group-active:scale-100", isActive && "scale-105")}>
+            <CopilotAvatar className={cn("size-14 rounded-full", isActive && "outline outline-2 outline-offset-2 outline-accent")} />
           </span>
           <span>{t(tab.label)}</span>
         </>

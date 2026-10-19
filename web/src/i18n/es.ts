@@ -294,6 +294,8 @@ export const es: Messages = {
     inputLabel: "Pregunta sobre tu plata",
     inputPlaceholder: "Por ejemplo: ¿me alcanza para un notebook de CLP 400,000 en 12 cuotas?",
     send: "Enviar",
+    showMore: "Ver más",
+    showLess: "Ver menos",
     suggestions: "Preguntas sugeridas",
     prompts: [
       "¿Voy a estar bien en diciembre?",
@@ -498,6 +500,7 @@ export const es: Messages = {
       spending: "Gasto por categoría",
       income: "Ingresos",
       count: "{count} movimientos",
+      savings: "Ahorro, lo separado menos lo retirado",
     },
     categories: {
       groceries: "Supermercado",
@@ -511,6 +514,7 @@ export const es: Messages = {
       income: "Ingresos",
       movement: "Movimiento entre cuentas propias",
       uncategorized: "Sin categoría",
+      savings: "Ahorro",
     },
   },
   redaction: {
@@ -527,6 +531,12 @@ export const es: Messages = {
   },
   auth: {
     sandbox: "Solo sandbox. No uses información de cuentas reales.",
+    hero: {
+      title: "Evalúa cualquier compra contra tus meses futuros.",
+      lede: "Pronóstico, plan de ahorro y un copiloto que explica cada número.",
+      featuresLabel: "Lo que puedes hacer",
+      features: ["Pronóstico", "Evaluar compra", "Plan de ahorro", "Copiloto"],
+    },
     email: "Correo",
     password: "Contraseña",
     passwordHint: "Usa entre 10 y 128 caracteres.",
@@ -547,6 +557,7 @@ export const es: Messages = {
       haveAccount: "¿Ya tienes una cuenta?",
     },
     explore: {
+      divider: "o explora una persona de demostración",
       title: "Explorar una persona de demostración",
       description: "Camila y Diego son sintéticos y de solo lectura. Sus perfiles no se pueden cambiar.",
       camila: "Explorar como Camila",

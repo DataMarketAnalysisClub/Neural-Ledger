@@ -291,6 +291,8 @@ export const zh: Messages = {
     inputLabel: "询问你的财务",
     inputPlaceholder: "例如：我能分 12 期买一台 CLP 400,000 的笔记本电脑吗？",
     send: "发送",
+    showMore: "展开",
+    showLess: "收起",
     suggestions: "建议的问题",
     prompts: [
       "我十二月会没问题吗？",
@@ -495,6 +497,7 @@ export const zh: Messages = {
       spending: "按类别的支出",
       income: "收入",
       count: "{count} 笔交易",
+      savings: "储蓄：存入减去取出",
     },
     categories: {
       groceries: "日用杂货",
@@ -508,6 +511,7 @@ export const zh: Messages = {
       income: "收入",
       movement: "本人账户间转账",
       uncategorized: "未分类",
+      savings: "储蓄",
     },
   },
   redaction: {
@@ -524,6 +528,12 @@ export const zh: Messages = {
   },
   auth: {
     sandbox: "仅限沙盒。请勿使用真实账户信息。",
+    hero: {
+      title: "用你未来的月份评估任何一笔购买。",
+      lede: "预测、储蓄计划，以及一个解释每个数字的智能助手。",
+      featuresLabel: "你可以做什么",
+      features: ["预测", "购买评估", "储蓄计划", "智能助手"],
+    },
     email: "邮箱",
     password: "密码",
     passwordHint: "使用 10 到 128 个字符。",
@@ -544,6 +554,7 @@ export const zh: Messages = {
       haveAccount: "已经有账户？",
     },
     explore: {
+      divider: "或浏览演示身份",
       title: "浏览演示身份",
       description: "Camila 和 Diego 是合成的只读身份。他们的个人资料无法更改。",
       camila: "以 Camila 身份浏览",

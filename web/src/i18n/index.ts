@@ -71,7 +71,7 @@ export function tDynamic(prefix: string, code: string | null | undefined, fallba
   return fallback ? t(fallback) : (code ?? "");
 }
 
-export function tList(key: "copilot.prompts"): readonly string[] {
+export function tList(key: "copilot.prompts" | "auth.hero.features"): readonly string[] {
   const raw = lookup(key);
   return Array.isArray(raw) ? (raw as string[]) : [];
 }
