@@ -83,8 +83,8 @@ def _sites(extra_emission: str = "") -> tuple[set[str], set[str], set[str]]:
                         assert isinstance(first, ast.Name) and first.id in {"field", "path", "key"} and function.name in {
                             "_get", "_int", "_str", "_enum", "_date", "_month", "_list", "_parse_enum", "_parse_int", "_parse_month",
                         } or function.name == "_get" and isinstance(first, ast.IfExp) or function.name == "load" and isinstance(first, ast.BoolOp), (path, function.name, ast.unparse(first))
-        for node in tree.body:
-            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and node.value.args:
+        for node in tree.body:  # module level: a bare call or a named constant (income_memory's warnings)
+            if isinstance(node, (ast.Expr, ast.Assign)) and isinstance(node.value, ast.Call) and node.value.args:
                 name = node.value.func.id if isinstance(node.value.func, ast.Name) else ""
                 if name == "Fact":
                     facts.add(_template(node.value.args[0]))

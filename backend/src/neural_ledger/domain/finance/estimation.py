@@ -442,8 +442,8 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
     if missing:
         return Envelope.insufficient(missing, params_version=version, message="financial state is incomplete")
     facts = (
-        Fact("estimate.income.typical", income.typical, snapshot.currency, f"income model ({income.method})"),
-        Fact("estimate.income.conservative", income.conservative, snapshot.currency, f"income model ({income.method})"),
+        Fact("estimate.income.typical", income.typical, snapshot.currency, f"observed income model ({income.method})"),
+        Fact("estimate.income.conservative", income.conservative, snapshot.currency, f"observed income model ({income.method})"),
         Fact("estimate.spend.p50_total", sum(c.p50 for c in spend.categories), snapshot.currency, "sum of category P50"),
         Fact("estimate.spend.p80_total", sum(c.p80 for c in spend.categories), snapshot.currency, "sum of category P80"),
         Fact("estimate.commitments", len(commitments), "count", "installments + recurring items"),
