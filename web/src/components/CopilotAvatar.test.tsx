@@ -21,6 +21,13 @@ describe("CopilotAvatar", () => {
     expect(container.querySelector("svg")).toHaveAttribute("data-still", "true");
   });
 
+  it("is round by default, like a profile picture, and can be the squared mark", () => {
+    const { container, rerender } = render(<CopilotAvatar />);
+    expect(container.querySelector("svg")).toHaveAttribute("data-shape", "round");
+    rerender(<CopilotAvatar shape="tile" />);
+    expect(container.querySelector("svg")).toHaveAttribute("data-shape", "tile");
+  });
+
   it("has no accessibility violations", async () => {
     const { container } = render(<CopilotAvatar />);
     expect((await axe(container)).violations).toEqual([]);

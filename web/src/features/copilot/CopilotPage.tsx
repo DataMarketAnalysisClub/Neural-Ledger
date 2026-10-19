@@ -167,9 +167,9 @@ function Conversation() {
               ),
             )}
             {chat.isPending && (
-              <li className="flex items-center gap-2 text-sm text-ink-2" role="status">
-                <CopilotAvatar state="thinking" className="size-7" />
-                {t("copilot.thinking")}
+              <li className="flex items-end gap-2.5 text-sm text-ink-2" role="status">
+                <CopilotAvatar state="thinking" className="size-7 sm:size-8" />
+                <span className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-2.5">{t("copilot.thinking")}</span>
               </li>
             )}
           </ol>
@@ -256,14 +256,18 @@ function CopilotTurn({ message, currency, avatarState, still }: { message: Messa
   const blockedAction = reply?.actions.find((a) => a.status === "BLOCKED");
   return (
     <li className="max-w-[72ch]">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-ink-3">
-        <CopilotAvatar state={avatarState} still={still} className="size-6" />
-        {t("copilot.voice")}
-      </p>
-      <div className="rounded-control rounded-tl-[2px] border border-accent/20 border-l-[3px] border-l-accent bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink">
-        {/* Plain text only: model output is never rendered as markup. */}
-        <p className="whitespace-pre-line">{message.text}</p>
+      {/* Like a messaging app: the avatar sits to the left of the reply, level with the bottom of the bubble. */}
+      <div className="flex items-end gap-2.5">
+        <CopilotAvatar state={avatarState} still={still} className="size-7 sm:size-8" />
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-xs font-medium text-ink-3">{t("copilot.voice")}</p>
+          <div className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink">
+            {/* Plain text only: model output is never rendered as markup. */}
+            <p className="whitespace-pre-line">{message.text}</p>
+          </div>
+        </div>
       </div>
+      <div className="pl-[2.375rem] sm:pl-[2.625rem]">
       {reply?.blocked_reason && (
         <div className="mt-3">
           <VerdictBanner
@@ -297,6 +301,7 @@ function CopilotTurn({ message, currency, avatarState, still }: { message: Messa
           )}
         </div>
       )}
+      </div>
     </li>
   );
 }

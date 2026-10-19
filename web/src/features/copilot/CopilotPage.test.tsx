@@ -66,4 +66,17 @@ describe("CopilotPage", () => {
     await user.click(screen.getByRole("button", { name: "Just make it work." }));
     expect(avatars().filter((a) => a.getAttribute("data-still") === "true")).toHaveLength(1);
   });
+
+  it("puts the avatar to the left of the reply, like a messaging app", async () => {
+    const reply = { text: "Not comfortably.", actions: [], tools_called: [], facts: [], warnings: [], blocked_reason: null, fallback_used: false, verification: { ok: true } };
+    chat = { ...idle(), mutate: vi.fn((_message: string, options?: { onSuccess?: (r: unknown) => void }) => options?.onSuccess?.(reply)) };
+    render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+    await userEvent.click(screen.getByRole("button", { name: "Will I be OK in December?" }));
+
+    const avatar = screen.getByRole("log").querySelector("svg[data-state]")!;
+    const row = avatar.parentElement!;
+    expect(row.firstElementChild).toBe(avatar);
+    expect(row).toHaveTextContent("Not comfortably.");
+    expect(avatar).toHaveAttribute("data-shape", "round");
+  });
 });
