@@ -1,14 +1,14 @@
 {
   "kb": "chroma",
-  "knowledge_base": "chroma/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/a10155f6",
+  "knowledge_base": "chroma/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/1d0218ef",
   "cards": 70,
   "skipped": 0,
-  "seconds": 12.29,
+  "seconds": 11.06,
   "all": {
     "n": 48,
-    "recall@1": 0.917,
+    "recall@1": 0.958,
     "recall@3": 1.0,
-    "mrr": 0.951
+    "mrr": 0.972
   },
   "en": {
     "n": 23,
@@ -18,14 +18,14 @@
   },
   "es": {
     "n": 25,
-    "recall@1": 0.92,
+    "recall@1": 1.0,
     "recall@3": 1.0,
-    "mrr": 0.96
+    "mrr": 1.0
   },
   "top_score": {
-    "answerable_median": 0.669,
-    "answerable_min": 0.425,
-    "off_topic_max": 0.23
+    "answerable_median": 0.671,
+    "answerable_min": 0.421,
+    "off_topic_max": 0.228
   },
   "misses": []
 }

@@ -47,16 +47,20 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - [x] G4 Investing vocabulary (definitions only): `stock`, `bond`, `mutual_fund`, `etf`, `diversification`, `risk_and_return`, `apv`, `cryptocurrency`, `afp_pension_system`
 - [x] Example card: `protected_surplus` (es, en)
 - [ ] Review pass: own words, numbers declared, no advice, Chilean Spanish
-- [ ] Source check before release (Investopedia blocks fetching, so cards cite Wikipedia and regulator pages):
-    - [ ] `apv`, `afp_pension_system`: regime A/B tax treatment, multifondos A–E and default assignment against spensiones.cl and sii.cl (written from general knowledge; cited pages are home pages)
-    - [ ] `mutual_fund` (AGF, CMF), `cryptocurrency` (not legal tender in Chile): add a Chilean source
-    - [ ] `time_deposit`: Chilean source for fixed vs renewable and UF-indexed deposits
-    - [ ] `inflation`: the es.wikipedia page fetched looked like the English article; re-check
-    - [ ] `unidad_de_fomento`: cite Banco Central for who publishes it
-    - [ ] `net_income`: AFP, health and impuesto único deductions against spensiones.cl and sii.cl (sources are commercial sites)
+- [x] Khan Academy pass (Oct 19): 28 of 35 concepts now cite Khan Academy Financial Literacy articles (CC BY-NC-SA, used as reference, own words; checked with an 8-word overlap scan against the downloaded articles)
+- [ ] Source check before release (Chilean facts Khan does not cover):
+    - [x] `afp_pension_system`: multifondos A–E and default assignment by age, from the Superintendencia de Pensiones fondos page
+    - [ ] `apv`: regime A/B tax treatment (the SP APV page confirms the UF-capped exemption and the early-withdrawal surcharge, not the regimes)
+    - [ ] `afp_pension_system`: default-fund age brackets and that the contribution rate is set by law
+    - [ ] `mutual_fund` (AGF, CMF supervision), `stock` (brokers, CMF), `cryptocurrency` (legal tender), `etf`: a Chilean page with a path; several still cite the bare cmfchile.cl home page
+    - [ ] `time_deposit`: UF-indexed deposits (hedged as "some banks")
+    - [x] `inflation`: IPC published by the INE (ine.gob.cl); the Banco Central target sentence was removed
+    - [ ] `unidad_de_fomento`: cite the Banco Central directly (bcentral.cl did not load; es.wikipedia and SII cited)
+    - [ ] `net_income`, `liquidity`: no Khan coverage; AFP, health and impuesto único deductions against spensiones.cl and sii.cl
     - [ ] `cae`, `credit_report`: Ley 20.555 disclosure and informe comercial rights against CMF, SERNAC and Ley 19.628
-    - [ ] `minimum_payment`, `revolving_credit`: a CMF or bank source for statement mechanics
-    - [ ] `debt_to_income_ratio`: source the "carga financiera" mention or drop it
+    - [x] `minimum_payment`, `revolving_credit`: statement and payoff mechanics from Khan Academy
+    - [x] `debt_to_income_ratio`: unsourced "carga financiera" mention dropped
+    - [ ] `rule_50_30_20`: the Santiago rent / 60-20-20 remark has no source
 
 ### WP2 · Retrieval adapters and wiring
 - [x] `corpus_loader.py` + package data for `corpus/**/*.md`
@@ -91,7 +95,7 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 
 ## Results so far
 
-- Retrieval eval (52 questions, 70 cards): lexical recall@3 1.0, MRR 0.979; Chroma recall@3 0.979, MRR 0.944 (`evidence/rag_eval/`).
+- Retrieval eval (52 questions, 70 cards, after the Khan Academy pass): lexical recall@3 1.0, MRR 0.958; Chroma recall@3 1.0, MRR 0.972 (`evidence/rag_eval/`). Floors still separate: lexical 0.558 vs 0.387, Chroma 0.421 vs 0.228.
 - Score thresholds differ by method: lexical about 0.45, Chroma about 0.30 (off-topic max 0.379 and 0.23).
 - `rag` extra adds about 340 MB to site-packages plus the 240 MB model.
 - [x] Chroma miss: "how much money do I really have available" → paraphrased aliases on `protected_surplus`; Chroma recall@3 now 1.0
