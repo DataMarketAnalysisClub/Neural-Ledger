@@ -12,6 +12,7 @@ from ..adapters.outbound.classifier.jev import JevTransactionClassifier
 from ..adapters.outbound.classifier.sklearn_text import SklearnTextClassifier, naive_bayes
 from ..adapters.outbound.decision.jev import OPENROUTER_BASE_URL, JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
+from ..adapters.outbound.email.domains import DisposableEmailBlocklist, DnsEmailDomainCheck
 from ..adapters.outbound.fixtures.ledger_source import LedgerModelSource
 from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
@@ -60,7 +61,7 @@ from ..adapters.outbound.system.signer import HmacSigner
 from ..adapters.outbound.system.tokens import SecretsTokens
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices, AuthConfig
-from ..application.ports import PersonalDataDetector, TransactionClassifier
+from ..application.ports import EmailDomainCheck, PersonalDataDetector, TransactionClassifier
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
@@ -109,6 +110,17 @@ class Adapters:
     actions_repo: InMemoryActionRepository | SqliteActionRepository
     audit_log: InMemoryAuditLog | SqliteAuditLog
     source: PersonaFixtureSource | LedgerModelSource
+
+
+# NL_EMAIL_CHECKS, applied in order at sign-up: disposable (offline blocklist) and dns (the domain receives mail).
+EMAIL_CHECKS: dict[str, Callable[[], EmailDomainCheck]] = {"disposable": DisposableEmailBlocklist, "dns": DnsEmailDomainCheck}
+
+
+def _email_checks(names: tuple[str, ...]) -> list[EmailDomainCheck]:
+    unknown = [name for name in names if name not in EMAIL_CHECKS]
+    if unknown:
+        raise ValueError(f"unknown email check {unknown[0]!r} in NL_EMAIL_CHECKS (use {', '.join(EMAIL_CHECKS)} or none)")
+    return [EMAIL_CHECKS[name]() for name in names]
 
 
 def _jev(s: Settings) -> JevDecisionModel:
@@ -223,6 +235,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
             demo_personas=frozenset(auth.demo_personas), transactions=transaction_store,
             erasure=erasure, forget=(conversations, snapshots),  # in-memory state the erasure transaction cannot reach
+            email_checks=_email_checks(s.email_checks),
         )
         profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
 
