@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -47,7 +48,7 @@ from ....domain.statements.model import (
 )
 from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import QuestionnaireAnswer, UserProfile
-from .field_cipher import FieldCipher
+from .field_cipher import PREFIX, FieldCipher, FieldCipherError, WrongDataKey
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -107,6 +108,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     payload     TEXT NOT NULL,
     revoked_at  TEXT
 );
+CREATE TABLE IF NOT EXISTS meta (
+    name  TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -122,6 +127,8 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
     "sessions": ("SELECT COUNT(*) FROM sessions", "DELETE FROM sessions"),
 }
+# Bookkeeping, not data: a reset keeps it (the key check stays valid, since a reset does not change the key).
+_KEPT_ON_RESET = frozenset({"meta"})
 
 
 class SqliteDatabase:
@@ -149,7 +156,7 @@ class SqliteDatabase:
 
     def _known_tables(self) -> list[str]:
         """The tables to empty; refuses a table that _RESET_SQL does not know, so none is ever skipped silently."""
-        present = self._tables()
+        present = [name for name in self._tables() if name not in _KEPT_ON_RESET]
         unknown = [name for name in present if name not in _RESET_SQL]
         if unknown:
             raise RuntimeError(f"no reset statements for table(s) {', '.join(unknown)}: add them to _RESET_SQL")
@@ -454,6 +461,67 @@ def _statement_aad(user_id: str, statement_id: str) -> str:
 
 def _transaction_aad(user_id: str, txn_id: str) -> str:
     return f"transactions|{user_id}|{txn_id}"
+
+
+@dataclass(frozen=True, slots=True)
+class SealedColumn:
+    """One column sealed with the data key: how to read every row, rebuild its associated data and rewrite it.
+
+    Literal statements only (no SQL built from strings, ASVS V1). The migration and the key check read this list,
+    so a newly sealed column is added here and nowhere else."""
+
+    table: str
+    select: str  # rowid first, value last; the columns in between build the associated data
+    update: str  # (value, rowid)
+    aad: Callable[[tuple], str]
+
+
+SEALED_COLUMNS: tuple[SealedColumn, ...] = (
+    SealedColumn(
+        "statements", "SELECT rowid, user_id, statement_id, payload FROM statements ORDER BY rowid",
+        "UPDATE statements SET payload = ? WHERE rowid = ?", lambda r: _statement_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "transactions", "SELECT rowid, user_id, txn_id, payload FROM transactions ORDER BY rowid",
+        "UPDATE transactions SET payload = ? WHERE rowid = ?", lambda r: _transaction_aad(r[1], r[2]),
+    ),
+)
+
+KEY_CHECK_AAD = "meta|key_check|key_check"
+KEY_CHECK_TEXT = "neural-ledger data key check"
+
+
+def write_key_check(conn: sqlite3.Connection, cipher: FieldCipher) -> None:
+    conn.execute(
+        "INSERT INTO meta (name, value) VALUES ('key_check', ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+        (cipher.seal(KEY_CHECK_TEXT, KEY_CHECK_AAD),),
+    )
+
+
+def verify_data_key(db: SqliteDatabase, cipher: FieldCipher) -> None:
+    """Refuse a key that does not open this database, before anything is written with it.
+
+    The database keeps a sealed key check in `meta`. A database without one (created before it existed) is
+    probed with its first sealed value per column; then the check is written, so the next start is one read."""
+    with db.lock:
+        conn = db.connection
+        row = conn.execute("SELECT value FROM meta WHERE name = 'key_check'").fetchone()
+        try:
+            if row is not None:
+                if cipher.open(row[0], KEY_CHECK_AAD) != KEY_CHECK_TEXT:
+                    raise FieldCipherError("key check")
+                return
+            for column in SEALED_COLUMNS:
+                for record in conn.execute(column.select):
+                    if isinstance(record[-1], str) and record[-1].startswith(PREFIX):
+                        cipher.open(record[-1], column.aad(record))
+                        break
+        except FieldCipherError:
+            raise WrongDataKey(
+                "the data key does not open this database: set the key it was written with, or run "
+                "`neural-ledger migrate-data` to move it to the new key"
+            ) from None
+        write_key_check(conn, cipher)
 
 
 def _installment_info_from(payload: dict | None) -> InstallmentInfo | None:

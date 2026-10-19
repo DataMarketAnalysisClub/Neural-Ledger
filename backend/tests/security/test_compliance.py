@@ -221,11 +221,12 @@ def test_c07_the_public_repository_holds_no_secrets_and_no_real_statements():
 
 
 def test_c08_sql_is_always_parameterized(tmp_path):
-    """ASVS 5.0 V1 (injection), OWASP API8:2023. Statically: no SQL built from strings in the SQLite adapter.
+    """ASVS 5.0 V1 (injection), OWASP API8:2023. Statically: no SQL built from strings in the SQLite adapters.
     Dynamically: an injection-shaped user id is just an id."""
-    tree = ast.parse((SRC / "adapters/outbound/persistence/sqlite.py").read_text(encoding="utf-8"))
+    trees = [ast.parse(path.read_text(encoding="utf-8")) for path in sorted((SRC / "adapters/outbound/persistence").glob("sqlite*.py"))]
     built = [
         node.lineno
+        for tree in trees
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)

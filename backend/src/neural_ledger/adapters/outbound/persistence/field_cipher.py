@@ -30,6 +30,10 @@ class FieldCipherError(Exception):
     """A payload could not be opened: wrong key, tampered value, or a value moved to another row."""
 
 
+class WrongDataKey(FieldCipherError):
+    """The configured key does not open what the database already holds (another key, or a migration not run)."""
+
+
 class FieldCipher:
     def __init__(self, key: bytes) -> None:
         try:
@@ -63,6 +67,11 @@ class FieldCipher:
         nonce = secrets.token_bytes(_NONCE_BYTES)
         sealed = self._aead.encrypt(nonce, plaintext.encode("utf-8"), aad.encode("utf-8"))
         return PREFIX + base64.b64encode(nonce + sealed).decode("ascii")
+
+    @staticmethod
+    def is_current(stored: str) -> bool:
+        """Sealed in the format seal() writes today (the migration rewrites older ones)."""
+        return stored.startswith(PREFIX)
 
     def open(self, stored: str, aad: str) -> str:
         if not stored.startswith(PREFIX):

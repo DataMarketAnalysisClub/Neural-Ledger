@@ -45,6 +45,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteTransactionWrites,
     SqliteUserAccountStore,
     SqliteUserProfileStore,
+    verify_data_key,
 )
 from ..adapters.outbound.privacy.azure_language import AzureLanguageDetector
 from ..adapters.outbound.privacy.null import NullDetector
@@ -74,6 +75,7 @@ from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
 from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
+from . import data_key
 from .config import DEV_SECRET, Settings
 from .contracts import load_tool_definitions
 
@@ -114,17 +116,22 @@ def _jev(s: Settings) -> JevDecisionModel:
 
 
 def _data_cipher(s: Settings) -> FieldCipher:
-    """G11: the key that seals statement and transaction payloads in SQLite, never stored in the database.
+    """G11: the key that seals SQLite payloads, never stored in the database (bootstrap/data_key.py).
 
-    Live mode needs NL_DATA_KEY. Offline runs (tests, docker compose, the demo) without it get a random key
-    in <db>.key, created once: the database alone, or a copy of it, reads nothing."""
-    if s.data_key:
-        return FieldCipher.from_hex(s.data_key)
+    A Docker secret or NL_DATA_KEY_FILE first, then NL_DATA_KEY. Live mode and NL_DEPLOYMENT=deployed need one.
+    Local offline runs (tests, docker compose, the demo) without it get a random key in <db>.key, created once,
+    with a loud warning: the database alone, or a copy of it, reads nothing, but a copy of the volume does."""
+    key = data_key.resolve(s)
+    data_key.check(s, key)
+    if key is not None:
+        return FieldCipher.from_hex(key.hex)
     if s.mode == "live":
         raise ValueError("live mode with SQLite needs NL_DATA_KEY (64 hex characters) to encrypt statements at rest")
     if s.sqlite_path == ":memory:":
         return FieldCipher(secrets.token_bytes(32))  # the data dies with the process, and so does its key
-    return FieldCipher.from_key_file(f"{s.sqlite_path}.key")
+    path = data_key.legacy_key_file(s.sqlite_path)
+    data_key.warn_key_file_fallback(path)
+    return FieldCipher.from_key_file(path)
 
 
 AUTH_MODES = ("demo", "accounts")
@@ -145,10 +152,12 @@ def _auth_config(s: Settings) -> AuthConfig:
 
 def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapters]:
     s = settings or Settings.from_env()
-    if s.hmac_secret == DEV_SECRET and s.mode == "live":
+    if s.deployment not in data_key.DEPLOYMENTS:
+        raise ValueError(f"unknown NL_DEPLOYMENT {s.deployment!r} (local | deployed)")
+    if s.hmac_secret == DEV_SECRET and (s.mode == "live" or s.deployment == "deployed"):
         raise ValueError(
-            "live mode refuses the development default for NL_HMAC_SECRET; set a real one, "
-            'e.g. python -c "import secrets; print(secrets.token_hex(32))"'
+            f"{'live mode' if s.mode == 'live' else 'NL_DEPLOYMENT=deployed'} refuses the development default for "
+            'NL_HMAC_SECRET; set a real one, e.g. python -c "import secrets; print(secrets.token_hex(32))"'
         )
 
     clock = FixedClock(s.fixed_instant) if s.clock == "fixed" else SystemClock()
@@ -166,8 +175,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     auth = _auth_config(s)
     db: SqliteDatabase | None = None
     if s.persistence == "sqlite":
+        cipher = _data_cipher(s)  # before the database is opened: a refused key leaves no file behind
         db = SqliteDatabase(s.sqlite_path)
-        cipher = _data_cipher(s)
+        verify_data_key(db, cipher)
         actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)

@@ -1,0 +1,26 @@
+# Deployed mode: the SQLite data key comes from a Docker secret, never from the data volume (docs/SECURITY.md,
+# "Key management"). Use it on top of the base file, with any server override after it:
+#
+#   NL_DATA_KEY_SECRET_FILE=/opt/neural-ledger/secrets/nl_data_key \
+#     docker compose -f docker-compose.yml -f docker-compose.data-key.yml up -d --build
+#
+# The secret file holds the key only: 64 hex characters (deploy/secrets/nl_data_key.example shows how to make one).
+# Keep it outside the repository checkout and outside every Docker volume, readable by the container user
+# (uid 10001): `chown 10001 <file> && chmod 400 <file>`. Compose mounts it read-only at /run/secrets/nl_data_key,
+# a mount of its own, so a copy or backup of the ledger-data volume holds ciphertext without the key.
+#
+# NL_DEPLOYMENT=deployed makes the API refuse to start without the key, with a key file on the data volume, while
+# the old offline key file (/app/var/neural_ledger.db.key) still exists, or with the development NL_HMAC_SECRET.
+# Moving an existing database to the new key: `docker compose ... run --rm api neural-ledger migrate-data --dry-run`,
+# then without --dry-run, then delete the old key file (the command prints how).
+services:
+  api:
+    environment:
+      NL_DEPLOYMENT: deployed
+    secrets:
+      - source: nl_data_key
+        target: nl_data_key
+
+secrets:
+  nl_data_key:
+    file: ${NL_DATA_KEY_SECRET_FILE:?set NL_DATA_KEY_SECRET_FILE to the host path of the data key file (outside the repository and every volume)}
