@@ -8,7 +8,8 @@
   "related": ["compound_interest", "opportunity_cost", "inflation"],
   "sources": [
     {"title": "Time value of money (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Time_value_of_money", "license": "reference only (own words)"},
-    {"title": "Opportunity cost (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Opportunity_cost", "license": "reference only (own words)"}
+    {"title": "Opportunity cost (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Opportunity_cost", "license": "reference only (own words)"},
+    {"title": "Compound growth (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:banking/xa6995ea67a8e9fdd:interest-from-savings-to-investing/a/compound-growth", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"}
   ],
   "numbers": []
 }
@@ -17,7 +18,7 @@ The time value of money is the idea that an amount available today is worth more
 
 The concept has three practical uses. First, comparing amounts paid on different dates requires bringing them to the same point in time, usually by applying an interest or discount rate. Second, a fixed future payment is worth less today when the rate is higher. Third, inflation wears down value over the years, so an amount that grows in nominal terms may not grow in purchasing power.
 
-In personal finance it shows up when you decide whether to repay a debt early, how long a deposit should run, or whether postponing a purchase makes it more expensive. The concept does not say which choice is better; it only makes the cost of waiting visible. Your preference for spending now or later, the stability of your income and your existing debts all shape the answer.
+In personal finance it shows up when you decide whether to repay a debt early, how long a deposit should run, or whether postponing a purchase makes it more expensive. In long-term saving, time often matters more than the amount: letting savings grow for more years can beat saving more over fewer years. The concept does not say which choice is better; it only makes the cost of waiting visible. Your preference for spending now or later, the stability of your income and your existing debts all shape the answer.
 
 Check current rates on official sources before comparing, because they change over time.
 

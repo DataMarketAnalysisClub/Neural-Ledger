@@ -15,7 +15,7 @@
 ---
 The Unidad de Fomento (UF) is a unit of account used in Chile whose value is adjusted over time to follow inflation, measured by the IPC. Its peso value changes every day, so a contract written in UF keeps its real value even when prices rise.
 
-It is used for mortgage loans, rents, some long-term contracts, and certain savings and pension products. A UF contract usually shows the amount in UF together with its peso equivalent on the day of payment.
+It is used, among other things, for mortgage loans and some long-term contracts. A UF contract may show the amount in UF together with its peso equivalent on the day of payment.
 
 The Banco Central de Chile determines the UF value each day from the IPC data published by the INE, and the SII publishes the daily table as well. Both sources show the official value for each day. To know today's value, look it up there rather than relying on an old figure you saw elsewhere.
 

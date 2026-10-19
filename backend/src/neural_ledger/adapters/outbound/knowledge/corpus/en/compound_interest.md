@@ -8,7 +8,9 @@
   "related": ["simple_interest", "time_value_of_money", "inflation"],
   "sources": [
     {"title": "Compound interest (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Compound_interest", "license": "reference only (own words)"},
-    {"title": "Time value of money (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Time_value_of_money", "license": "reference only (own words)"}
+    {"title": "Time value of money (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Time_value_of_money", "license": "reference only (own words)"},
+    {"title": "Compound growth (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:banking/xa6995ea67a8e9fdd:interest-from-savings-to-investing/a/compound-growth", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
+    {"title": "What is interest and how does it work? (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:budgeting-and-saving/xa6995ea67a8e9fdd:saving-money/a/what-is-interest-and-how-does-it-work", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"}
   ],
   "numbers": [
     {"key": "example_principal", "value": 100000, "unit": "CLP", "meaning": "amount deposited in the worked example"},

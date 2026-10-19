@@ -8,7 +8,8 @@
   "related": ["compound_interest", "interest_rate", "time_value_of_money"],
   "sources": [
     {"title": "Compound interest (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Compound_interest", "license": "reference only (own words)"},
-    {"title": "Interest (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Interest", "license": "reference only (own words)"}
+    {"title": "Interest (Wikipedia)", "url": "https://en.wikipedia.org/wiki/Interest", "license": "reference only (own words)"},
+    {"title": "What is interest and how does it work? (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:budgeting-and-saving/xa6995ea67a8e9fdd:saving-money/a/what-is-interest-and-how-does-it-work", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"}
   ],
   "numbers": [
     {"key": "example_principal", "value": 100000, "unit": "CLP", "meaning": "amount in the worked example"},
@@ -23,7 +24,7 @@ Simple interest is interest calculated only on the original amount, never on int
 
 Take the example from the compound interest card: CLP 100,000 at a 5% annual rate for 2 years. Under simple interest the balance after two years is CLP 110,000, while compounding would give CLP 110,250. The difference comes from the second year, which under compounding earns interest on the first year's interest too.
 
-Simple interest is easy to check by hand, which makes it a useful first step when you read a contract. Some short-term loans and deposits are described this way, so read the terms to see whether interest applies to the original amount alone.
+Simple interest is easy to check by hand, which makes it a useful first step when you read a contract. Not every product uses the same formula, so check the terms to see whether interest applies to the original amount alone or also to interest that has accumulated.
 
 When comparing offers in Chile, the stated annual rate tells only part of the story. Ask whether the rate is simple or compound, how often it is calculated, and whether the amount is in pesos or UF, because each choice changes the final balance.
 
