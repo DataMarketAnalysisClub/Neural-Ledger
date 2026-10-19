@@ -4,6 +4,7 @@ import { Button, Notice, describeError } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { t, tList } from "@/i18n";
 import { useAuth } from "./AuthProvider";
+import { LoginPreview } from "./LoginPreview";
 
 // The design is drawn at 1216px wide. From lg every size is "design pixels" times --u, which grows with the window
 // (up to 1.7x), so the page keeps its proportions on a big screen instead of floating in empty space.
@@ -45,14 +46,8 @@ function AuthLayout({ title, description, children }: { readonly title: string; 
             <li key={feature} className="rounded-full border border-on-accent/40 px-[calc(12*var(--u))] py-[calc(4*var(--u))] text-[calc(13*var(--u))]">{feature}</li>
           ))}
         </ul>
-        {/* The real app, decorative: it fills what is left under the chips, enters from below and bleeds off the corner. */}
-        <div className="relative -mr-[calc(36*var(--u))] hidden min-h-[calc(220*var(--u))] flex-1 overflow-hidden lg:block">
-          <img
-            src="/login-preview.png"
-            alt=""
-            className="absolute top-0 left-0 min-h-full w-[108%] max-w-none object-cover object-left-top rounded-tl-[calc(10*var(--u))] border border-r-0 border-b-0 border-on-accent/35 bg-surface animate-[rise_900ms_var(--ease-out)_both] motion-reduce:animate-none"
-          />
-        </div>
+        {/* The real app, page after page, filling what is left under the chips and bleeding off the corner. */}
+        <LoginPreview className="-mr-[calc(36*var(--u))] hidden min-h-[calc(220*var(--u))] flex-1 lg:block" />
       </aside>
     </div>
   );

@@ -28,11 +28,14 @@ describe("sign-in page", () => {
     expect(within(chips).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Forecast", "Purchase check", "Savings plan", "Copilot"]);
   });
 
-  it("shows the real app as a decorative preview", () => {
-    mount();
-    const preview = within(screen.getByRole("complementary")).getByRole("presentation");
-    expect(preview).toHaveAttribute("src", "/login-preview.png");
-    expect(preview).toHaveAttribute("alt", "");
+  it("shows the real app, page after page, as a decorative preview", () => {
+    const { container } = mount();
+    const preview = container.querySelector("aside div[aria-hidden='true']");
+    expect(preview).not.toBeNull();
+    const images = [...preview!.querySelectorAll("img")];
+    expect(images).toHaveLength(8);
+    expect(images[0]).toHaveAttribute("src", "/login/overview.webp");
+    expect(images.every((img) => img.getAttribute("alt") === "")).toBe(true);
   });
 
   it("offers the demo personas beside each other under a divider, with the full names for assistive technology", async () => {
