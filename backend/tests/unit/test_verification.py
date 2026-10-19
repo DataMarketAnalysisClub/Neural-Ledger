@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from neural_ledger.domain.agent.verification import extract_numbers, verify_explanation
+from neural_ledger.domain.agent.amounts import extract_numbers
+from neural_ledger.domain.agent.verification import verify_explanation
 from neural_ledger.domain.shared.envelope import Caveat, Fact
 
 FACTS = (
