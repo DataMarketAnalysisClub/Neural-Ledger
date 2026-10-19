@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_value.schema.json",
+  "title": "MemoryValue",
+  "description": "A typed value of the closed memory catalog mem-0.1 (ADR-047). One type today: salary_net, the user's declared net salary from a pay month on. Unknown types and fields are refused; a boolean is not an amount. A value is what the user declared, never a credited salary.",
+  "type": "object",
+  "required": ["type", "salary_net"],
+  "properties": {
+    "type": {"const": "salary_net"},
+    "salary_net": {"$ref": "#/$defs/salary_net"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "catalog_version": {"const": "mem-0.1"},
+    "pay_month": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$", "description": "YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-040)."},
+    "salary_net": {
+      "type": "object",
+      "required": ["amount", "net", "effective_from"],
+      "properties": {
+        "amount": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "CLP, net of deductions (líquido)."},
+        "net": {"const": true},
+        "effective_from": {"$ref": "#/$defs/pay_month"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {"type": "salary_net", "salary_net": {"amount": 1200000, "net": true, "effective_from": "2026-11"}}
+  ]
+}

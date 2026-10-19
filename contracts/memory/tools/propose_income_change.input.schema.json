@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T1",
+  "x-owner": "B",
+  "x-stateful": true,
+  "description": "Prepare a declaration of the user's net salary (\"mi sueldo líquido es 1.200.000\", \"desde noviembre gano 1,2 palos\") for the user to check and confirm in the app's card. It takes no arguments: the amounts and the month are read from the user's current message only. Nothing is stored until the user confirms. Never state the salary as confirmed or verified: the answer says what the card asks.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_export.schema.json",
+  "title": "MemoryExport",
+  "description": "The memory part of the user's data export (G02): every declaration of every chain, superseded versions included, in chain and version order. Derived conclusions are not exported: they are recomputed from the statements.",
+  "type": "object",
+  "required": ["catalog_version", "declarations"],
+  "properties": {
+    "catalog_version": {"$ref": "memory_value.schema.json#/$defs/catalog_version"},
+    "declarations": {"type": "array", "items": {"$ref": "declaration.schema.json"}}
+  },
+  "additionalProperties": false,
+  "examples": [{"catalog_version": "mem-0.1", "declarations": []}]
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_error.schema.json",
+  "title": "MemoryError",
+  "description": "Error body of the memory HTTP routes (GET and DELETE /v1/memory, the proposal confirmation, PUT /v1/profile/income). Messages are generic and never echo a supplied amount. The x-http-status annotation maps status codes to HTTP responses; it is not a body field.",
+  "x-http-status": {
+    "UNAUTHENTICATED": 401,
+    "PERSONA_READ_ONLY": 403,
+    "NOT_FOUND": 404,
+    "PROPOSAL_USED": 409,
+    "PROPOSAL_STALE": 409,
+    "VERSION_CONFLICT": 409,
+    "INVALID_INPUT": 422,
+    "CONSENT_REQUIRED": 428
+  },
+  "type": "object",
+  "required": ["status", "message"],
+  "properties": {
+    "status": {"enum": ["UNAUTHENTICATED", "PERSONA_READ_ONLY", "NOT_FOUND", "PROPOSAL_USED", "PROPOSAL_STALE", "VERSION_CONFLICT", "INVALID_INPUT", "CONSENT_REQUIRED"], "description": "NOT_FOUND also covers another user's chain or proposal. PROPOSAL_USED: already confirmed (single use). PROPOSAL_STALE: the chain changed or was deleted after the proposal, or consent was revoked. CONSENT_REQUIRED: the memory consent is missing or revoked."},
+    "message": {"type": "string", "minLength": 1},
+    "field": {"type": "string", "minLength": 1}
+  },
+  "if": {"properties": {"status": {"const": "INVALID_INPUT"}}},
+  "then": {"required": ["field"]},
+  "additionalProperties": false,
+  "examples": [
+    {"status": "CONSENT_REQUIRED", "message": "memory consent required"},
+    {"status": "INVALID_INPUT", "message": "invalid input", "field": "salary_net.amount"}
+  ]
+}
