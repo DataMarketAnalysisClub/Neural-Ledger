@@ -20,7 +20,7 @@ from .....domain.statements.model import BankStatement, DailyBalance, StatementL
 from ..ocr_tabular import TableError, norm_text
 from ..spreadsheet import Sheet
 from .base import SheetBank, cell_money, day_month, full_date, parse_money
-from .santander import SANTANDER_OWN_MONEY
+from .santander import SANTANDER_OWN_MONEY, SANTANDER_SAVINGS
 
 # Each column by the first word of its header, normalized.
 _COLUMNS = {"fecha": "fecha", "sucursal": "sucursal", "descripcion": "descripcion", "documento": "n documento", "cargos": "cheques", "abonos": "depositos", "saldo": "saldo"}
@@ -29,6 +29,7 @@ _COLUMNS = {"fecha": "fecha", "sucursal": "sucursal", "descripcion": "descripcio
 class SantanderCuentaCorrienteXlsx(SheetBank):
     code = "santander_cl_cuentacorriente_xlsx"
     own_money = SANTANDER_OWN_MONEY
+    savings = SANTANDER_SAVINGS
     name = "Banco Santander Chile · Cuenta corriente (Excel)"
     currency = "CLP"
 

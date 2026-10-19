@@ -94,7 +94,9 @@ def test_imported_statement_reaches_the_transaction_ledger(client):
     body = client.get("/v1/transactions", headers={"X-User-Id": "camila"}).json()
     txns = body["data"]["transactions"]
     assert len(txns) == 7 and txns[0]["merchant"] == {"untrusted_text": "Compra Nacional MD SHOP ONE"}
-    assert sum(t["spent"] for t in body["data"]["spending"]) == 21_080 and body["data"]["income"][0]["spent"] == 463_521  # the 40,000 to savings is a Movimiento
+    assert sum(t["spent"] for t in body["data"]["spending"]) == 11_080 and body["data"]["income"][0]["spent"] == 463_521
+    # the 40,000 to the savings account and the 10,000 mutual fund contribution are Ahorro, not spending (ADR-036)
+    assert body["data"]["savings"] == [{"category": "savings", "currency": "CLP", "spent": 50_000, "count": 2}]
     assert client.get("/v1/transactions", headers={"X-User-Id": "diego"}).json()["data"]["transactions"] == []
 
 

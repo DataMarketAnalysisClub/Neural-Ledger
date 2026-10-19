@@ -47,9 +47,14 @@ class Layout(ABC):
     # the description as printed, case-insensitive. Only what the bank prints for the holder's own products: a
     # transfer to a third party stays spending.
     own_money: ClassVar[tuple[re.Pattern[str], ...]] = ()
+    # Descriptions that are the holder's money going into or coming back from their own savings or investment
+    # products (ADR-036): a savings account, a mutual fund. Same matching rules as `own_money`; checked first.
+    savings: ClassVar[tuple[re.Pattern[str], ...]] = ()
 
     def line_kind(self, description: str) -> LineKind | None:
-        """TRANSFER_OWN for an own-money line, else None (the sign decides)."""
+        """SAVINGS for a savings line, TRANSFER_OWN for another own-money line, else None (the sign decides)."""
+        if any(p.search(description) for p in self.savings):
+            return LineKind.SAVINGS
         return LineKind.TRANSFER_OWN if any(p.search(description) for p in self.own_money) else None
 
     @abstractmethod

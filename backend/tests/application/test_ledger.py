@@ -123,7 +123,7 @@ def test_import_posts_classified_charges_and_income_into_the_ledger():
         "camila.spending.CLP.uncategorized": 6_000,
         "camila.income.CLP": 900_000,
     }
-    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.5"
+    assert listed.as_of == "2026-09-06" and listed.params_version == "cat-0.6"
 
 
 def test_ledger_is_scoped_to_its_user():
@@ -186,7 +186,7 @@ def test_the_users_category_wins_is_audited_and_moves_the_totals():
     _, ledger, audit, ids = _imported()
     changed = ledger.set_category("camila", "web-1", ids[-5_000], "dining")
 
-    assert changed.status is Status.OK and changed.params_version == "cat-0.5"
+    assert changed.status is Status.OK and changed.params_version == "cat-0.6"
     assert (changed.data.category, changed.data.classifier, changed.data.confidence, changed.data.amount, changed.data.kind) == (
         "dining", "user", None, -5_000, "purchase",  # only the label changes; amount and kind come from the statement
     )
@@ -214,13 +214,26 @@ def test_a_movimiento_is_neither_spending_nor_income():
     assert [(t.category, t.spent) for t in listed.data.spending] == [("groceries", 20_000), ("uncategorized", 6_000)]
     assert listed.data.income == ()
     assert "camila.income.CLP" not in {f.key for f in listed.facts}
+    assert listed.data.savings == ()
+
+
+def test_savings_are_neither_spending_nor_income_and_are_reported_net():
+    _, ledger, _, ids = _imported()
+    assert ledger.set_category("camila", "s", ids[-30_000], "savings").ok  # set aside (ADR-036)
+    assert ledger.set_category("camila", "s", ids[900_000], "savings").ok  # back from the holder's savings: not income
+    listed = ledger.list_transactions("camila")
+    assert [(t.category, t.spent) for t in listed.data.spending] == [("groceries", 20_000), ("uncategorized", 6_000)]
+    assert listed.data.income == ()
+    assert [(t.category, t.currency, t.spent, t.count) for t in listed.data.savings] == [("savings", "CLP", 30_000 - 900_000, 2)]
+    facts = {f.key: f.value for f in listed.facts}
+    assert facts["camila.savings.CLP"] == -870_000 and "camila.income.CLP" not in facts
 
 
 @pytest.mark.parametrize(
     ("amount", "category", "allowed"),
     [
-        (900_000, "groceries", ("income", "movement")),  # a deposit is not spending
-        (-30_000, "income", ("dining", "entertainment", "groceries", "health", "movement", "other", "shopping", "transport", "utilities")),
+        (900_000, "groceries", ("income", "movement", "savings")),  # a deposit is not spending
+        (-30_000, "income", ("dining", "entertainment", "groceries", "health", "movement", "other", "savings", "shopping", "transport", "utilities")),
         (-30_000, "uncategorized", None),
         (-30_000, "approved", None),
         (-30_000, "", None),

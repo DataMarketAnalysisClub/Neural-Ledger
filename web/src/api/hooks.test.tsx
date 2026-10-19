@@ -57,7 +57,7 @@ function serve(input: RequestInfo | URL, init: RequestInit = {}): Response {
     return reply(200, ok({ txn_id: path.split("/").pop(), category, classifier: "user", confidence: null }));
   }
   if (path === "/api/v1/transactions") {
-    return reply(200, ok({ transactions: [{ txn_id: "txn_1", category: relabeled ?? "other" }], spending: [], income: [] }));
+    return reply(200, ok({ transactions: [{ txn_id: "txn_1", category: relabeled ?? "other" }], spending: [], income: [], savings: [] }));
   }
   return reply(404, { detail: "Not Found" });
 }

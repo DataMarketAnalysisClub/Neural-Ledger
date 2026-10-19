@@ -401,7 +401,7 @@ function TransactionsView() {
   const txns = useTransactions();
   if (txns.isError) return <ErrorState error={txns.error} onRetry={() => void txns.refetch()} />;
   if (txns.isPending) return <Loading />;
-  const { transactions, spending, income } = txns.data.data as Transactions;
+  const { transactions, spending, income, savings } = txns.data.data as Transactions;
   if (transactions.length === 0)
     return (
       <EmptyState title={t("statements.transactions.empty")}>
@@ -452,6 +452,7 @@ function TransactionsView() {
       <div className="space-y-10 xl:border-l xl:border-line xl:pl-10">
         <Totals id="spending" title={t("statements.transactions.spending")} totals={spending} />
         <Totals id="income" title={t("statements.transactions.income")} totals={income} />
+        <Totals id="savings" title={t("statements.transactions.savings")} totals={savings} />
       </div>
     </div>
   );
@@ -459,11 +460,11 @@ function TransactionsView() {
 
 const SPENDING = ["groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other"] as const;
 
-/** The categories a kind can take (ADR-023, contracts/transactions/category_update); the API checks it again. */
+/** The categories a kind can take (ADR-023, ADR-036, contracts/transactions/category_update); the API checks it again. */
 function allowedCategories(kind: Transaction["kind"]): CategoryUpdate["category"][] {
   if (kind === "card_payment") return []; // stays movement: as spending it would count the cuotas twice
-  if (kind === "income") return ["income", "movement"];
-  return [...SPENDING, "movement"];
+  if (kind === "income") return ["income", "movement", "savings"]; // savings: money back from the holder's savings
+  return [...SPENDING, "movement", "savings"];
 }
 
 /** Corrects a category the classifier got wrong. Not optimistic: the row and totals change once the API answers. */

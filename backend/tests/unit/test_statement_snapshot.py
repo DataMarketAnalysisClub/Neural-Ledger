@@ -145,6 +145,14 @@ def test_own_money_is_a_transfer_and_the_users_movement_label_counts():
     assert groceries and all(kinds[p.transaction.txn_id] is TransactionKind.PURCHASE for p in groceries)
 
 
+def test_the_users_savings_label_is_own_money_for_the_estimators():
+    statements, posted = _history(Month(2026, 3), 7)
+    rent = next(p for p in posted if "ARRIENDO" in p.transaction.merchant_raw and p.transaction.date.month == 5)
+    relabeled = [replace(p, transaction=replace(p.transaction, category="savings")) if p is rent else p for p in posted]
+    kinds = {t.txn_id: t.kind for t in build_ledger_snapshot(USER, statements, relabeled).transactions}
+    assert kinds[rent.transaction.txn_id] is TransactionKind.TRANSFER_OWN  # ADR-036: neither spending nor income
+
+
 def test_salaried_with_no_contracted_net_and_no_goals():
     statements, posted = _history(Month(2026, 3), 7)
     snapshot = build_ledger_snapshot(USER, statements, posted)
