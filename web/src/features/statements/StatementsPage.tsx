@@ -3,14 +3,17 @@ import { ArrowLeft, Info, ShieldWarning, UploadSimple } from "@phosphor-icons/re
 import {
   useImportStatement,
   usePersona,
+  useSetCategory,
   useStatement,
   useStatements,
   useTransactions,
   type Statement,
   type StatementImport,
   type Statements,
+  type Transaction,
   type Transactions,
 } from "@/api/hooks";
+import type { CategoryUpdate } from "@/contracts/transactions/category_update";
 import { ApiError, type Envelope } from "@/api/client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import { RedactedText, redactedPlainText } from "@/components/redaction";
@@ -434,7 +437,9 @@ function TransactionsView() {
                       </span>
                     )}
                   </th>
-                  <td className="px-5 py-3 text-ink-2">{tDynamic("statements.categories", txn.category)}</td>
+                  <td className="px-5 py-3 text-ink-2">
+                    <CategoryPicker txn={txn} />
+                  </td>
                   <td className="px-5 py-3 text-ink-2">{tDynamic("statements.kinds", txn.kind)}</td>
                   <td className="num px-5 py-3 text-right whitespace-nowrap text-ink">{formatMoney(txn.amount, txn.currency)}</td>
                 </tr>
@@ -448,6 +453,51 @@ function TransactionsView() {
         <Totals id="spending" title={t("statements.transactions.spending")} totals={spending} />
         <Totals id="income" title={t("statements.transactions.income")} totals={income} />
       </div>
+    </div>
+  );
+}
+
+const SPENDING = ["groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other"] as const;
+
+/** The categories a kind can take (ADR-023, contracts/transactions/category_update); the API checks it again. */
+function allowedCategories(kind: Transaction["kind"]): CategoryUpdate["category"][] {
+  if (kind === "card_payment") return []; // stays movement: as spending it would count the cuotas twice
+  if (kind === "income") return ["income", "movement"];
+  return [...SPENDING, "movement"];
+}
+
+/** Corrects a category the classifier got wrong. Not optimistic: the row and totals change once the API answers. */
+function CategoryPicker({ txn }: { txn: Transaction }) {
+  const setCategory = useSetCategory();
+  const options = allowedCategories(txn.kind);
+  const label = tDynamic("statements.categories", txn.category);
+  if (options.length === 0) return <>{label}</>;
+  return (
+    <div className="space-y-1">
+      <select
+        value={txn.category}
+        disabled={setCategory.isPending}
+        aria-label={t("statements.transactions.setCategory", { merchant: redactedPlainText(txn.merchant.untrusted_text) })}
+        onChange={(e) => setCategory.mutate({ txnId: txn.txn_id, category: e.target.value as CategoryUpdate["category"] })}
+        className="h-8 max-w-[200px] rounded-control border border-control bg-surface px-2 text-sm text-ink focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 disabled:opacity-60"
+      >
+        {!options.includes(txn.category as CategoryUpdate["category"]) && (
+          <option value={txn.category} disabled>
+            {label}
+          </option>
+        )}
+        {options.map((c) => (
+          <option key={c} value={c}>
+            {tDynamic("statements.categories", c)}
+          </option>
+        ))}
+      </select>
+      {txn.classifier === "user" && <span className="block text-xs text-ink-3">{t("statements.transactions.byYou")}</span>}
+      {setCategory.isError && (
+        <p role="alert" className="text-xs text-danger">
+          {describeError(setCategory.error)}
+        </p>
+      )}
     </div>
   );
 }

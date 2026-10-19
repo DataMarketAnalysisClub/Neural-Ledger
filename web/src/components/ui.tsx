@@ -149,7 +149,7 @@ export function Section({
 }) {
   const headingId = id ? `${id}-title` : undefined;
   return (
-    <section aria-labelledby={headingId} className={cn("min-w-0", className)}>
+    <section id={id} aria-labelledby={headingId} className={cn("min-w-0", className)}>
       {(title || aside) && (
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
           <div>
