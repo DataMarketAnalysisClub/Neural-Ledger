@@ -4,6 +4,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { CalendarDots, ChartLineDown, ChatText, DotsThreeCircle, Files, LinkSimple, PiggyBank, Receipt, SignOut, UserCircle, type Icon } from "@phosphor-icons/react";
 import { t, type MessageKey } from "@/i18n";
 import { Button, cn } from "@/components/ui";
+import { LanguagePicker } from "@/components/LanguagePicker";
 
 /**
  * The phone chrome (below lg): a header that carries the profile and a bottom bar with four destinations, the
@@ -119,14 +120,15 @@ export function MobileBar({ isAccount, onSignout, signingOut }: { isAccount: boo
                       </li>
                     ))}
                   </ul>
-                  {isAccount && (
-                    <div className="mt-3 animate-[rise_260ms_var(--ease-out)_both] border-t border-line pt-3 [animation-delay:200ms]">
-                      <Button variant="quiet" className="w-full justify-start" onClick={onSignout} disabled={signingOut} busy={signingOut}>
+                  <div className="mt-3 flex animate-[rise_260ms_var(--ease-out)_both] items-center justify-between gap-3 border-t border-line pt-3 [animation-delay:200ms]">
+                    <LanguagePicker />
+                    {isAccount && (
+                      <Button variant="quiet" onClick={onSignout} disabled={signingOut} busy={signingOut}>
                         <SignOut aria-hidden className="size-5" />
                         {signingOut ? t("auth.signingOut") : t("auth.signout")}
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </Popover.Content>
               </Popover.Portal>
             </Popover.Root>
