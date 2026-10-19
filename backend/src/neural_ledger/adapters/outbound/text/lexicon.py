@@ -86,6 +86,17 @@ _ISO_MONTH = re.compile(r"\b(20\d{2})-(0[1-9]|1[0-2])\b")
 _NAMED_MONTH = re.compile(r"\b(?:in|from|starting|en|desde|a partir de)\s+(" + "|".join(_MONTHS) + r")\b", re.I)
 
 
+_SPANISH = re.compile(
+    r"[¿¡ñáéíóú]|\b(qu[eé]|es|el|la|los|las|un|una|de|del|que|c[oó]mo|significa|expl[ií]came|son|mi|mis|para|por|y)\b", re.I
+)
+_ENGLISH = re.compile(r"\b(what|is|are|the|a|an|of|how|does|mean|explain|my|for|and|to)\b", re.I)
+
+
+def language_of(text: str) -> str:
+    """es or en, by marker words and accents; Spanish when it is a tie (the app's Chilean users)."""
+    return "en" if len(_ENGLISH.findall(text)) > len(_SPANISH.findall(text)) else "es"
+
+
 def money_amounts(text: str) -> list[int]:
     return [int(n.value) for n in extract_numbers(text) if not n.is_percent and n.value >= 1000]
 
