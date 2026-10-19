@@ -9,18 +9,11 @@ contracted/P20 income, P80 spend (used for every decision). Stress: conservative
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 
 from ..shared.envelope import Fact
 from ..shared.month import Month, month_range
-from .model import FinancialModel
+from .model import FinancialModel, Scenario
 from .params import FinanceParams
-
-
-class Scenario(str, Enum):
-    TYPICAL = "typical"
-    CONSERVATIVE = "conservative"
-    STRESS = "stress"
 
 
 @dataclass(frozen=True, slots=True)
