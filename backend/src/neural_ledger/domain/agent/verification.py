@@ -23,14 +23,14 @@ _NUMBER = re.compile(
     r"(?P<prefix>(?:CLP|USD|EUR|US\$|CL\$|\$)\s?)?"
     r"(?P<int>\d{1,3}(?:[.,']\d{3})+|\d+)"
     r"(?:[.,](?P<dec>\d{1,2})(?!\d))?"
-    r"\s?(?P<suffix>(?:k|K|mil|MM|M|millones|million)\b)?"
+    r"\s?(?P<suffix>(?:k|K|mil|lucas|luca|MM|M|millones|million)\b)?"
     r"(?P<pct>\s?%)?"
 )
 _APPROX = re.compile(
     r"(about|around|approx\.?|approximately|roughly|aprox\.?|aproximadamente|cerca de|alrededor de|~)\s*$",
     re.IGNORECASE,
 )
-_SCALE = {"k": 1_000, "K": 1_000, "mil": 1_000, "M": 1_000_000, "MM": 1_000_000, "millones": 1_000_000, "million": 1_000_000}
+_SCALE = {"k": 1_000, "K": 1_000, "mil": 1_000, "lucas": 1_000, "luca": 1_000, "M": 1_000_000, "MM": 1_000_000, "millones": 1_000_000, "million": 1_000_000}
 
 _BANNED = re.compile(
     r"\bsafe money\b|\bsafe(?:ly)? to (?:spend|buy)\b|\bdinero seguro\b|\bguarantee(?:d|s)?\b|\bgarantizad[oa]s?\b",

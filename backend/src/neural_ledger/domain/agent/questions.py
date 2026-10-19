@@ -15,6 +15,8 @@ class Intent(str, Enum):
     AFFORD_PURCHASE = "afford_purchase"
     FORECAST = "forecast"
     PROTECTED_SURPLUS = "protected_surplus"
+    SPENDING_CHECK = "spending_check"
+    LOG_EXPENSE = "log_expense"
     SAVINGS_PLAN = "savings_plan"
     SET_LIQUIDITY_FLOOR = "set_liquidity_floor"
     EXECUTE_ACTION = "execute_action"
@@ -67,6 +69,8 @@ INTENT_QUESTION = ChoiceQuestion(
         "Asks whether a specific purchase or installment plan is affordable, or how it would change the budget",
         "Asks how the coming months or the balance will look, or when money gets tight",
         "Asks how much money is free to spend now after commitments and reserve",
+        "Asks how much they can spend today, per day or until payday, how their spending is going, or mentions a receipt (boleta) they added",
+        "Tells the assistant about money they already spent (gasté, pagué, compré, spent, paid), or answers how they paid it (cash, card)",
         "Asks to build or size a plan to save toward a goal or to rebuild the reserve",
         "Asks to set or change the minimum balance (floor, piso, saldo mínimo) the account must keep every month",
         "Tells the assistant to carry out or confirm an action it proposed, such as creating a rule or moving money",

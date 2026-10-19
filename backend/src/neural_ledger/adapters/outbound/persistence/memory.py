@@ -13,6 +13,7 @@ from ....application.ports import ErasureReport, IdCollision, UserProfileStore
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
 from ....domain.ledger.categorization import PostedTransaction
+from ....domain.receipts.model import StoredReceipt
 from ....domain.statements.model import StoredStatement
 from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import UserProfile
@@ -60,6 +61,34 @@ class InMemoryStatementStore:
 
     def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
         return tuple(s for (owner, _), s in self._statements.items() if owner == user_id)
+
+
+class InMemoryReceiptStore:
+    def __init__(self) -> None:
+        self._receipts: dict[tuple[str, str], StoredReceipt] = {}
+        self._lock = threading.Lock()
+
+    def add(self, receipt: StoredReceipt) -> bool:
+        key = (receipt.user_id, receipt.receipt_id)
+        with self._lock:
+            if key in self._receipts:
+                return False
+            self._receipts[key] = receipt
+            return True
+
+    def get(self, user_id: str, receipt_id: str) -> StoredReceipt | None:
+        return self._receipts.get((user_id, receipt_id))
+
+    def for_user(self, user_id: str) -> tuple[StoredReceipt, ...]:
+        return tuple(r for (owner, _), r in self._receipts.items() if owner == user_id)
+
+    def replace(self, receipt: StoredReceipt) -> bool:
+        key = (receipt.user_id, receipt.receipt_id)
+        with self._lock:
+            if key not in self._receipts:
+                return False
+            self._receipts[key] = receipt
+            return True
 
 
 class InMemoryTransactionStore:
@@ -422,19 +451,21 @@ class InMemoryAccountErasure:
     def __init__(
         self, accounts: InMemoryUserAccountStore | None, sessions: InMemorySessionStore | None, profiles: UserProfileStore,
         audit: InMemoryAuditLog, statements: InMemoryStatementStore, transactions: InMemoryTransactionStore,
-        rules: InMemorySavingsRuleStore, actions: InMemoryActionRepository,
+        rules: InMemorySavingsRuleStore, actions: InMemoryActionRepository, receipts: InMemoryReceiptStore | None = None,
     ) -> None:
         self._accounts, self._sessions, self._audit = accounts, sessions, audit
         self._profiles = profiles._inner if isinstance(profiles, PersonaOverlayProfileStore) else profiles
         self._statements, self._transactions, self._rules, self._actions = statements, transactions, rules, actions
+        self._receipts = receipts or InMemoryReceiptStore()
 
     def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
-        with self._audit._lock, self._statements._lock, self._transactions._lock, self._rules._lock, self._actions._lock:
+        with self._audit._lock, self._statements._lock, self._transactions._lock, self._receipts._lock, self._rules._lock, self._actions._lock:
             if event.event_id in {e.draft.event_id for e in self._audit._events}:
                 raise IdCollision("generated identifier collision")
             counts = {
                 "statements": _drop(self._statements._statements, lambda key, _: key[0] == user_id),
                 "transactions": _drop(self._transactions._transactions, lambda key, _: key[0] == user_id),
+                "receipts": _drop(self._receipts._receipts, lambda key, _: key[0] == user_id),
                 "proposals": _drop(self._actions._proposals, lambda _, p: p.user_id == user_id),
                 "authorizations": _drop(self._actions._authorizations, lambda _, a: a.user_id == user_id),
             }

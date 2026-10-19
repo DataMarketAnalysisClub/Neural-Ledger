@@ -25,6 +25,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemoryActionRepository,
     InMemoryAuditLog,
     InMemoryConversationStore,
+    InMemoryReceiptStore,
     InMemorySavingsRuleStore,
     InMemorySessionStore,
     InMemorySnapshotStore,
@@ -41,6 +42,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteActionRepository,
     SqliteAuditLog,
     SqliteDatabase,
+    SqliteReceiptStore,
     SqliteSavingsRuleStore,
     SqliteSessionStore,
     SqliteStatementStore,
@@ -53,6 +55,7 @@ from ..adapters.outbound.persistence.sqlite import (
 from ..adapters.outbound.persistence.sqlite_migration import migrate
 from ..adapters.outbound.privacy.azure_language import AzureLanguageDetector
 from ..adapters.outbound.privacy.null import NullDetector
+from ..adapters.outbound.receipts.reader import ReceiptFileReader
 from ..adapters.outbound.statements.reader import StatementFileReader
 from ..adapters.outbound.system.clock import FixedClock, SystemClock
 from ..adapters.outbound.system.ids import SequentialIds, UuidIds
@@ -72,6 +75,7 @@ from ..application.use_cases.accounts import DEMO_PERSONAS, AccountUseCases
 from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
+from ..application.use_cases.documents import DocumentUseCases
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
@@ -200,12 +204,14 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db, cipher)
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db, cipher)
         statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
+        receipt_store: InMemoryReceiptStore | SqliteReceiptStore = SqliteReceiptStore(db, cipher)
         transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
         transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
         writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db, cipher)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
+        receipt_store = InMemoryReceiptStore()
         transaction_writes = InMemoryTransactionWrites(transaction_store, audit_log)
         writable_profiles = InMemoryUserProfileStore()
 
@@ -229,7 +235,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             account_store, session_store = InMemoryUserAccountStore(), InMemorySessionStore()
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
             erasure = InMemoryAccountErasure(
-                account_store, session_store, profiles, audit_log, statement_store, transaction_store, rule_store, actions_repo
+                account_store, session_store, profiles, audit_log, statement_store, transaction_store, rule_store, actions_repo,
+                receipt_store,
             )
         accounts = AccountUseCases(
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
@@ -277,8 +284,13 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
     ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
+    # Documents dropped on the copilot (ADR-038): routed by the domain rules, then by the decision chain (Jev when set).
+    documents = DocumentUseCases(
+        ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
+        financial, audit_log, clock, ids, snapshots,
+    )
     registry = build_registry(
-        financial, actions, profile_uc, audit_uc, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
+        financial, actions, profile_uc, audit_uc, documents, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version
     )
     chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
 
@@ -302,6 +314,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         accounts=accounts,
         profile_editing=profile_editing,
         persistence=s.persistence,
+        documents=documents,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source)
 

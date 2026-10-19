@@ -27,6 +27,15 @@ INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
     (Intent.SAVINGS_PLAN, re.compile(r"\b(sav(?:e|ing|ings)|ahorr\w*|set aside|put away|guardar)\b", re.I)),
     (Intent.AFFORD_PURCHASE, re.compile(
         r"\b(afford|buy|purchase|compr\w*|laptop|notebook|phone|cuotas?|installments?|make it work|alcanza)\b", re.I)),
+    # Before a purchase check: "compré"/"bought" is money already spent, to log; "¿puedo comprar?" is a check (ADR-038).
+    (Intent.LOG_EXPENSE, re.compile(
+        r"\b(gast[eé]|gastamos|pagu[eé]|pagamos|compr[eé]|compramos|me gast[eé]|tuve un gasto|spent|paid|bought|"
+        r"en efectivo|con efectivo|efectivo|cash|con tarjeta|con (?:la )?(?:d[eé]bito|cr[eé]dito)|by card|with (?:my )?card)\b", re.I)),
+    # Before the surplus: "how much can I spend today" is the day-to-day check-in, not the one-off surplus (ADR-038).
+    (Intent.SPENDING_CHECK, re.compile(
+        r"\b(spend (?:today|now|this week|per day|a day|daily|until payday)|per day|a day|daily|por d[ií]a|al d[ií]a|diario|"
+        r"gastar (?:hoy|ahora|esta semana|hasta)|until payday|hasta (?:el )?(?:pago|sueldo)|receipts?|boletas?|"
+        r"how am i doing|c[oó]mo voy|my spending|mis gastos)\b", re.I)),
     (Intent.PROTECTED_SURPLUS, re.compile(r"\b(surplus|excedente|available|disponible|free money|how much can i|cu[aá]nto puedo|spare)\b", re.I)),
     (Intent.FORECAST, re.compile(
         r"\b(forecast|proyecci[oó]n|december|diciembre|next (?:few )?months|pr[oó]ximos meses|balance|saldo|crunch|cash ?flow|flujo)\b", re.I)),

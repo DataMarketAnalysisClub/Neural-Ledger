@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/expenses/expense_confirmation.schema.json",
+  "title": "ExpenseConfirmation",
+  "description": "Body of POST /v1/expenses/{proposal_id}/confirm (ADR-038): the user confirms the expense the copilot prepared, completing what it could not tell. The amount is the proposal's and cannot be changed here. The answer is the stored expense, shaped like a receipt (outputs/document_ingest.schema.json#/$defs/receipt, source manual).",
+  "type": "object",
+  "required": ["payment"],
+  "properties": {
+    "session_id": {"type": "string", "maxLength": 120},
+    "payment": {"enum": ["cash", "card"]},
+    "category": {"enum": ["groceries", "dining", "health", "shopping", "transport", "utilities", "entertainment", "other"]},
+    "spent_on": {"type": "string", "format": "date"}
+  },
+  "additionalProperties": false
+}

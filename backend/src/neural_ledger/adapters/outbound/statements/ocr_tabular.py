@@ -89,8 +89,15 @@ class Page:
         """Plain text in reading order; enough to recognize which bank printed it."""
         if not self.boxes:
             return ""
+        return "\n".join(text for text, _ in self.lines)
+
+    @property
+    def lines(self) -> list[tuple[str, float]]:
+        """Each line's text in reading order with the lowest confidence of its words (receipts read line by line)."""
+        if not self.boxes:
+            return []
         rows = _group_y(list(self.boxes), _tolerance(self.boxes))
-        return "\n".join(" ".join(b.text for b in sorted(row, key=lambda b: b.x0)) for row in rows)
+        return [(" ".join(b.text for b in sorted(row, key=lambda b: b.x0)), min(b.confidence for b in row)) for row in rows]
 
 
 @dataclass(frozen=True, slots=True)

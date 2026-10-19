@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/spending_status.schema.json",
+  "title": "SpendingStatus",
+  "description": "data of GET /v1/spending and of the copilot's get_spending_status tool (T0, ADR-038): the spending check-in for the first projected cycle and the latest receipt. Receipts a statement charge already records are counted once, as that charge.",
+  "type": "object",
+  "required": ["check", "latest_receipt", "receipts_counted", "receipts_matched"],
+  "properties": {
+    "check": {"$ref": "document_ingest.schema.json#/$defs/spending_check"},
+    "latest_receipt": {"oneOf": [{"$ref": "document_ingest.schema.json#/$defs/receipt"}, {"type": "null"}]},
+    "receipts_counted": {"type": "integer", "minimum": 0},
+    "receipts_matched": {"type": "integer", "minimum": 0}
+  },
+  "additionalProperties": false
+}

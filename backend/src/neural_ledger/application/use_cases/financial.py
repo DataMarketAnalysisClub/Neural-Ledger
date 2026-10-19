@@ -7,8 +7,9 @@ INVALID_INPUT and touch no engine; missing data returns INSUFFICIENT_DATA (hard 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, TypeVar
@@ -43,6 +44,7 @@ from ...domain.finance.purchase import (
     purchase_facts,
     simulate_purchase,
 )
+from ...domain.finance.spending import LoggedSpend, SpendingCheck, spending_caveats, spending_check, spending_facts
 from ...domain.finance.surplus import SurplusResult, protected_surplus, surplus_facts
 from ...domain.shared.envelope import Caveat, Envelope, Fact
 from ...domain.shared.errors import InsufficientData, InvalidInput
@@ -324,6 +326,18 @@ class FinancialUseCases:
             result = protected_surplus(model, self._params_for(model), horizon, plan)
             facts = (*surplus_facts(result, model.currency), self._floor_fact(model))
             return self._ok(model, result, facts, kind="surplus", parts=(horizon, include, plan))
+
+        return self._run(user_id, body)
+
+    def spending_check(self, user_id: str, logged: Sequence[LoggedSpend], today: date) -> Envelope[SpendingCheck]:
+        """Logged spending against the conservative forecast's assumption for the first cycle (ADR-038)."""
+
+        def body(model: FinancialModel) -> Envelope[SpendingCheck]:
+            surplus = protected_surplus(model, self._params_for(model), 6).protected_surplus
+            result = spending_check(model, logged, today, surplus)
+            facts = (*spending_facts(result, model.currency), self._floor_fact(model))
+            parts = (today.isoformat(), sorted((item.ref, item.amount) for item in logged))
+            return self._ok(model, result, facts, spending_caveats(result), kind="spending", parts=parts)
 
         return self._run(user_id, body)
 
