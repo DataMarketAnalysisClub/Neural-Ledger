@@ -503,7 +503,6 @@ export const zh: Messages = {
       amount: "金额",
       spending: "按类别的支出",
       income: "收入",
-      savings: "储蓄（存入减去取出）",
       count: "{count} 笔交易",
       savings: "储蓄：存入减去取出",
     },
@@ -520,7 +519,6 @@ export const zh: Messages = {
       movement: "本人账户间转账",
       savings: "储蓄",
       uncategorized: "未分类",
-      savings: "储蓄",
     },
   },
   redaction: {

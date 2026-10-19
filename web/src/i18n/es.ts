@@ -506,7 +506,6 @@ export const es: Messages = {
       amount: "Monto",
       spending: "Gasto por categoría",
       income: "Ingresos",
-      savings: "Ahorro, apartado menos retirado",
       count: "{count} movimientos",
       savings: "Ahorro, lo separado menos lo retirado",
     },
@@ -523,7 +522,6 @@ export const es: Messages = {
       movement: "Movimiento entre cuentas propias",
       savings: "Ahorro",
       uncategorized: "Sin categoría",
-      savings: "Ahorro",
     },
   },
   redaction: {
