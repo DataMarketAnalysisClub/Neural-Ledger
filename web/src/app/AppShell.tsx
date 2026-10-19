@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -117,6 +117,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const { pathname } = useLocation();
   useMarkLanded();
+  // The phone header's height is whatever its second row needs; screens that fill the viewport read it from here.
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => root.style.setProperty("--phone-header-h", `${header.offsetHeight}px`));
+    observer.observe(header);
+    return () => { observer.disconnect(); root.style.removeProperty("--phone-header-h"); };
+  }, []);
   const signout = useMutation({ mutationFn: auth.signout });
   const isAccount = auth.mode === "accounts";
   const isMock = import.meta.env.DEV && import.meta.env.VITE_ACCOUNTS_MOCK === "true";
@@ -167,7 +177,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-col">
         {/* Phone header: the brand on the left, the profile on the right, and the sandbox seal (or, in demo mode,
             the persona switch) under them. From lg the sidebar and the top bar below replace it. */}
-        <header className="rail sticky top-0 z-30 border-b border-line bg-rail pt-[env(safe-area-inset-top)] lg:hidden">
+        <header ref={headerRef} className="rail sticky top-0 z-30 border-b border-line bg-rail pt-[env(safe-area-inset-top)] lg:hidden">
           <div className="flex h-14 items-center justify-between gap-3 pr-2 pl-4">
             <div className="flex min-w-0 items-center gap-2.5">
               <Mark />
@@ -197,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {/* A new key per screen replays the fade-in, so moving between tabs never snaps. */}
           <div key={pathname} className="animate-[page-in_220ms_var(--ease-out)_both]">{children}</div>
         </main>
-        <footer className="px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] text-xs text-ink-3 sm:px-6 lg:px-10 lg:pb-6">{t(isAccount ? "auth.footer" : "app.footer")}</footer>
+        <footer className={cn("px-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] text-xs text-ink-3 sm:px-6 lg:px-10 lg:pb-6", pathname === "/copilot" && "max-lg:hidden")}>{t(isAccount ? "auth.footer" : "app.footer")}</footer>
       </div>
 
       <MobileBar isAccount={isAccount} onSignout={() => signout.mutate()} signingOut={signout.isPending} />

@@ -5,17 +5,16 @@ import { cn } from "@/components/ui";
 export type NavIcon = (props: { className?: string; weight?: "regular" | "fill"; "aria-hidden"?: boolean | "true" | "false" }) => ReactNode;
 
 /**
- * The Copilot's nav icon: the brand mark drawn as a line glyph, so it sits with the other icons (same grid, same
- * stroke, `currentColor`). `weight` follows Phosphor's: regular, and fill (a heavier stroke) when it is the
- * current screen.
+ * The Copilot's nav icon: the silhouette of the brand mark's N, extra heavy, so it holds its own next to the
+ * outlined icons. It takes `currentColor`, like they do; `weight` is accepted so it fits the same slot, and the
+ * shape is the same in both (the sidebar tints the current one).
  */
-export function CopilotGlyph({ weight = "regular", className }: { weight?: "regular" | "fill"; className?: string; "aria-hidden"?: boolean | "true" | "false" }) {
-  const stroke = weight === "fill" ? 24 : 16;
+export function CopilotGlyph({ className }: { weight?: "regular" | "fill"; className?: string; "aria-hidden"?: boolean | "true" | "false" }) {
   return (
-    <svg aria-hidden="true" data-glyph="copilot" viewBox="0 0 256 256" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" className={cn("shrink-0", className)}>
-      <path d="M44 176V48l168 128V48" />
-      <path d="M44 224h104" strokeDasharray="1 31" />
-      <circle cx="212" cy="224" r="15" fill="currentColor" stroke="none" />
+    <svg aria-hidden="true" data-glyph="copilot" viewBox="0 0 256 256" fill="currentColor" stroke="currentColor" strokeWidth={14} strokeLinejoin="round" className={cn("shrink-0", className)}>
+      <rect x="32" y="36" width="52" height="184" />
+      <rect x="172" y="36" width="52" height="184" />
+      <polygon points="32,36 90,36 224,220 166,220" />
     </svg>
   );
 }

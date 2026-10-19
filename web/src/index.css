@@ -84,6 +84,8 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 150ms;
   --dur-base: 200ms;
+  /* The phone bottom bar: its link height, its rule and the safe area; the shell sets --phone-header-h from the header. */
+  --phone-bar-h: calc(3.5rem + 1px + env(safe-area-inset-bottom));
 }
 
 /* Inside the rail the semantic roles are remapped, so every component keeps using its usual utilities. */

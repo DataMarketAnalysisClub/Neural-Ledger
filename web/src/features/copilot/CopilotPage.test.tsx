@@ -79,4 +79,39 @@ describe("CopilotPage", () => {
     expect(row).toHaveTextContent("Not comfortably.");
     expect(avatar).toHaveAttribute("data-shape", "round");
   });
+
+  it("keeps the savings-rule panel on a wide screen", () => {
+    render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+    expect(screen.getByText("Savings rule")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Suggested questions" })).toBeInTheDocument();
+  });
+
+  describe("on a phone", () => {
+    function phone() {
+      vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("max-width: 1023px"), media: query, addEventListener() {}, removeEventListener() {} }));
+      return render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+    }
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("is only the chat and the box to write in: no placeholder panel, the title is for screen readers", () => {
+      phone();
+      expect(screen.queryByText("Savings rule")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { level: 1, name: "Copilot" })).toHaveClass("sr-only");
+      expect(screen.getByLabelText("Ask about your money")).toBeInTheDocument();
+    });
+
+    it("keeps a new conversation one tap away", async () => {
+      phone();
+      await userEvent.click(screen.getByRole("button", { name: "New conversation" }));
+      expect(newSession).toHaveBeenCalled();
+    });
+
+    it("offers the suggestions only until the conversation starts", async () => {
+      phone();
+      const group = () => screen.queryByRole("group", { name: "Suggested questions" });
+      expect(group()).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Will I be OK in December?" }));
+      expect(group()).not.toBeInTheDocument();
+    });
+  });
 });
