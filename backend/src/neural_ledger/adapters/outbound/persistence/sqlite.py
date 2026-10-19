@@ -9,13 +9,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from ....application.ports import IdCollision
+from ....application.ports import ErasureReport, IdCollision
 from ....domain.actions.terms import (
     ActionTerms,
     ActionType,
@@ -25,7 +26,7 @@ from ....domain.actions.terms import (
     ProposalStatus,
     SavingsRule,
 )
-from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
+from ....domain.audit.events import ERASED_SESSION, ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
 from ....domain.finance.profile import RiskProfile
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
@@ -47,16 +48,22 @@ from ....domain.statements.model import (
 )
 from ....domain.user.account import Session, UserAccount
 from ....domain.user.profile import QuestionnaireAnswer, UserProfile
-from .field_cipher import FieldCipher
+from .field_cipher import FieldCipher, FieldCipherError, WrongDataKey
 
+# Schema version 1 (PRAGMA user_version): every personal payload sealed (field_cipher.py), proposals, authorizations
+# and audit events carry their owner, and accounts are found by the email's blind index. A database from before has
+# user_version 0 and is upgraded by sqlite_migration.migrate, which bootstrap runs before any store is used.
+SCHEMA_VERSION = 1
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
     proposal_id TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
     session_id  TEXT NOT NULL,
     payload     TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS authorizations (
     authorization_id TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL,
     session_id       TEXT NOT NULL,
     payload          TEXT NOT NULL,
     consumed_at      TEXT
@@ -64,9 +71,8 @@ CREATE TABLE IF NOT EXISTS authorizations (
 CREATE TABLE IF NOT EXISTS audit_events (
     sequence   INTEGER PRIMARY KEY,
     event_id   TEXT NOT NULL UNIQUE,
+    user_id    TEXT,
     session_id TEXT NOT NULL,
-    prev_hash  TEXT NOT NULL,
-    event_hash TEXT NOT NULL,
     record     TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS statements (
@@ -96,7 +102,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 );
 CREATE TABLE IF NOT EXISTS user_accounts (
     user_id     TEXT PRIMARY KEY,
-    email       TEXT NOT NULL UNIQUE,
+    email_index TEXT NOT NULL UNIQUE,
     payload     TEXT NOT NULL,
     sample_data INTEGER NOT NULL DEFAULT 0
 );
@@ -107,7 +113,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     payload     TEXT NOT NULL,
     revoked_at  TEXT
 );
+CREATE TABLE IF NOT EXISTS meta (
+    name  TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
+_SCHEMA_STATEMENTS = tuple(statement.strip() for statement in _SCHEMA.split(";") if statement.strip())
 
 
 # Literal statements per table (no SQL built from strings, ASVS V1). Whoever adds a table to _SCHEMA must add it here too.
@@ -122,6 +133,8 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
     "sessions": ("SELECT COUNT(*) FROM sessions", "DELETE FROM sessions"),
 }
+# Bookkeeping, not data: a reset keeps it (the key check stays valid, since a reset does not change the key).
+_KEPT_ON_RESET = frozenset({"meta"})
 
 
 class SqliteDatabase:
@@ -130,10 +143,20 @@ class SqliteDatabase:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self.connection.execute("PRAGMA journal_mode=WAL")
-        self.connection.executescript(_SCHEMA)
+        self.connection.execute("PRAGMA secure_delete=ON")  # deleted rows are overwritten, not left in free pages
+        version = self.connection.execute("PRAGMA user_version").fetchone()[0]
+        if version < SCHEMA_VERSION and self._tables():
+            self.schema_version = version  # an older file: migrate() upgrades it, with the data key, before any store runs
+        else:
+            create_schema(self.connection)
+            self.schema_version = SCHEMA_VERSION
         # One connection is shared by every request thread, so every use of it, reads included,
         # goes through this lock. Unserialized reads interleave cursors across threads.
         self.lock = threading.Lock()
+
+    @property
+    def needs_migration(self) -> bool:
+        return self.schema_version < SCHEMA_VERSION
 
     def fetchone(self, sql: str, params: tuple = ()) -> tuple | None:
         with self.lock:
@@ -149,7 +172,7 @@ class SqliteDatabase:
 
     def _known_tables(self) -> list[str]:
         """The tables to empty; refuses a table that _RESET_SQL does not know, so none is ever skipped silently."""
-        present = self._tables()
+        present = [name for name in self._tables() if name not in _KEPT_ON_RESET]
         unknown = [name for name in present if name not in _RESET_SQL]
         if unknown:
             raise RuntimeError(f"no reset statements for table(s) {', '.join(unknown)}: add them to _RESET_SQL")
@@ -181,6 +204,81 @@ class SqliteDatabase:
             return deleted
 
 
+def create_schema(conn: sqlite3.Connection) -> None:
+    """Every table that is missing, at the current version. Statement by statement: executescript would COMMIT
+    a transaction the caller holds (the migration runs this inside one)."""
+    for statement in _SCHEMA_STATEMENTS:
+        conn.execute(statement)
+    conn.execute("PRAGMA user_version = 1")  # SCHEMA_VERSION; a PRAGMA takes no parameters
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {name for (name,) in conn.execute("SELECT name FROM pragma_table_info(?)", (table,))}
+
+
+def upgrade_schema(conn: sqlite3.Connection, cipher: FieldCipher) -> int:
+    """Schema 0 -> 1, inside the caller's transaction; returns the version it found. Rows are copied as they are:
+    the migration seals what is still in clear right after (SEALED_COLUMNS).
+
+    Version 0 kept the email in clear as the account lookup, and proposals, authorizations and audit events
+    without their owner in a column (their payloads, plain JSON then, carry it). Those four tables are rebuilt:
+    accounts get the email's blind index, the others their user_id."""
+    found = conn.execute("PRAGMA user_version").fetchone()[0]
+    if found >= SCHEMA_VERSION:
+        return found
+    present = {name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    rebuilt: list[str] = []
+    if "user_accounts" in present and "email_index" not in _columns(conn, "user_accounts"):
+        conn.execute("ALTER TABLE user_accounts RENAME TO user_accounts_v0")
+        rebuilt.append("user_accounts")
+    if "proposals" in present and "user_id" not in _columns(conn, "proposals"):
+        conn.execute("ALTER TABLE proposals RENAME TO proposals_v0")
+        rebuilt.append("proposals")
+    if "authorizations" in present and "user_id" not in _columns(conn, "authorizations"):
+        conn.execute("ALTER TABLE authorizations RENAME TO authorizations_v0")
+        rebuilt.append("authorizations")
+    if "audit_events" in present and "user_id" not in _columns(conn, "audit_events"):
+        conn.execute("ALTER TABLE audit_events RENAME TO audit_events_v0")
+        rebuilt.append("audit_events")
+    create_schema(conn)
+    if "user_accounts" in rebuilt:
+        for user_id, email, payload, sample_data in conn.execute("SELECT user_id, email, payload, sample_data FROM user_accounts_v0").fetchall():
+            conn.execute(
+                "INSERT INTO user_accounts (user_id, email_index, payload, sample_data) VALUES (?, ?, ?, ?)",
+                (user_id, email_index(cipher, email), payload, sample_data),
+            )
+        conn.execute("DROP TABLE user_accounts_v0")
+    if "proposals" in rebuilt:
+        for proposal_id, session_id, payload in conn.execute("SELECT proposal_id, session_id, payload FROM proposals_v0").fetchall():
+            conn.execute(
+                "INSERT INTO proposals (proposal_id, user_id, session_id, payload) VALUES (?, ?, ?, ?)",
+                (proposal_id, json.loads(payload)["user_id"], session_id, payload),
+            )
+        conn.execute("DROP TABLE proposals_v0")
+    if "authorizations" in rebuilt:
+        rows = conn.execute("SELECT authorization_id, session_id, payload, consumed_at FROM authorizations_v0").fetchall()
+        for authorization_id, session_id, payload, consumed_at in rows:
+            conn.execute(
+                "INSERT INTO authorizations (authorization_id, user_id, session_id, payload, consumed_at) VALUES (?, ?, ?, ?, ?)",
+                (authorization_id, json.loads(payload)["user_id"], session_id, payload, consumed_at),
+            )
+        conn.execute("DROP TABLE authorizations_v0")
+    if "audit_events" in rebuilt:
+        rows = conn.execute("SELECT sequence, event_id, session_id, record FROM audit_events_v0 ORDER BY sequence").fetchall()
+        for sequence, event_id, session_id, record in rows:
+            conn.execute(
+                "INSERT INTO audit_events (sequence, event_id, user_id, session_id, record) VALUES (?, ?, ?, ?, ?)",
+                (sequence, event_id, json.loads(record).get("user_id"), session_id, record),
+            )
+        conn.execute("DROP TABLE audit_events_v0")
+    return found
+
+
+def _aad(table: str, user_id: str | None, row_id: str) -> str:
+    """Associated data that binds a sealed value to its table, owner and row."""
+    return f"{table}|{user_id or ''}|{row_id}"
+
+
 def _profile_from(payload: dict) -> UserProfile:
     return UserProfile(
         user_id=payload["user_id"],
@@ -192,19 +290,30 @@ def _profile_from(payload: dict) -> UserProfile:
     )
 
 
+def _seal_profile(cipher: FieldCipher, profile: UserProfile) -> str:
+    return cipher.seal(json.dumps(to_primitive(profile)), _aad("user_profiles", profile.user_id, profile.user_id))
+
+
+def _open_profile(cipher: FieldCipher, user_id: str, payload: str) -> UserProfile:
+    return _profile_from(json.loads(cipher.open(payload, _aad("user_profiles", user_id, user_id))))
+
+
 class SqliteUserProfileStore:
-    def __init__(self, db: SqliteDatabase) -> None:
+    """Display name, language, declared tolerance and questionnaire answers, sealed with the data key."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def get(self, user_id: str) -> UserProfile | None:
         row = self._db.fetchone("SELECT payload FROM user_profiles WHERE user_id = ?", (user_id,))
-        return _profile_from(json.loads(row[0])) if row else None
+        return _open_profile(self._cipher, user_id, row[0]) if row else None
 
     def put(self, profile: UserProfile) -> None:
         with self._db.lock:
             self._db.connection.execute(
                 "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
-                (profile.user_id, json.dumps(to_primitive(profile))),
+                (profile.user_id, _seal_profile(self._cipher, profile)),
             )
 
 
@@ -218,33 +327,48 @@ def _account_from(payload: dict, sample_data: int) -> UserAccount:
     )
 
 
-def _account_row(account: UserAccount) -> tuple[str, str, str, int]:
+def email_index(cipher: FieldCipher, email: str) -> str:
+    """The only searchable form of an email: HMAC-SHA256 of the normalized address under the derived index key."""
+    return cipher.blind_index("email", email)
+
+
+def _account_row(cipher: FieldCipher, account: UserAccount) -> tuple[str, str, str, int]:
     payload = to_primitive(account)
     payload.pop("sample_data", None)
-    return account.user_id, account.email, json.dumps(payload), int(account.sample_data)
+    sealed = cipher.seal(json.dumps(payload), _aad("user_accounts", account.user_id, account.user_id))
+    return account.user_id, email_index(cipher, account.email), sealed, int(account.sample_data)
+
+
+def _open_account(cipher: FieldCipher, row: tuple) -> UserAccount:
+    user_id, payload, sample_data = row
+    return _account_from(json.loads(cipher.open(payload, _aad("user_accounts", user_id, user_id))), sample_data)
 
 
 class SqliteUserAccountStore:
-    """Holds emails and password hashes: the database file stays out of the repository (var/, *.db)."""
+    """The email and the password hash are sealed; the email is found by its blind index, never stored in clear."""
 
-    def __init__(self, db: SqliteDatabase) -> None:
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def add(self, account: UserAccount) -> bool:
         with self._db.lock:
             cursor = self._db.connection.execute(
-                "INSERT OR IGNORE INTO user_accounts (user_id, email, payload, sample_data) VALUES (?, ?, ?, ?)",
-                _account_row(account),
+                "INSERT OR IGNORE INTO user_accounts (user_id, email_index, payload, sample_data) VALUES (?, ?, ?, ?)",
+                _account_row(self._cipher, account),
             )
             return cursor.rowcount == 1
 
     def get(self, user_id: str) -> UserAccount | None:
-        row = self._db.fetchone("SELECT payload, sample_data FROM user_accounts WHERE user_id = ?", (user_id,))
-        return _account_from(json.loads(row[0]), row[1]) if row else None
+        row = self._db.fetchone("SELECT user_id, payload, sample_data FROM user_accounts WHERE user_id = ?", (user_id,))
+        return _open_account(self._cipher, row) if row else None
 
     def by_email(self, email: str) -> UserAccount | None:
-        row = self._db.fetchone("SELECT payload, sample_data FROM user_accounts WHERE email = ?", (email,))
-        return _account_from(json.loads(row[0]), row[1]) if row else None
+        row = self._db.fetchone(
+            "SELECT user_id, payload, sample_data FROM user_accounts WHERE email_index = ?", (email_index(self._cipher, email),)
+        )
+        account = _open_account(self._cipher, row) if row else None
+        return account if account is not None and account.email == email else None
 
     def set_sample_data(self, user_id: str, enabled: bool) -> bool:
         with self._db.lock:
@@ -456,6 +580,91 @@ def _transaction_aad(user_id: str, txn_id: str) -> str:
     return f"transactions|{user_id}|{txn_id}"
 
 
+@dataclass(frozen=True, slots=True)
+class SealedColumn:
+    """One column sealed with the data key: how to read every row, rebuild its associated data and rewrite it.
+
+    Literal statements only (no SQL built from strings, ASVS V1). The migration and the key check read this list,
+    so a newly sealed column is added here and nowhere else."""
+
+    table: str
+    select: str  # rowid first, value last; the columns in between build the associated data
+    update: str  # (value, rowid)
+    aad: Callable[[tuple], str]
+
+
+SEALED_COLUMNS: tuple[SealedColumn, ...] = (
+    SealedColumn(
+        "statements", "SELECT rowid, user_id, statement_id, payload FROM statements ORDER BY rowid",
+        "UPDATE statements SET payload = ? WHERE rowid = ?", lambda r: _statement_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "transactions", "SELECT rowid, user_id, txn_id, payload FROM transactions ORDER BY rowid",
+        "UPDATE transactions SET payload = ? WHERE rowid = ?", lambda r: _transaction_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "user_profiles", "SELECT rowid, user_id, payload FROM user_profiles ORDER BY rowid",
+        "UPDATE user_profiles SET payload = ? WHERE rowid = ?", lambda r: _aad("user_profiles", r[1], r[1]),
+    ),
+    SealedColumn(
+        "user_accounts", "SELECT rowid, user_id, payload FROM user_accounts ORDER BY rowid",
+        "UPDATE user_accounts SET payload = ? WHERE rowid = ?", lambda r: _aad("user_accounts", r[1], r[1]),
+    ),
+    SealedColumn(
+        "proposals", "SELECT rowid, user_id, proposal_id, payload FROM proposals ORDER BY rowid",
+        "UPDATE proposals SET payload = ? WHERE rowid = ?", lambda r: _aad("proposals", r[1], r[2]),
+    ),
+    SealedColumn(
+        "authorizations", "SELECT rowid, user_id, authorization_id, payload FROM authorizations ORDER BY rowid",
+        "UPDATE authorizations SET payload = ? WHERE rowid = ?", lambda r: _aad("authorizations", r[1], r[2]),
+    ),
+    SealedColumn(
+        "savings_rules", "SELECT rowid, user_id, rule_id, payload FROM savings_rules ORDER BY rowid",
+        "UPDATE savings_rules SET payload = ? WHERE rowid = ?", lambda r: _aad("savings_rules", r[1], r[2]),
+    ),
+    SealedColumn(
+        "audit_events", "SELECT rowid, user_id, event_id, record FROM audit_events ORDER BY rowid",
+        "UPDATE audit_events SET record = ? WHERE rowid = ?", lambda r: _aad("audit_events", r[1], r[2]),
+    ),
+)
+
+KEY_CHECK_AAD = "meta|key_check|key_check"
+KEY_CHECK_TEXT = "neural-ledger data key check"
+
+
+def write_key_check(conn: sqlite3.Connection, cipher: FieldCipher) -> None:
+    conn.execute(
+        "INSERT INTO meta (name, value) VALUES ('key_check', ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+        (cipher.seal(KEY_CHECK_TEXT, KEY_CHECK_AAD),),
+    )
+
+
+def verify_data_key(db: SqliteDatabase, cipher: FieldCipher) -> None:
+    """Refuse a key that does not open this database, before anything is written with it.
+
+    The database keeps a sealed key check in `meta`. A database without one (created before it existed) is
+    probed with its first sealed value per column; then the check is written, so the next start is one read."""
+    with db.lock:
+        conn = db.connection
+        row = conn.execute("SELECT value FROM meta WHERE name = 'key_check'").fetchone()
+        try:
+            if row is not None:
+                if cipher.open(row[0], KEY_CHECK_AAD) != KEY_CHECK_TEXT:
+                    raise FieldCipherError("key check")
+                return
+            for column in SEALED_COLUMNS:
+                for record in conn.execute(column.select):
+                    if cipher.is_sealed(record[-1]):
+                        cipher.open(record[-1], column.aad(record))
+                        break
+        except FieldCipherError:
+            raise WrongDataKey(
+                "the data key does not open this database: set the key it was written with, or run "
+                "`neural-ledger migrate-data` to move it to the new key"
+            ) from None
+        write_key_check(conn, cipher)
+
+
 def _installment_info_from(payload: dict | None) -> InstallmentInfo | None:
     if not payload:
         return None
@@ -540,61 +749,86 @@ def _open_transaction(cipher: FieldCipher, user_id: str, txn_id: str, payload: s
 
 
 class SqliteSavingsRuleStore:
-    """Rules created by the simulated sandbox bank, durable across restarts like the audit log."""
+    """Rules created by the simulated sandbox bank, durable across restarts like the audit log; sealed like it too."""
 
-    def __init__(self, db: SqliteDatabase) -> None:
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def add(self, rule: SavingsRule) -> None:
+        payload = self._cipher.seal(json.dumps(to_primitive(rule)), _aad("savings_rules", rule.user_id, rule.rule_id))
         with self._db.lock:
             self._db.connection.execute(
-                "INSERT INTO savings_rules (rule_id, user_id, payload) VALUES (?, ?, ?)",
-                (rule.rule_id, rule.user_id, json.dumps(to_primitive(rule))),
+                "INSERT INTO savings_rules (rule_id, user_id, payload) VALUES (?, ?, ?)", (rule.rule_id, rule.user_id, payload)
             )
 
     def count(self) -> int:
         row = self._db.fetchone("SELECT COUNT(*) FROM savings_rules")
         return row[0] if row else 0
 
+    def next_number(self) -> int:
+        row = self._db.fetchone(
+            "SELECT COALESCE(MAX(CAST(substr(rule_id, 6) AS INTEGER)), 0) FROM savings_rules WHERE rule_id LIKE 'rule\\_%' ESCAPE '\\'"
+        )
+        return (row[0] if row else 0) + 1
+
     def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
-        rows = self._db.fetchall("SELECT payload FROM savings_rules WHERE user_id = ? ORDER BY sequence", (user_id,))
-        return tuple(_rule_from(json.loads(r[0])) for r in rows)
+        rows = self._db.fetchall("SELECT rule_id, payload FROM savings_rules WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(_rule_from(json.loads(self._cipher.open(payload, _aad("savings_rules", user_id, rule_id)))) for rule_id, payload in rows)
 
 
 class SqliteActionRepository:
-    def __init__(self, db: SqliteDatabase) -> None:
+    """Proposals and authorizations, sealed with the data key. The owner is a clear column: it binds each sealed
+    payload to its user (associated data) and lets an account deletion find them."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
+
+    def _seal_proposal(self, proposal: Proposal) -> str:
+        return self._cipher.seal(json.dumps(to_primitive(proposal)), _aad("proposals", proposal.user_id, proposal.proposal_id))
+
+    def _open_proposal(self, row: tuple) -> Proposal:
+        proposal_id, user_id, payload = row
+        return _proposal_from(json.loads(self._cipher.open(payload, _aad("proposals", user_id, proposal_id))))
+
+    def _open_authorization(self, row: tuple) -> Authorization:
+        authorization_id, user_id, payload, consumed_at = row
+        return _authorization_from(json.loads(self._cipher.open(payload, _aad("authorizations", user_id, authorization_id))), consumed_at)
 
     def add_proposal(self, proposal: Proposal) -> None:
         with self._db.lock:
             self._db.connection.execute(
-                "INSERT INTO proposals (proposal_id, session_id, payload) VALUES (?, ?, ?)",
-                (proposal.proposal_id, proposal.session_id, json.dumps(to_primitive(proposal))),
+                "INSERT INTO proposals (proposal_id, user_id, session_id, payload) VALUES (?, ?, ?, ?)",
+                (proposal.proposal_id, proposal.user_id, proposal.session_id, self._seal_proposal(proposal)),
             )
 
     def get_proposal(self, proposal_id: str) -> Proposal | None:
-        row = self._db.fetchone("SELECT payload FROM proposals WHERE proposal_id = ?", (proposal_id,))
-        return _proposal_from(json.loads(row[0])) if row else None
+        row = self._db.fetchone("SELECT proposal_id, user_id, payload FROM proposals WHERE proposal_id = ?", (proposal_id,))
+        return self._open_proposal(row) if row else None
 
     def update_proposal(self, proposal: Proposal) -> None:
         with self._db.lock:
             self._db.connection.execute(
-                "UPDATE proposals SET payload = ? WHERE proposal_id = ?",
-                (json.dumps(to_primitive(proposal)), proposal.proposal_id),
+                "UPDATE proposals SET payload = ? WHERE proposal_id = ? AND user_id = ?",
+                (self._seal_proposal(proposal), proposal.proposal_id, proposal.user_id),
             )
 
     def add_authorization(self, authorization: Authorization) -> None:
         payload = to_primitive(authorization)
         payload.pop("consumed_at", None)
+        sealed = self._cipher.seal(json.dumps(payload), _aad("authorizations", authorization.user_id, authorization.authorization_id))
         with self._db.lock:
             self._db.connection.execute(
-                "INSERT INTO authorizations (authorization_id, session_id, payload, consumed_at) VALUES (?, ?, ?, NULL)",
-                (authorization.authorization_id, authorization.session_id, json.dumps(payload)),
+                "INSERT INTO authorizations (authorization_id, user_id, session_id, payload, consumed_at) VALUES (?, ?, ?, ?, NULL)",
+                (authorization.authorization_id, authorization.user_id, authorization.session_id, sealed),
             )
 
     def get_authorization(self, authorization_id: str) -> Authorization | None:
-        row = self._db.fetchone("SELECT payload, consumed_at FROM authorizations WHERE authorization_id = ?", (authorization_id,))
-        return _authorization_from(json.loads(row[0]), row[1]) if row else None
+        row = self._db.fetchone(
+            "SELECT authorization_id, user_id, payload, consumed_at FROM authorizations WHERE authorization_id = ?", (authorization_id,)
+        )
+        return self._open_authorization(row) if row else None
 
     def consume_authorization(self, authorization_id: str, at: datetime) -> bool:
         with self._db.lock:
@@ -605,21 +839,30 @@ class SqliteActionRepository:
             return cursor.rowcount == 1
 
     def for_session(self, session_id: str) -> tuple[tuple[Proposal, ...], tuple[Authorization, ...]]:
-        proposals = self._db.fetchall("SELECT payload FROM proposals WHERE session_id = ?", (session_id,))
-        auths = self._db.fetchall("SELECT payload, consumed_at FROM authorizations WHERE session_id = ?", (session_id,))
-        return (
-            tuple(_proposal_from(json.loads(r[0])) for r in proposals),
-            tuple(_authorization_from(json.loads(r[0]), r[1]) for r in auths),
+        proposals = self._db.fetchall("SELECT proposal_id, user_id, payload FROM proposals WHERE session_id = ?", (session_id,))
+        auths = self._db.fetchall(
+            "SELECT authorization_id, user_id, payload, consumed_at FROM authorizations WHERE session_id = ?", (session_id,)
         )
+        return tuple(self._open_proposal(r) for r in proposals), tuple(self._open_authorization(r) for r in auths)
 
 
-def _append_audit(conn: sqlite3.Connection, draft: AuditDraft) -> AuditEvent:
-    row = conn.execute("SELECT sequence, event_hash FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
-    sequence, prev = (row[0] + 1, row[1]) if row else (1, GENESIS_HASH)
+def _open_record(cipher: FieldCipher, row: tuple) -> dict:
+    """An audit record (event_id, user_id, sealed record): the hash chain lives inside it, so verifying the chain
+    needs the key, and the database shows no hash to test a guessed event against."""
+    event_id, user_id, record = row
+    return json.loads(cipher.open(record, _aad("audit_events", user_id, event_id)))
+
+
+def _append_audit(conn: sqlite3.Connection, cipher: FieldCipher, draft: AuditDraft) -> AuditEvent:
+    """Seal the draft onto the chain. The hash covers the plaintext record (domain/audit/events.py), exactly as an
+    export shows it; the stored row is that record, with its hashes, sealed with the data key."""
+    row = conn.execute("SELECT sequence, event_id, user_id, record FROM audit_events ORDER BY sequence DESC LIMIT 1").fetchone()
+    sequence, prev = (row[0] + 1, _open_record(cipher, row[1:])["event_hash"]) if row else (1, GENESIS_HASH)
     event = seal(draft, sequence, prev)
+    record = cipher.seal(json.dumps(event.to_record()), _aad("audit_events", draft.user_id, draft.event_id))
     conn.execute(
-        "INSERT INTO audit_events (sequence, event_id, session_id, prev_hash, event_hash, record) VALUES (?, ?, ?, ?, ?, ?)",
-        (sequence, draft.event_id, draft.session_id, prev, event.event_hash, json.dumps(event.to_record())),
+        "INSERT INTO audit_events (sequence, event_id, user_id, session_id, record) VALUES (?, ?, ?, ?, ?)",
+        (sequence, draft.event_id, draft.user_id, draft.session_id, record),
     )
     return event
 
@@ -639,8 +882,9 @@ def _account_transaction(db: SqliteDatabase) -> Iterator[sqlite3.Connection]:
 
 
 class SqliteAccountWrites:
-    def __init__(self, db: SqliteDatabase) -> None:
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
 
     def register(self, account: UserAccount, profile: UserProfile, session: Session, events: Sequence[AuditDraft]) -> bool:
         if profile.user_id != account.user_id or session.user_id != account.user_id or any(
@@ -648,7 +892,7 @@ class SqliteAccountWrites:
         ):
             raise ValueError("account ownership mismatch")
         with _account_transaction(self._db) as conn:
-            if conn.execute("SELECT 1 FROM user_accounts WHERE email = ?", (account.email,)).fetchone():
+            if conn.execute("SELECT 1 FROM user_accounts WHERE email_index = ?", (email_index(self._cipher, account.email),)).fetchone():
                 return False
             if (
                 conn.execute("SELECT 1 FROM user_accounts WHERE user_id = ?", (account.user_id,)).fetchone()
@@ -657,18 +901,18 @@ class SqliteAccountWrites:
                 raise IdCollision("generated identifier collision")
             self._check_session_and_events(conn, session, events)
             conn.execute(
-                "INSERT INTO user_accounts (user_id, email, payload, sample_data) VALUES (?, ?, ?, ?)", _account_row(account)
+                "INSERT INTO user_accounts (user_id, email_index, payload, sample_data) VALUES (?, ?, ?, ?)",
+                _account_row(self._cipher, account),
             )
             conn.execute(
-                "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?)",
-                (profile.user_id, json.dumps(to_primitive(profile))),
+                "INSERT INTO user_profiles (user_id, payload) VALUES (?, ?)", (profile.user_id, _seal_profile(self._cipher, profile))
             )
             conn.execute(
                 "INSERT INTO sessions (session_ref, token_hash, user_id, payload, revoked_at) VALUES (?, ?, ?, ?, ?)",
                 _session_row(session),
             )
             for event in events:
-                _append_audit(conn, event)
+                _append_audit(conn, self._cipher, event)
             return True
 
     def open_session(self, session: Session, events: Sequence[AuditDraft]) -> None:
@@ -679,7 +923,7 @@ class SqliteAccountWrites:
                 _session_row(session),
             )
             for event in events:
-                _append_audit(conn, event)
+                _append_audit(conn, self._cipher, event)
 
     def close_session(self, session: Session, at: datetime, events: Sequence[AuditDraft]) -> bool:
         with _account_transaction(self._db) as conn:
@@ -691,7 +935,7 @@ class SqliteAccountWrites:
                 return False
             self._check_events(conn, events)
             for event in events:
-                _append_audit(conn, event)
+                _append_audit(conn, self._cipher, event)
             return True
 
     def set_sample_data(self, user_id: str, enabled: bool, events: Sequence[AuditDraft]) -> bool:
@@ -703,7 +947,7 @@ class SqliteAccountWrites:
                 return False
             self._check_events(conn, events)
             for event in events:
-                _append_audit(conn, event)
+                _append_audit(conn, self._cipher, event)
             return True
 
     def update_profile(self, expected: UserProfile, updated: UserProfile, events: Sequence[AuditDraft]) -> bool:
@@ -712,14 +956,14 @@ class SqliteAccountWrites:
         # Raw connection only: the store and audit-log methods take db.lock, which this transaction already holds.
         with _account_transaction(self._db) as conn:
             row = conn.execute("SELECT payload FROM user_profiles WHERE user_id = ?", (expected.user_id,)).fetchone()
-            if row is None or _profile_from(json.loads(row[0])) != expected:
+            if row is None or _open_profile(self._cipher, expected.user_id, row[0]) != expected:
                 return False
             self._check_events(conn, events)
             conn.execute(
-                "UPDATE user_profiles SET payload = ? WHERE user_id = ?", (json.dumps(to_primitive(updated)), updated.user_id)
+                "UPDATE user_profiles SET payload = ? WHERE user_id = ?", (_seal_profile(self._cipher, updated), updated.user_id)
             )
             for event in events:
-                _append_audit(conn, event)
+                _append_audit(conn, self._cipher, event)
             return True
 
     @staticmethod
@@ -767,20 +1011,71 @@ class SqliteTransactionWrites:
                 (self._cipher.seal(json.dumps(to_primitive(updated)), _transaction_aad(user_id, txn_id)), user_id, txn_id),
             )
             for event in events:
-                _append_audit(conn, event)
+                _append_audit(conn, self._cipher, event)
             return True
 
 
-class SqliteAuditLog:
-    def __init__(self, db: SqliteDatabase) -> None:
+# Literal statements per table that holds a user's rows (no SQL built from strings, ASVS V1). Whoever adds a table
+# with a user_id must add it here: tests/security/test_account_deletion.py scans every table for the deleted user.
+_ERASE_SQL: dict[str, str] = {
+    "statements": "DELETE FROM statements WHERE user_id = ?",
+    "transactions": "DELETE FROM transactions WHERE user_id = ?",
+    "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
+    "proposals": "DELETE FROM proposals WHERE user_id = ?",
+    "authorizations": "DELETE FROM authorizations WHERE user_id = ?",
+}
+_ERASE_ACCOUNT_SQL: dict[str, str] = {  # not for a demo persona's reset: the persona and its visitors' sessions stay
+    "sessions": "DELETE FROM sessions WHERE user_id = ?",
+    "user_profiles": "DELETE FROM user_profiles WHERE user_id = ?",
+    "user_accounts": "DELETE FROM user_accounts WHERE user_id = ?",
+}
+
+
+class SqliteAccountErasure:
+    """Account deletion in one SQLite transaction: rows deleted (secure_delete overwrites them), audit events of the
+    user turned into tombstones, the erasure event appended; then the WAL is checkpointed and truncated, so no old
+    page image of the user's rows stays in it."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
         self._db = db
+        self._cipher = cipher
+
+    def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
+        with _account_transaction(self._db) as conn:
+            SqliteAccountWrites._check_events(conn, (event,))
+            statements = {**_ERASE_SQL, **({} if keep_account else _ERASE_ACCOUNT_SQL)}
+            counts = {table: conn.execute(sql, (user_id,)).rowcount for table, sql in statements.items()}
+            rows = conn.execute("SELECT sequence, event_id, user_id, record FROM audit_events WHERE user_id = ? ORDER BY sequence", (user_id,)).fetchall()
+            erased: list[int] = []
+            for sequence, event_id, owner, record in rows:
+                original = AuditEvent.from_record(_open_record(self._cipher, (event_id, owner, record)))
+                if original.draft.kind in ERASURE_KINDS:
+                    continue
+                tomb = tombstone(original, event.event_id, event.timestamp)
+                conn.execute(
+                    "UPDATE audit_events SET user_id = NULL, session_id = ?, record = ? WHERE sequence = ?",
+                    (ERASED_SESSION, self._cipher.seal(json.dumps(tomb.to_record()), _aad("audit_events", None, event_id)), sequence),
+                )
+                erased.append(sequence)
+            _append_audit(conn, self._cipher, replace(event, detail=erasure_detail(erased, counts)))
+        with self._db.lock:
+            self._db.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return ErasureReport(counts, len(erased))
+
+
+class SqliteAuditLog:
+    """Records sealed with the data key, chain included; events() opens them and the chain is verified on plaintext."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
 
     def append(self, draft: AuditDraft) -> AuditEvent:
         conn = self._db.connection
         with self._db.lock:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                event = _append_audit(conn, draft)
+                event = _append_audit(conn, self._cipher, draft)
                 conn.execute("COMMIT")
             except Exception:
                 conn.execute("ROLLBACK")
@@ -789,7 +1084,9 @@ class SqliteAuditLog:
 
     def events(self, session_id: str | None = None) -> tuple[AuditEvent, ...]:
         if session_id is None:
-            rows = self._db.fetchall("SELECT record FROM audit_events ORDER BY sequence")
+            rows = self._db.fetchall("SELECT event_id, user_id, record FROM audit_events ORDER BY sequence")
         else:
-            rows = self._db.fetchall("SELECT record FROM audit_events WHERE session_id = ? ORDER BY sequence", (session_id,))
-        return tuple(AuditEvent.from_record(json.loads(r[0])) for r in rows)
+            rows = self._db.fetchall(
+                "SELECT event_id, user_id, record FROM audit_events WHERE session_id = ? ORDER BY sequence", (session_id,)
+            )
+        return tuple(AuditEvent.from_record(_open_record(self._cipher, r)) for r in rows)

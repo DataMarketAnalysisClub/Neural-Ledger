@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/account_deletion.schema.json",
+  "title": "AccountDeletion",
+  "description": "200 body of DELETE /v1/account. DELETED: the account, its profile, sessions, statements, transactions, proposals, authorizations and savings rules are gone, the session cookie is cleared, and every session of the account stops working. RESET: a demo persona's statements, transactions, proposals, authorizations and savings rules are gone; the persona and its sessions stay. In both cases the user's audit events became tombstones (kind ERASED) and one ACCOUNT_DELETED or DEMO_DATA_RESET event, with no user id, commits to them. erased counts rows per table.",
+  "type": "object",
+  "required": ["status", "erased", "audit_events_erased"],
+  "properties": {
+    "status": {"enum": ["DELETED", "RESET"]},
+    "erased": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+    "audit_events_erased": {"type": "integer", "minimum": 0}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"status": "DELETED", "erased": {"statements": 2, "transactions": 41, "savings_rules": 0, "proposals": 0, "authorizations": 0, "sessions": 3, "user_profiles": 1, "user_accounts": 1}, "audit_events_erased": 9},
+    {"status": "RESET", "erased": {"statements": 1, "transactions": 12, "savings_rules": 1, "proposals": 2, "authorizations": 1}, "audit_events_erased": 14}
+  ]
+}

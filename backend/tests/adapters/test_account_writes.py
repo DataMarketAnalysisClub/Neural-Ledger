@@ -24,6 +24,7 @@ from neural_ledger.application.ports import AccountWrites, IdCollision
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, verify_chain
 from neural_ledger.domain.user.account import Session, UserAccount, token_digest
 from neural_ledger.domain.user.profile import UserProfile
+from tests.conftest import TEST_CIPHER
 
 NOW = datetime(2026, 10, 29, 9, tzinfo=UTC)
 HASH = "scrypt$fake$hash"
@@ -49,9 +50,9 @@ def world(request, tmp_path):
     else:
         db = SqliteDatabase(tmp_path / "writes.db")
         accounts, sessions, profiles, audit = (
-            SqliteUserAccountStore(db), SqliteSessionStore(db), SqliteUserProfileStore(db), SqliteAuditLog(db)
+            SqliteUserAccountStore(db, TEST_CIPHER), SqliteSessionStore(db), SqliteUserProfileStore(db, TEST_CIPHER), SqliteAuditLog(db, TEST_CIPHER)
         )
-        writes = SqliteAccountWrites(db)
+        writes = SqliteAccountWrites(db, TEST_CIPHER)
     return request.param, db, accounts, sessions, profiles, audit, writes
 
 
@@ -137,7 +138,7 @@ def test_mismatched_owners_fail_before_writing(world):
 @pytest.mark.parametrize("boundary", ["user_accounts", "user_profiles", "sessions", "first_event", "second_event"])
 def test_sqlite_failure_at_each_insert_rolls_back_and_allows_retry(tmp_path, boundary):
     db = SqliteDatabase(tmp_path / "fail.db")
-    writes, audit = SqliteAccountWrites(db), SqliteAuditLog(db)
+    writes, audit = SqliteAccountWrites(db, TEST_CIPHER), SqliteAuditLog(db, TEST_CIPHER)
     first = _values()
     assert writes.register(*first)
     prior = audit.events()

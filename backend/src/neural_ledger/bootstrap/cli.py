@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from ..adapters.inbound.cli.commands import main as run
 from ..adapters.outbound.persistence.sqlite import SqliteDatabase
 from ..adapters.outbound.statements.synthetic import SyntheticStatements
+from . import migrate
 from .config import Settings
 from .container import build_services
 
@@ -26,6 +27,9 @@ class LocalDatabase:
 
 
 def main(argv: list[str] | None = None) -> int:
+    args = sys.argv[1:] if argv is None else argv
+    if args[:1] == ["migrate-data"]:  # before build: the app refuses to start until the data is migrated
+        return migrate.main(args[1:])
     settings = Settings.from_env()
     database = LocalDatabase(settings.sqlite_path) if settings.persistence == "sqlite" else None
     return run(build_services(settings), argv, samples=SyntheticStatements(), database=database)

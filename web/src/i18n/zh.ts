@@ -430,6 +430,8 @@ export const zh: Messages = {
       title: "导入对账单",
       hint: "Excel 导出文件、PDF 或对账单照片，最大 15 MB。在此沙盒中请使用合成数据。",
       choose: "选择文件",
+      sandboxTitle: "沙盒：请勿上传真实银行对账单",
+      sandboxBody: "这是黑客松原型。请只上传合成对账单。导入时会隐藏姓名和身份标识，但商户、金额和日期会被保存；如果对账单是真实的，这些都属于个人数据。",
       importing: "正在读取 {name}。扫描的对账单可能需要几分钟。",
       tooLarge: "文件超过 15 MB。请导出更短的期间或更小的扫描件。",
       failed: "无法导入对账单",
@@ -503,7 +505,6 @@ export const zh: Messages = {
       amount: "金额",
       spending: "按类别的支出",
       income: "收入",
-      savings: "储蓄（存入减去取出）",
       count: "{count} 笔交易",
       savings: "储蓄：存入减去取出",
     },
@@ -520,7 +521,6 @@ export const zh: Messages = {
       movement: "本人账户间转账",
       savings: "储蓄",
       uncategorized: "未分类",
-      savings: "储蓄",
     },
   },
   redaction: {
@@ -537,6 +537,11 @@ export const zh: Messages = {
   },
   auth: {
     sandbox: "仅限沙盒。请勿使用真实账户信息。",
+    sandboxNotice: {
+      title: "这是黑客松沙盒",
+      body: "Neural Ledger 是 FinTechathon 2026 的原型，不是银行，也不是正式服务。请勿上传真实银行对账单，也不要输入真实个人数据：请使用合成对账单或演示角色。",
+      acknowledge: "我了解这是沙盒，我不会上传真实银行对账单或个人数据。",
+    },
     hero: {
       title: "用你未来的月份评估任何一笔购买。",
       lede: "预测、储蓄计划，以及一个解释每个数字的智能助手。",
@@ -573,7 +578,7 @@ export const zh: Messages = {
     signout: "退出登录",
     signingOut: "正在退出",
     mock: "本地模拟，不是生产服务",
-    footer: "沙盒账户。不涉及真实资金。不构成理财建议。",
+    footer: "沙盒账户。请勿上传真实银行对账单或个人数据。不涉及真实资金。不构成理财建议。",
   },
   onboarding: {
     title: "你的储蓄偏好",
@@ -637,5 +642,20 @@ export const zh: Messages = {
     mockFinancial: "本地账户模拟器不提供财务预测。请连接账户后端以浏览这些页面。",
     openProfile: "打开个人资料",
     importStatements: "导入对账单",
+    deletion: {
+      title: "删除账户",
+      description: "删除你的账户及其中的一切：导入的对账单、交易、问卷答案、提议、储蓄规则以及所有会话。你的审计事件会被抹除，审计链只保留它们的位置。此操作无法撤销。",
+      start: "删除账户",
+      confirmLabel: "输入 DELETE 或你的邮箱以确认",
+      password: "你的密码",
+      submit: "永久删除我的账户",
+      cancel: "取消",
+      resetTitle: "重置演示数据",
+      resetDescription: "演示角色是共享的，永远不会被删除。重置会为所有访客移除为该角色保存的对账单、交易、提议和储蓄规则。合成档案保持不变。",
+      resetStart: "重置演示数据",
+      resetConfirmLabel: "输入 RESET 以确认",
+      resetSubmit: "重置该角色的数据",
+      resetDone: "演示数据已重置。已抹除 {count} 个审计事件。",
+    },
   },
 };

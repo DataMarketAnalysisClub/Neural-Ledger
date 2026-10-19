@@ -1,5 +1,5 @@
 import { ApiError } from "./client";
-import type { AuthError, AuthSession, Me, ProfileUpdate, QuestionnaireDefinition, QuestionnaireSubmission, SigninInput, SignupInput, Tolerance, UserProfile } from "./accounts";
+import type { AccountDeletion, AccountDeletionInput, AuthError, AuthSession, Me, ProfileUpdate, QuestionnaireDefinition, QuestionnaireSubmission, SigninInput, SignupInput, Tolerance, UserProfile } from "./accounts";
 
 type MockUser = { readonly email: string; readonly password: string; readonly profile: UserProfile; readonly data_source: Me["data_source"] };
 type MockSession = { readonly email: string; readonly expires_at: string };
@@ -76,6 +76,7 @@ export async function mockRequest(
   }
   if (path === "/v1/auth/signup" && options.method === "POST") {
     const input = options.body as SignupInput;
+    if (input.sandbox_acknowledged !== true) invalid("sandbox_acknowledged", "Acknowledge the sandbox notice.");
     const email = input.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.invalid$/.test(email)) invalid("email", "Use a synthetic .invalid email in the local mock.");
     if (input.password.length < 10 || input.password.length > 128) invalid("password", "Password must have 10 to 128 characters.");
@@ -143,6 +144,18 @@ export async function mockRequest(
     const profile = { ...user.profile, display_name: input.display_name === undefined ? user.profile.display_name : { untrusted_text: input.display_name }, language: input.language ?? user.profile.language };
     users.set(user.email, { ...user, profile });
     return envelope(profile);
+  }
+  if (path === "/v1/account" && options.method === "DELETE") {
+    const input = options.body as AccountDeletionInput;
+    if (user.data_source === "persona") {
+      if (input.confirm !== "RESET") invalid("confirm", "type RESET to reset the demo data");
+      return { status: "RESET", erased: {}, audit_events_erased: 0 } satisfies AccountDeletion;
+    }
+    if (input.confirm.trim() !== "DELETE" && input.confirm.trim().toLowerCase() !== user.email) invalid("confirm", "type DELETE or your email to confirm");
+    if (input.password !== user.password) throw new ApiError(401, { status: "INVALID_CREDENTIALS", message: "invalid credentials" } satisfies AuthError);
+    users.delete(user.email);
+    currentSession = null;
+    return { status: "DELETED", erased: { user_accounts: 1, user_profiles: 1, sessions: 1 }, audit_events_erased: 0 } satisfies AccountDeletion;
   }
   // Only a read-only demo persona has financial data; a new account stays empty.
   if (path === "/v1/permitted-profile" && options.method === "POST" && user.data_source === "persona") {

@@ -9,9 +9,9 @@ from dataclasses import replace
 from datetime import datetime
 
 from ....application.conversation import Entry
-from ....application.ports import IdCollision, UserProfileStore
+from ....application.ports import ErasureReport, IdCollision, UserProfileStore
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
-from ....domain.audit.events import GENESIS_HASH, AuditDraft, AuditEvent, seal
+from ....domain.audit.events import ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.statements.model import StoredStatement
 from ....domain.user.account import Session, UserAccount
@@ -32,6 +32,11 @@ class InMemorySavingsRuleStore:
 
     def count(self) -> int:
         return len(self._rules)
+
+    def next_number(self) -> int:
+        with self._lock:
+            numbers = [int(r.rule_id[5:]) for r in self._rules if r.rule_id.startswith("rule_") and r.rule_id[5:].isdigit()]
+        return max(numbers, default=0) + 1
 
     def for_user(self, user_id: str) -> tuple[SavingsRule, ...]:
         return tuple(r for r in self._rules if r.user_id == user_id)
@@ -167,6 +172,12 @@ class InMemorySnapshotStore:
     def get(self, snapshot_id: str, user_id: str) -> object | None:
         return self._items.get((snapshot_id, user_id))
 
+    def forget(self, user_id: str) -> int:
+        mine = [key for key in self._items if key[1] == user_id]
+        for key in mine:
+            self._items.pop(key, None)
+        return len(mine)
+
 
 class InMemoryUserProfileStore:
     def __init__(self, profiles: Sequence[UserProfile] = ()) -> None:
@@ -197,6 +208,13 @@ class InMemoryConversationStore:
             items.extend(entries)
             if len(items) > keep_last:
                 del items[: len(items) - keep_last]
+
+    def forget(self, user_id: str) -> int:
+        with self._lock:
+            mine = [key for key in self._sessions if key[0] == user_id]
+            for key in mine:
+                del self._sessions[key]
+            return len(mine)
 
 
 class InMemoryUserAccountStore:
@@ -396,3 +414,63 @@ class InMemoryAccountWrites:
             self._check_events(events)
             self._publish(events, lambda: self._profile_store.put(updated))
             return True
+
+
+class InMemoryAccountErasure:
+    """Account deletion over the in-memory stores: every lock held, so no write lands halfway through."""
+
+    def __init__(
+        self, accounts: InMemoryUserAccountStore | None, sessions: InMemorySessionStore | None, profiles: UserProfileStore,
+        audit: InMemoryAuditLog, statements: InMemoryStatementStore, transactions: InMemoryTransactionStore,
+        rules: InMemorySavingsRuleStore, actions: InMemoryActionRepository,
+    ) -> None:
+        self._accounts, self._sessions, self._audit = accounts, sessions, audit
+        self._profiles = profiles._inner if isinstance(profiles, PersonaOverlayProfileStore) else profiles
+        self._statements, self._transactions, self._rules, self._actions = statements, transactions, rules, actions
+
+    def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
+        with self._audit._lock, self._statements._lock, self._transactions._lock, self._rules._lock, self._actions._lock:
+            if event.event_id in {e.draft.event_id for e in self._audit._events}:
+                raise IdCollision("generated identifier collision")
+            counts = {
+                "statements": _drop(self._statements._statements, lambda key, _: key[0] == user_id),
+                "transactions": _drop(self._transactions._transactions, lambda key, _: key[0] == user_id),
+                "proposals": _drop(self._actions._proposals, lambda _, p: p.user_id == user_id),
+                "authorizations": _drop(self._actions._authorizations, lambda _, a: a.user_id == user_id),
+            }
+            kept = [r for r in self._rules._rules if r.user_id != user_id]
+            counts["savings_rules"], self._rules._rules = len(self._rules._rules) - len(kept), kept
+            if not keep_account:
+                counts.update(self._drop_account(user_id))
+            erased = [e.sequence for e in self._audit._events if e.draft.user_id == user_id and e.draft.kind not in ERASURE_KINDS]
+            self._audit._events = [
+                tombstone(e, event.event_id, event.timestamp) if e.sequence in set(erased) else e for e in self._audit._events
+            ]
+            self._audit.append(replace(event, detail=erasure_detail(erased, counts)))
+            return ErasureReport(counts, len(erased))
+
+    def _drop_account(self, user_id: str) -> dict[str, int]:
+        counts = {"sessions": 0, "user_profiles": 0, "user_accounts": 0}
+        if self._sessions is not None:
+            with self._sessions._lock:
+                digests = [d for d, s in self._sessions._sessions.items() if s.user_id == user_id]
+                for digest in digests:
+                    session = self._sessions._sessions.pop(digest)
+                    self._sessions._digest_of.pop(session.session_ref, None)
+                counts["sessions"] = len(digests)
+        with self._profiles._lock:
+            counts["user_profiles"] = int(self._profiles._profiles.pop(user_id, None) is not None)
+        if self._accounts is not None:
+            with self._accounts._lock:
+                account = self._accounts._accounts.pop(user_id, None)
+                if account is not None:
+                    self._accounts._by_email.pop(account.email, None)
+                counts["user_accounts"] = int(account is not None)
+        return counts
+
+
+def _drop(items: dict, doomed) -> int:
+    keys = [key for key, value in items.items() if doomed(key, value)]
+    for key in keys:
+        del items[key]
+    return len(keys)

@@ -78,7 +78,7 @@ Options of `neural-ledger seed`: `--user` (default `NL_PERSONA`, i.e. `camila`),
 
 **Users.** The web app identifies users by the `X-User-Id` header and offers two personas, `camila` and `diego`. Seed one of them to see the data in the UI. Any other `--user` works through the API and CLI only.
 
-**Start over.** `make reset` (or `neural-ledger reset`; `--yes`, or `make reset YES=1`, skips the prompt) empties every table of the database in place: the file and schema stay, so a running API keeps working, and the audit chain restarts from genesis. In Docker: `docker compose exec api neural-ledger reset --yes`. Restart the API afterwards, because chat history, profiles and snapshots live in its memory; then `make seed`. `docker compose down --volumes` also works and wipes the whole volume. This is a developer command, not the user-facing deletion of personal data (gap G03).
+**Start over.** `make reset` (or `neural-ledger reset`; `--yes`, or `make reset YES=1`, skips the prompt) empties every table of the database in place: the file and schema stay, so a running API keeps working, and the audit chain restarts from genesis. In Docker: `docker compose exec api neural-ledger reset --yes`. Restart the API afterwards, because chat history, profiles and snapshots live in its memory; then `make seed`. `docker compose down --volumes` also works and wipes the whole volume. This is a developer command, not the user-facing deletion of personal data, which is `DELETE /v1/account` (G03, Profile → Delete account).
 
 **Check it worked.**
 

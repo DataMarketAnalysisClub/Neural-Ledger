@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from ....application.facade import ApplicationServices
-from ....application.use_cases.accounts import AccountOutcome, AccountStatus, IssuedSession
+from ....application.use_cases.accounts import SANDBOX_NOTICE, AccountOutcome, AccountStatus, IssuedSession
 from ....application.use_cases.actions import ActorContext
 from ....application.use_cases.statements import MAX_STATEMENT_BYTES
 from ....domain.audit.events import Actor
@@ -230,12 +230,14 @@ def create_app(
         if accounts is None:
             return not_found()
         body = await _json_object(request)
-        _only(body, ("email", "password", "display_name"), ("language",))
+        _only(body, ("email", "password", "display_name", "sandbox_acknowledged"), ("language",))
+        if body["sandbox_acknowledged"] is not True:  # the sandbox notice, ticked in the form; checked here, not only in the UI
+            raise _BadBody("sandbox_acknowledged")
         email, password, display_name = _text(body, "email"), _text(body, "password"), _text(body, "display_name")
         language = _text(body, "language")
         if language is None:
             language = "en"
-        outcome = await run_in_threadpool(accounts.signup, email, password, display_name, language)
+        outcome = await run_in_threadpool(accounts.signup, email, password, display_name, language, sandbox_notice=SANDBOX_NOTICE)
         return issued(outcome, request, 201)
 
     @app.post("/v1/auth/signin")
@@ -267,6 +269,29 @@ def create_app(
         response = Response(status_code=204) if closed else _auth_error("UNAUTHENTICATED", "sign in required")
         response.headers.append("set-cookie", cleared_cookie(secure(request)))
         return response
+
+    @app.delete("/v1/account")
+    async def delete_account(request: Request):
+        """G03 (Ley 21.719 art. 7): the signed-in account and everything it owns, or a demo persona's reset.
+        An account sends its password and confirm=DELETE (or its email); a persona sends confirm=RESET."""
+        if accounts is None:
+            return not_found()
+        current = session(request)
+        body = await _json_object(request)
+        _only(body, ("confirm",), ("password",))
+        outcome = await run_in_threadpool(accounts.delete_account, current, _text(body, "password"), _text(body, "confirm"))
+        if outcome.status in (AccountStatus.DELETED, AccountStatus.RESET) and outcome.erased is not None:
+            response = JSONResponse({
+                "status": outcome.status.value, "erased": dict(outcome.erased.counts), "audit_events_erased": outcome.erased.erased_events,
+            })
+            if outcome.status is AccountStatus.DELETED:
+                response.headers.append("set-cookie", cleared_cookie(secure(request)))  # its session row is gone too
+            return response
+        if outcome.status is AccountStatus.INVALID_INPUT:
+            return _auth_error("INVALID_INPUT", outcome.message or "invalid input", outcome.field or "body")
+        if outcome.status is AccountStatus.INVALID_CREDENTIALS:
+            return _auth_error("INVALID_CREDENTIALS", "invalid credentials")
+        return not_found()
 
     @app.get("/v1/me")
     def me(request: Request):

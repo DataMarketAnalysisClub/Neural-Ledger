@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/auth/account_deletion_request.schema.json",
+  "title": "AccountDeletionRequest",
+  "description": "DELETE /v1/account (accounts mode, signed in; G03, Ley 21.719 art. 7). An account sends its password again and confirm = \"DELETE\" or its own email; wrong confirmation is INVALID_INPUT on confirm, a wrong password INVALID_CREDENTIALS, and nothing is deleted. A shared demo persona has no password and is never deleted: confirm = \"RESET\" resets its stored data instead. The password is never echoed or logged. Rate limited like sign-in.",
+  "type": "object",
+  "required": ["confirm"],
+  "properties": {
+    "confirm": {"type": "string", "minLength": 1, "maxLength": 254},
+    "password": {"type": "string", "minLength": 1, "maxLength": 128}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"confirm": "DELETE", "password": "example-passphrase"},
+    {"confirm": "ana@accounts.invalid", "password": "example-passphrase"},
+    {"confirm": "RESET"}
+  ]
+}

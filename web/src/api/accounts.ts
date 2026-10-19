@@ -5,6 +5,8 @@ import type { AuthError as AuthErrorBody } from "@/contracts/auth/error";
 import type { SignupRequest } from "@/contracts/auth/signup_request";
 import type { SigninRequest } from "@/contracts/auth/signin_request";
 import type { DemoSessionRequest } from "@/contracts/auth/demo_session_request";
+import type { AccountDeletionRequest } from "@/contracts/auth/account_deletion_request";
+import type { AccountDeletion as AccountDeletionBody } from "@/contracts/auth/account_deletion";
 import type { ProfileUpdate as ProfileUpdateBody } from "@/contracts/profile/profile_update";
 import type { Questionnaire } from "@/contracts/profile/questionnaire";
 import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
@@ -33,6 +35,8 @@ export interface QuestionnaireSubmission {
 export type SignupInput = Readonly<SignupRequest>;
 export type SigninInput = Readonly<SigninRequest>;
 export type DemoPersona = DemoSessionRequest["persona"];
+export type AccountDeletionInput = Readonly<AccountDeletionRequest>;
+export type AccountDeletion = Readonly<AccountDeletionBody>;
 
 /** At least one field: an empty body is rejected with INVALID_INPUT on `body`. */
 export type ProfileUpdate = Readonly<ProfileUpdateBody> & ({ readonly display_name: string } | { readonly language: string });
@@ -43,6 +47,8 @@ export const accountsApi = {
   signin: (input: SigninInput) => request<AuthSession>("/v1/auth/signin", { method: "POST", body: input }),
   demoSession: (persona: DemoPersona) => request<AuthSession>("/v1/auth/demo-session", { method: "POST", body: { persona } satisfies DemoSessionRequest }),
   signout: () => request<null>("/v1/auth/signout", { method: "POST" }),
+  /** G03: an account sends its password and DELETE (or its email); a demo persona sends RESET. */
+  deleteAccount: (input: AccountDeletionInput) => request<AccountDeletion>("/v1/account", { method: "DELETE", body: input }),
   profile: () => requestEnvelope<UserProfile>("/v1/profile", {}),
   permitted: (tolerance: Tolerance) => requestEnvelope<PermittedProfile>("/v1/permitted-profile", { method: "POST", body: { tolerance } }),
   questionnaire: () => requestEnvelope<QuestionnaireDefinition>("/v1/profile/questionnaire", {}),

@@ -2,6 +2,14 @@
 
 We log inputs, decisions, probabilities, tool calls, rule outcomes and results.
 We never log hidden model reasoning. The export doubles as the sandbox-log evidence.
+
+Erasure (account deletion, a demo persona's reset). The chain is one log for every user, so removing a user's
+events would break it for everyone. Instead each of them becomes a tombstone: same sequence, prev_hash and
+event_hash, so the links still verify, but every field that said anything about the user is gone (kind ERASED,
+actor system, no user, no session, a timestamp of the erasure). Its content can no longer be re-hashed, so a
+tombstone is accepted only when a later ACCOUNT_DELETED or DEMO_DATA_RESET event commits to it: that event's
+detail names how many sequences it erased and a sha256 of the list. Turning any other event into a tombstone,
+or erasing one more, changes what that committed event would have to say, so verification fails.
 """
 
 from __future__ import annotations
@@ -37,6 +45,9 @@ class AuditKind(str, Enum):
     USER_REGISTERED = "USER_REGISTERED"
     SESSION_STARTED = "SESSION_STARTED"
     SESSION_ENDED = "SESSION_ENDED"
+    ACCOUNT_DELETED = "ACCOUNT_DELETED"  # the user deleted their account; detail commits to the events it erased
+    DEMO_DATA_RESET = "DEMO_DATA_RESET"  # a shared demo persona's stored data was reset; same commitment
+    ERASED = "ERASED"  # a tombstone: an erased event's place in the chain, content gone
 
 
 class Actor(str, Enum):
@@ -125,14 +136,65 @@ class ChainCheck:
     reason: str | None = None
 
 
+ERASURE_KINDS = frozenset({AuditKind.ACCOUNT_DELETED, AuditKind.DEMO_DATA_RESET})
+ERASED_SESSION = "erased"
+_ERASED_BY = "erased_by="
+
+
+def erasure_commitment(sequences: Sequence[int]) -> str:
+    return sha256_hex(",".join(str(n) for n in sorted(sequences)))
+
+
+def erasure_detail(sequences: Sequence[int], counts: Mapping[str, int]) -> str:
+    """What an erasure event records: how many rows went per table and exactly which audit sequences it erased.
+
+    Counts and sequence numbers only: never the user id, an email or a session."""
+    rows = ";".join(f"{table}={counts[table]}" for table in sorted(counts))
+    return f"erased_events={len(sequences)};erased_sha256={erasure_commitment(sequences)}" + (f";{rows}" if rows else "")
+
+
+def tombstone(event: AuditEvent, erasure_event_id: str, at: datetime) -> AuditEvent:
+    """The event's place in the chain without its content (see the module docstring)."""
+    draft = AuditDraft(
+        event_id=event.draft.event_id, timestamp=at, session_id=ERASED_SESSION, actor=Actor.SYSTEM,
+        kind=AuditKind.ERASED, detail=f"{_ERASED_BY}{erasure_event_id}",
+    )
+    return AuditEvent(event.sequence, event.prev_hash, event.event_hash, draft)
+
+
+def _committed(detail: str | None) -> tuple[int, str] | None:
+    parts = dict(part.split("=", 1) for part in (detail or "").split(";") if "=" in part)
+    try:
+        return int(parts["erased_events"]), parts["erased_sha256"]
+    except (KeyError, ValueError):
+        return None
+
+
 def verify_chain(events: Sequence[AuditEvent]) -> ChainCheck:
     prev = GENESIS_HASH
+    erased: dict[str, list[int]] = {}  # erasure event id -> the tombstones that name it
+    erasures: dict[str, AuditEvent] = {}
     for index, event in enumerate(sorted(events, key=lambda e: e.sequence), start=1):
         if event.sequence != index:
             return ChainCheck(False, index - 1, event.sequence, "sequence gap")
         if event.prev_hash != prev:
             return ChainCheck(False, index - 1, event.sequence, "prev_hash does not link")
-        if compute_hash(event.draft, event.sequence, event.prev_hash) != event.event_hash:
+        if event.draft.kind is AuditKind.ERASED:
+            by = (event.draft.detail or "").removeprefix(_ERASED_BY)
+            if by in erasures:  # an erasure erases events before it, never after
+                return ChainCheck(False, index - 1, event.sequence, "erased after its erasure event")
+            erased.setdefault(by, []).append(event.sequence)
+        elif compute_hash(event.draft, event.sequence, event.prev_hash) != event.event_hash:
             return ChainCheck(False, index - 1, event.sequence, "event content changed")
+        if event.draft.kind in ERASURE_KINDS:
+            erasures[event.draft.event_id] = event
         prev = event.event_hash
+    for by, sequences in erased.items():
+        commitment = _committed(erasures[by].draft.detail) if by in erasures else None
+        if commitment != (len(sequences), erasure_commitment(sequences)):
+            return ChainCheck(False, min(sequences) - 1, min(sequences), "erasure not recorded by a later erasure event")
+    for event_id, event in erasures.items():
+        commitment = _committed(event.draft.detail)
+        if commitment is None or commitment[0] != len(erased.get(event_id, ())):
+            return ChainCheck(False, event.sequence - 1, event.sequence, "erasure event does not match its tombstones")
     return ChainCheck(True, len(events))

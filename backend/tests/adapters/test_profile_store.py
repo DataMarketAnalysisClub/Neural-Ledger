@@ -8,6 +8,7 @@ from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, S
 from neural_ledger.application.ports import ReadOnlyProfile
 from neural_ledger.domain.finance.profile import RiskProfile
 from neural_ledger.domain.user.profile import QuestionnaireAnswer, UserProfile
+from tests.conftest import TEST_CIPHER
 
 
 def test_overlay_personas_win_reads_and_refuse_writes():
@@ -26,17 +27,17 @@ def test_overlay_personas_win_reads_and_refuse_writes():
 def test_sqlite_round_trip_upsert_and_additive_table(tmp_path):
     path = tmp_path / "profile.db"
     db = SqliteDatabase(path)
-    db.connection.execute("INSERT INTO proposals VALUES (?, ?, ?)", ("p", "s", "{}"))
+    db.connection.execute("INSERT INTO proposals VALUES (?, ?, ?, ?)", ("p", "usr_one", "s", "{}"))
     profile = UserProfile("usr_one", "Ana", declared_tolerance=RiskProfile.MODERATE, questionnaire_version="pq-0.1", questionnaire=(
         QuestionnaireAnswer("set_aside", "about_half"), QuestionnaireAnswer("tight_month", "keep_cut_elsewhere"),
         QuestionnaireAnswer("goal_vs_room", "balance"), QuestionnaireAnswer("surprise", "uneasy_but_ok"),
         QuestionnaireAnswer("habit", "sometimes"),
     ))
-    store = SqliteUserProfileStore(db)
+    store = SqliteUserProfileStore(db, TEST_CIPHER)
     store.put(profile)
     assert store.get("usr_one") == profile
     store.put(replace(profile, display_name="José"))
     db.connection.close()
     reopened = SqliteDatabase(path)
-    assert SqliteUserProfileStore(reopened).get("usr_one") == replace(profile, display_name="José")
+    assert SqliteUserProfileStore(reopened, TEST_CIPHER).get("usr_one") == replace(profile, display_name="José")
     assert reopened.fetchone("SELECT proposal_id FROM proposals") == ("p",)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/audit/audit_event.schema.json",
   "title": "AuditEvent",
-  "description": "Spec v0 section 10 fields plus a hash chain (sequence, prev_hash, event_hash). event_hash = sha256 of the canonical JSON of every other field. No hidden model reasoning is ever logged.",
+  "description": "Spec v0 section 10 fields plus a hash chain (sequence, prev_hash, event_hash). event_hash = sha256 of the canonical JSON of every other field. No hidden model reasoning is ever logged. A tombstone (kind ERASED, after an account deletion or a demo reset) keeps sequence, prev_hash and event_hash of the erased event and nothing else about it; its detail is erased_by=<event_id> of the later ACCOUNT_DELETED or DEMO_DATA_RESET event, whose detail commits to the erased sequences (erased_events, erased_sha256).",
   "type": "object",
   "required": ["event_id", "sequence", "timestamp", "session_id", "actor", "kind", "prev_hash", "event_hash"],
   "properties": {
@@ -12,7 +12,7 @@
     "session_id": {"type": "string"},
     "user_id": {"type": ["string", "null"], "description": "Owner of the event. Audit reads are scoped to it; null for system-wide events."},
     "actor": {"enum": ["user", "agent", "system"]},
-    "kind": {"enum": ["DECISION", "TOOL_CALL", "CLARIFICATION_REQUESTED", "INJECTION_FLAGGED", "OUT_OF_SCOPE", "VERIFICATION_FAILED", "PROPOSAL_CREATED", "ACTION_CONFIRMED", "EXECUTION_STARTED", "ACTION_EXECUTED", "ACTION_FAILED", "ACTION_BLOCKED", "STATEMENT_IMPORTED", "CATEGORY_CHANGED", "PROFILE_UPDATED", "USER_REGISTERED", "SESSION_STARTED", "SESSION_ENDED"]},
+    "kind": {"enum": ["DECISION", "TOOL_CALL", "CLARIFICATION_REQUESTED", "INJECTION_FLAGGED", "OUT_OF_SCOPE", "VERIFICATION_FAILED", "PROPOSAL_CREATED", "ACTION_CONFIRMED", "EXECUTION_STARTED", "ACTION_EXECUTED", "ACTION_FAILED", "ACTION_BLOCKED", "STATEMENT_IMPORTED", "CATEGORY_CHANGED", "PROFILE_UPDATED", "USER_REGISTERED", "SESSION_STARTED", "SESSION_ENDED", "ACCOUNT_DELETED", "DEMO_DATA_RESET", "ERASED"]},
     "user_intent": {"type": ["string", "null"]},
     "intent_confidence": {"type": ["number", "null"]},
     "tool_requested": {"type": ["string", "null"]},

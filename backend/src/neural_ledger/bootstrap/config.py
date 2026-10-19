@@ -37,6 +37,8 @@ class Settings:
     persistence: str = "memory"  # memory | sqlite
     sqlite_path: str = "./var/neural_ledger.db"
     data_key: str | None = None  # G11: 64 hex chars sealing SQLite payloads; offline without it, a key file next to the database
+    data_key_file: str | None = None  # a file holding the key, read before NL_DATA_KEY; None = the Docker secret path (data_key.py)
+    deployment: str = "local"  # local | deployed: deployed refuses a missing key, a key on the data volume and the dev secret
     clock: str = "system"  # system | fixed (tests and recorded demos)
     fixed_now: str = "2026-10-29T12:00:00-03:00"
     ids: str = "uuid"  # uuid | sequential
@@ -107,6 +109,8 @@ class Settings:
             persistence=get("NL_PERSISTENCE", cls.persistence),
             sqlite_path=get("NL_SQLITE_PATH", cls.sqlite_path),
             data_key=e.get("NL_DATA_KEY") or None,
+            data_key_file=e.get("NL_DATA_KEY_FILE") or None,
+            deployment=get("NL_DEPLOYMENT", cls.deployment),
             clock=get("NL_CLOCK", cls.clock),
             fixed_now=get("NL_FIXED_NOW", cls.fixed_now),
             ids=get("NL_IDS", cls.ids),

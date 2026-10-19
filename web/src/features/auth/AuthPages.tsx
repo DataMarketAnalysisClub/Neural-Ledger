@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ShieldWarning } from "@phosphor-icons/react";
 import { Button, Notice, describeError } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
 import { LanguagePicker } from "@/components/LanguagePicker";
@@ -136,15 +137,17 @@ export function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!acknowledged) return; // the checkbox is required; the server refuses a sign-up without it too
     setBusy(true);
     setError(null);
     try {
-      await auth.signup({ email, password, display_name: displayName });
+      await auth.signup({ email, password, display_name: displayName, sandbox_acknowledged: true });
       navigate("/onboarding", { replace: true });
     } catch (failure) {
       setError(failure);
@@ -155,6 +158,10 @@ export function SignUpPage() {
 
   return (
     <AuthLayout title={t("auth.signup.title")} description={t("auth.signup.description")}>
+      {/* Option B: sign-up stays open, so the notice is always shown and cannot be dismissed. */}
+      <div className={groupClass} id="signup-sandbox-notice">
+        <Notice tone="warning" icon={ShieldWarning} title={t("auth.sandboxNotice.title")}>{t("auth.sandboxNotice.body")}</Notice>
+      </div>
       <form onSubmit={(event) => void submit(event)}>
         <div className={groupClass}>
           <label htmlFor="signup-name" className={labelClass}>{t("auth.displayName")}</label>
@@ -170,8 +177,13 @@ export function SignUpPage() {
           <input id="signup-password" type="password" autoComplete="new-password" required minLength={10} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} className={fieldClass} />
           <p className={hintClass}>{t("auth.passwordHint")}</p>
         </div>
+        <div className={`${groupClass} flex items-start gap-[calc(10*var(--u))]`}>
+          <input id="signup-sandbox" type="checkbox" required checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)}
+            aria-describedby="signup-sandbox-notice" className="mt-[calc(3*var(--u))] size-[calc(16*var(--u))] flex-none accent-accent" />
+          <label htmlFor="signup-sandbox" className="text-[calc(13*var(--u))] text-ink">{t("auth.sandboxNotice.acknowledge")}</label>
+        </div>
         {error !== null && <div className={groupClass}><Notice tone="danger" title={describeError(error)} /></div>}
-        <Button type="submit" variant="primary" className={primaryClass} busy={busy} disabled={busy}>{t("auth.signup.submit")}</Button>
+        <Button type="submit" variant="primary" className={primaryClass} busy={busy} disabled={busy || !acknowledged}>{t("auth.signup.submit")}</Button>
       </form>
       <p className={linkLineClass}>{t("auth.signup.haveAccount")} <Link to="/signin" className="font-semibold text-accent underline">{t("auth.signin.link")}</Link></p>
     </AuthLayout>

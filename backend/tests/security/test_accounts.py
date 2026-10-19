@@ -50,7 +50,7 @@ def app_for(monkeypatch, *, auth="accounts", llm=None, sqlite_path=None):
 
 
 def signup(client, email=EMAIL_A, password=PASSWORD):
-    response = client.post("/v1/auth/signup", json={"email": email, "password": password, "display_name": "Synthetic User"})
+    response = client.post("/v1/auth/signup", json={"email": email, "password": password, "display_name": "Synthetic User", "sandbox_acknowledged": True})
     assert response.status_code in (200, 201), "signup must create a synthetic account"
     assert client.cookies.get("nl_session"), "signup must issue a session"
     return response

@@ -9,6 +9,7 @@ from neural_ledger.adapters.outbound.persistence.memory import InMemorySessionSt
 from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, SqliteSessionStore, SqliteUserAccountStore
 from neural_ledger.application.ports import SessionStore, UserAccountStore
 from neural_ledger.domain.user.account import Session, UserAccount, token_digest
+from tests.conftest import TEST_CIPHER
 
 NOW = datetime(2026, 10, 29, 9, tzinfo=UTC)
 HASH = "scrypt$16384$8$1$c2FsdHNhbHRzYWx0c2FsdA==$aGFzaGhhc2hoYXNoaGFzaA=="
@@ -20,7 +21,7 @@ def stores(request, tmp_path):
     if request.param == "memory":
         return InMemoryUserAccountStore(), InMemorySessionStore()
     db = SqliteDatabase(tmp_path / "accounts.db")
-    return SqliteUserAccountStore(db), SqliteSessionStore(db)
+    return SqliteUserAccountStore(db, TEST_CIPHER), SqliteSessionStore(db)
 
 
 def _account(user_id="usr_000001", email="ana@example.com") -> UserAccount:
@@ -114,15 +115,15 @@ def test_concurrent_revokes_let_exactly_one_win(stores):
 def test_sqlite_survives_reopen_and_never_stores_the_token(tmp_path):
     path = tmp_path / "accounts.db"
     db = SqliteDatabase(path)
-    SqliteUserAccountStore(db).add(_account())
-    SqliteUserAccountStore(db).set_sample_data("usr_000001", True)
+    SqliteUserAccountStore(db, TEST_CIPHER).add(_account())
+    SqliteUserAccountStore(db, TEST_CIPHER).set_sample_data("usr_000001", True)
     SqliteSessionStore(db).add(_session())
     SqliteSessionStore(db).add(_session("sess_000002", "second-token-never-stored"))
     SqliteSessionStore(db).revoke("sess_000002", NOW)
     db.connection.close()
 
     reopened = SqliteDatabase(path)
-    account = SqliteUserAccountStore(reopened).get("usr_000001")
+    account = SqliteUserAccountStore(reopened, TEST_CIPHER).get("usr_000001")
     assert account == UserAccount("usr_000001", "ana@example.com", HASH, NOW, sample_data=True)
     assert SqliteSessionStore(reopened).by_token_hash(token_digest(TOKEN)) == _session()
     assert SqliteSessionStore(reopened).by_token_hash(token_digest("second-token-never-stored")).revoked_at == NOW

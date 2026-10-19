@@ -23,6 +23,11 @@ class SavingsRuleStore(Protocol):
 
     def count(self) -> int: ...
 
+    def next_number(self) -> int:
+        """One more than the highest rule number stored: unlike count()+1, never an id that is still in use
+        after another user's rules were deleted."""
+        ...
+
     def for_user(self, user_id: str) -> tuple[SavingsRule, ...]: ...
 
 
@@ -40,7 +45,7 @@ class SimulatedSandboxBank:
             if terms.destination not in KNOWN_DESTINATIONS.get(terms.action, frozenset()):
                 return ExecutionReceipt(execution_id, False, error="UNKNOWN_DESTINATION")
             rule = SavingsRule(
-                rule_id=f"rule_{self._rules.count() + 1:04d}",
+                rule_id=f"rule_{self._rules.next_number():04d}",
                 user_id=user_id,
                 amount=terms.amount,
                 currency=terms.currency,

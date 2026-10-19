@@ -1,5 +1,8 @@
 # `docker compose up` must work from a clean checkout with NO API keys (offline mode).
 # Copy .env.example to .env to switch to live mode (real LLM, Jev, SQLite).
+# This file is the local and CI path: without a data key the API creates one next to the database, on the
+# ledger-data volume, and warns about it. A server adds docker-compose.data-key.yml, which mounts the key as a
+# Docker secret and sets NL_DEPLOYMENT=deployed (docs/SECURITY.md, "Key management").
 services:
   api:
     build:

@@ -59,14 +59,41 @@ def test_a_payload_copied_into_another_users_row_does_not_open(tmp_path):
         store.for_user("diego")
 
 
-def test_payloads_written_before_encryption_are_still_read(tmp_path):
+def test_a_value_in_clear_in_a_current_database_is_refused(tmp_path):
+    """No downgrade: after the migration every payload is sealed, so plain text can only be an edit around the app."""
     db = SqliteDatabase(tmp_path / "old.db")
     legacy = _posted()
     db.connection.execute(
         "INSERT INTO transactions (txn_id, user_id, posted_on, payload) VALUES (?, ?, ?, ?)",
         ("t1", "camila", "2026-09-03", json.dumps(to_primitive(legacy))),
     )
-    assert SqliteTransactionStore(db, FieldCipher(KEY)).for_user("camila") == (legacy,)
+    with pytest.raises(FieldCipherError, match="in clear"):
+        SqliteTransactionStore(db, FieldCipher(KEY)).for_user("camila")
+
+
+def test_values_sealed_with_the_key_itself_still_open_and_new_ones_use_the_derived_key():
+    """nlenc1 (G11 before option B) used NL_DATA_KEY as the AES key; nlenc2 uses a subkey derived from it."""
+    import base64
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    nonce = bytes(12)
+    legacy = "nlenc1:" + base64.b64encode(nonce + AESGCM(KEY).encrypt(nonce, b"old", b"transactions|camila|t1")).decode()
+    cipher = FieldCipher(KEY)
+    assert cipher.open(legacy, "transactions|camila|t1") == "old" and not cipher.is_current(legacy)
+    fresh = cipher.seal("new", "transactions|camila|t1")
+    assert fresh.startswith(PREFIX) == cipher.is_current(fresh) is True
+    raw = base64.b64decode(fresh[len(PREFIX) :])
+    with pytest.raises(Exception):  # noqa: B017 - the raw key does not open a value sealed with the derived one
+        AESGCM(KEY).decrypt(raw[:12], raw[12:], b"transactions|camila|t1")
+
+
+def test_the_email_index_is_keyed_and_separate_from_the_field_key():
+    cipher, other = FieldCipher(KEY), FieldCipher(bytes(32))
+    index = cipher.blind_index("email", "ana@example.com")
+    assert index == cipher.blind_index("email", "ana@example.com") and len(index) == 64
+    assert index != other.blind_index("email", "ana@example.com")  # another key: another index
+    assert "ana" not in index and index != __import__("hashlib").sha256(b"ana@example.com").hexdigest()
 
 
 def test_offline_runs_create_one_key_file_next_to_the_database_and_reuse_it(tmp_path):

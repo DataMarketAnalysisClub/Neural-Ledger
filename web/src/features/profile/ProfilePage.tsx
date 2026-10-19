@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Trash } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accountsApi, type UserProfile } from "@/api/accounts";
 import { usePersona } from "@/api/hooks";
@@ -33,6 +34,70 @@ function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
       </Button>
       {update.isError && <div className="w-full"><Notice tone="danger" title={describeError(update.error)} /></div>}
     </form>
+  );
+}
+
+const fieldClass = "h-10 w-full rounded-control border border-control bg-surface px-3 text-sm text-ink focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25";
+
+/**
+ * G03: delete the account, or reset a shared demo persona (which is never deleted). Two steps: the button opens a
+ * form that asks for the confirmation word and, for an account, the password. The server checks both again.
+ */
+function DeleteAccount({ persona }: { readonly persona: boolean }) {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [password, setPassword] = useState("");
+  const remove = useMutation({
+    mutationFn: () => auth.deleteAccount(persona ? { confirm } : { confirm, password }),
+    onSuccess: (result) => {
+      setOpen(false);
+      setConfirm("");
+      setPassword("");
+      if (result.status === "DELETED") navigate("/signin", { replace: true });
+    },
+  });
+  const ready = persona ? confirm === "RESET" : confirm.trim() !== "" && password !== "";
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (ready) remove.mutate();
+  }
+
+  return (
+    <Section id="delete-account" title={t(persona ? "profile.deletion.resetTitle" : "profile.deletion.title")} className="mt-10 max-w-3xl border-t border-line pt-10">
+      <p className="max-w-prose text-sm text-ink-2">{t(persona ? "profile.deletion.resetDescription" : "profile.deletion.description")}</p>
+      {remove.isSuccess && remove.data.status === "RESET" && (
+        <div className="mt-4"><Notice tone="positive" title={t("profile.deletion.resetDone", { count: remove.data.audit_events_erased })} /></div>
+      )}
+      {!open ? (
+        <Button variant="secondary" className="mt-5" onClick={() => { setOpen(true); remove.reset(); }}>
+          <Trash aria-hidden className="size-4" />
+          {t(persona ? "profile.deletion.resetStart" : "profile.deletion.start")}
+        </Button>
+      ) : (
+        <form onSubmit={submit} className="mt-5 max-w-sm space-y-4">
+          <div>
+            <label htmlFor="delete-confirm" className="mb-2 block text-sm font-medium text-ink">{t(persona ? "profile.deletion.resetConfirmLabel" : "profile.deletion.confirmLabel")}</label>
+            <input id="delete-confirm" autoComplete="off" spellCheck={false} value={confirm} onChange={(event) => setConfirm(event.target.value)} className={fieldClass} />
+          </div>
+          {!persona && (
+            <div>
+              <label htmlFor="delete-password" className="mb-2 block text-sm font-medium text-ink">{t("profile.deletion.password")}</label>
+              <input id="delete-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={fieldClass} />
+            </div>
+          )}
+          {remove.isError && <Notice tone="danger" title={describeError(remove.error)} />}
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" variant="danger" disabled={!ready || remove.isPending} busy={remove.isPending}>
+              {t(persona ? "profile.deletion.resetSubmit" : "profile.deletion.submit")}
+            </Button>
+            <Button type="button" variant="quiet" onClick={() => { setOpen(false); setConfirm(""); setPassword(""); }}>{t("profile.deletion.cancel")}</Button>
+          </div>
+        </form>
+      )}
+    </Section>
   );
 }
 
@@ -92,6 +157,8 @@ export function ProfilePage() {
           <p className="max-w-prose text-sm text-ink-2">{t("profile.emptyDetail")}</p>
         </Section>
       )}
+
+      {auth.mode === "accounts" && auth.me && <DeleteAccount key={record.user_id} persona={readOnly} />}
     </>
   );
 }

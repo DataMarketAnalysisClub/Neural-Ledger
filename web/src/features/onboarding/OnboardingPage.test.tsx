@@ -29,7 +29,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe("versioned questionnaire", () => {
   it("renders labelled choices without axe violations", async () => {
-    await accountsApi.signup({ email: "question-axe@example.invalid", password: "synthetic-password", display_name: "Axe Tester" });
+    await accountsApi.signup({ email: "question-axe@example.invalid", password: "synthetic-password", display_name: "Axe Tester", sandbox_acknowledged: true });
     const { container } = mount("/onboarding");
     await waitFor(() => expect(screen.getByRole("group", { name: /Of money left after bills/ })).toBeInTheDocument());
 
@@ -40,7 +40,7 @@ describe("versioned questionnaire", () => {
   });
 
   it("submits only versioned ids and displays the returned tolerance", async () => {
-    await accountsApi.signup({ email: "question-submit@example.invalid", password: "synthetic-password", display_name: "Question Tester" });
+    await accountsApi.signup({ email: "question-submit@example.invalid", password: "synthetic-password", display_name: "Question Tester", sandbox_acknowledged: true });
     mount("/onboarding");
     const user = userEvent.setup();
     await waitFor(() => expect(screen.getByRole("heading", { name: "Your saving preferences" })).toBeInTheDocument());
@@ -56,7 +56,7 @@ describe("versioned questionnaire", () => {
   });
 
   it("shows a timeline above the card that only lets a person go back to answered questions", async () => {
-    await accountsApi.signup({ email: "question-timeline@example.invalid", password: "synthetic-password", display_name: "Timeline Tester" });
+    await accountsApi.signup({ email: "question-timeline@example.invalid", password: "synthetic-password", display_name: "Timeline Tester", sandbox_acknowledged: true });
     mount("/onboarding");
     const user = userEvent.setup();
     await waitFor(() => expect(screen.getByRole("group", { name: /Of money left after bills/ })).toBeInTheDocument());
@@ -81,7 +81,7 @@ describe("versioned questionnaire", () => {
   });
 
   it("stands alone: no app navigation around the questions", async () => {
-    await accountsApi.signup({ email: "question-alone@example.invalid", password: "synthetic-password", display_name: "Alone Tester" });
+    await accountsApi.signup({ email: "question-alone@example.invalid", password: "synthetic-password", display_name: "Alone Tester", sandbox_acknowledged: true });
     mount("/onboarding");
     await waitFor(() => expect(screen.getByRole("group", { name: /Of money left after bills/ })).toBeInTheDocument());
 
@@ -90,7 +90,7 @@ describe("versioned questionnaire", () => {
   });
 
   it("keeps a new account's profile empty, editable and without a sample-data action", async () => {
-    await accountsApi.signup({ email: "empty-profile@example.invalid", password: "synthetic-password", display_name: "Empty Tester" });
+    await accountsApi.signup({ email: "empty-profile@example.invalid", password: "synthetic-password", display_name: "Empty Tester", sandbox_acknowledged: true });
     const permitted = vi.spyOn(accountsApi, "permitted");
     const { container } = mount("/profile");
     await waitFor(() => expect(screen.getByRole("heading", { name: "Your profile" })).toBeInTheDocument());
