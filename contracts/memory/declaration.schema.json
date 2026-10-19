@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/declaration.schema.json",
+  "title": "MemoryDeclaration",
+  "description": "One stored version of a memory chain, as GET /v1/memory and the export show it (ADR-047). Only the user confirms a declaration; whether evidence supports it is derived on read (salary_check), never stored. The origin is an opaque reference: memory keeps neither the message nor its hash. The owner comes from authentication and is not part of the view.",
+  "type": "object",
+  "required": ["memory_id", "chain_id", "version", "catalog_version", "value", "confirmed_at", "confirmed_by", "source", "origin", "audit_ref"],
+  "properties": {
+    "memory_id": {"type": "string", "minLength": 1},
+    "chain_id": {"type": "string", "minLength": 1},
+    "version": {"type": "integer", "minimum": 1, "description": "1 for the first declaration of the chain; each edit or re-confirmation appends the next."},
+    "catalog_version": {"$ref": "memory_value.schema.json#/$defs/catalog_version"},
+    "value": {"$ref": "memory_value.schema.json"},
+    "confirmed_at": {"type": "string", "format": "date-time"},
+    "confirmed_by": {"const": "user"},
+    "source": {"enum": ["chat", "profile"]},
+    "origin": {"$ref": "#/$defs/origin"},
+    "audit_ref": {"type": "string", "minLength": 1, "description": "The audit event that recorded the confirmation."}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "origin": {
+      "oneOf": [
+        {"type": "object", "required": ["kind", "session_id", "message_id"], "properties": {"kind": {"const": "chat"}, "session_id": {"type": "string", "minLength": 1}, "message_id": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+        {"type": "object", "required": ["kind"], "properties": {"kind": {"const": "profile"}}, "additionalProperties": false},
+        {"type": "object", "required": ["kind", "statement_id", "txn_id"], "properties": {"kind": {"const": "statement"}, "statement_id": {"type": "string", "minLength": 1}, "txn_id": {"type": "string", "minLength": 1}}, "additionalProperties": false}
+      ]
+    }
+  },
+  "examples": [
+    {"memory_id": "mem_01", "chain_id": "chn_01", "version": 2, "catalog_version": "mem-0.1", "value": {"type": "salary_net", "salary_net": {"amount": 1200000, "net": true, "effective_from": "2026-10"}}, "confirmed_at": "2026-10-19T15:04:05Z", "confirmed_by": "user", "source": "chat", "origin": {"kind": "chat", "session_id": "s_1", "message_id": "m_7"}, "audit_ref": "evt_42"}
+  ]
+}
