@@ -59,6 +59,9 @@ class Settings:
     cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
     email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
+    knowledge_bases: tuple[str, ...] = ("lexical",)  # concept cards (ADR-039), tried in order, e.g. ("chroma", "lexical"); see KNOWLEDGE_BASES
+    kb_dir: str = "./var/chroma"  # the Chroma index and the embedding model's weights
+    kb_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -97,6 +100,7 @@ class Settings:
 
         chain = tuple(part.strip() for part in get("NL_DECISION_CHAIN", "rules").split(",") if part.strip())
         classifiers = tuple(part.strip() for part in get("NL_CLASSIFIER", "naive_bayes").split(",") if part.strip())
+        knowledge_bases = tuple(part.strip() for part in get("NL_KNOWLEDGE_BASE", "lexical").split(",") if part.strip())
         email_checks = tuple(part.strip() for part in get("NL_EMAIL_CHECKS", "disposable").split(",") if part.strip() not in ("", "none"))
         return cls(
             persona=get("NL_PERSONA", cls.persona),
@@ -131,6 +135,9 @@ class Settings:
             cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
             demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
             email_checks=email_checks,
+            knowledge_bases=knowledge_bases or cls.knowledge_bases,
+            kb_dir=get("NL_KB_DIR", cls.kb_dir),
+            kb_embedding_model=get("NL_KB_EMBEDDING_MODEL", cls.kb_embedding_model),
         )
 
 
