@@ -4,14 +4,13 @@ import { useMutation } from "@tanstack/react-query";
 import {
   CalendarDots,
   ChartLineDown,
-  ChatText,
   Files,
   LinkSimple,
   PiggyBank,
   Receipt,
   UserCircle,
-  type Icon,
 } from "@phosphor-icons/react";
+import { CopilotGlyph, type NavIcon } from "@/components/CopilotGlyph";
 import { useFinancialState, useHealth, usePersona } from "@/api/hooks";
 import type { PersonaId } from "@/api/client";
 import { t, type MessageKey } from "@/i18n";
@@ -24,7 +23,7 @@ import { useMarkLanded } from "./mobileLanding";
 interface NavItem {
   to: string;
   label: MessageKey;
-  icon: Icon;
+  icon: NavIcon;
 }
 
 const NAV: NavItem[] = [
@@ -32,7 +31,7 @@ const NAV: NavItem[] = [
   { to: "/commitments", label: "nav.commitments", icon: CalendarDots },
   { to: "/simulator", label: "nav.simulator", icon: Receipt },
   { to: "/plan", label: "nav.plan", icon: PiggyBank },
-  { to: "/copilot", label: "nav.copilot", icon: ChatText },
+  { to: "/copilot", label: "nav.copilot", icon: CopilotGlyph },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
   { to: "/statements", label: "nav.statements", icon: Files },
   { to: "/profile", label: "auth.account", icon: UserCircle },
