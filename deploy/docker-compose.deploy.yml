@@ -1,7 +1,9 @@
 # Public demo deployment on nixbox (docs/runbooks/DEPLOY.md). Server layout:
 #   /opt/neural-ledger/app     the deployed commit (git archive), the Compose project directory
-#   /opt/neural-ledger/deploy  this file, nginx.deploy.conf and .env.tunnel (mode 600, never committed)
-#   cd /opt/neural-ledger && docker compose -p neural-ledger -f app/docker-compose.yml -f deploy/docker-compose.deploy.yml up -d --build
+#   /opt/neural-ledger/deploy  this file, nginx.deploy.conf, .env.tunnel and compose.env (mode 600, never committed)
+#   /opt/neural-ledger/secrets nl_data_key, the Docker secret of docker-compose.data-key.yml
+#   cd /opt/neural-ledger && docker compose -p neural-ledger --env-file deploy/compose.env -f app/docker-compose.yml \
+#     -f app/docker-compose.data-key.yml -f deploy/docker-compose.deploy.yml up -d --build
 # Relative paths resolve from the project directory (app/), hence ../deploy/.
 # No host port is published: Cloudflare edge (TLS) -> cloudflared -> web:3000 -> api:8000. Offline mode only.
 services:

@@ -29,10 +29,21 @@ browser --https--> Cloudflare edge: TLS, rate limit rule, DNS (proxied CNAME neu
 /opt/neural-ledger/app      the deployed commit, from git archive (not a working checkout); the Compose project directory
 /opt/neural-ledger/app/.env       mode 600, read by api
 /opt/neural-ledger/app/DEPLOYED_COMMIT
-/opt/neural-ledger/deploy   docker-compose.deploy.yml, nginx.deploy.conf, .env.tunnel (mode 600, read by cloudflared only)
+/opt/neural-ledger/deploy   docker-compose.deploy.yml, nginx.deploy.conf, .env.tunnel (mode 600, read by cloudflared only),
+                            compose.env (mode 600: NL_DATA_KEY_SECRET_FILE, read by Compose only)
+/opt/neural-ledger/secrets  root, mode 700: nl_data_key (owner 10001, mode 400), the SQLite data key (deploy/secrets/README.md)
 ```
 
-Relative paths in the override resolve from the project directory (`app/`), hence `../deploy/...`. Back up any file under `/opt/neural-ledger` to `~/backups` before editing it.
+Relative paths in the override resolve from the project directory (`app/`), hence `../deploy/...`. Back up any file under `/opt/neural-ledger` to `~/backups` before editing it. The data key is backed up off the server (password manager), never next to the database backups.
+
+Every command below uses:
+
+```sh
+cd /opt/neural-ledger
+alias nlc='docker compose -p neural-ledger --env-file deploy/compose.env -f app/docker-compose.yml -f app/docker-compose.data-key.yml -f deploy/docker-compose.deploy.yml'
+```
+
+`docker-compose.data-key.yml` sets `NL_DEPLOYMENT=deployed` and mounts the key as a Docker secret; the API refuses to start without it, with a key file on the data volume, or with the development `NL_HMAC_SECRET`.
 
 `app/.env` holds only:
 
@@ -51,15 +62,34 @@ On nixbox, `127.0.0.1:3000` belongs to another service: never run `app/docker-co
 ```sh
 # from a local clone: ship the commit to deploy
 git archive <commit> | ssh nixbox 'rm -rf /opt/neural-ledger/app.new && mkdir /opt/neural-ledger/app.new && tar -x -C /opt/neural-ledger/app.new'
-# on nixbox: keep .env, swap the tree, record the commit
-cd /opt/neural-ledger && cp -p app/.env app.new/.env && echo <commit> > app.new/DEPLOYED_COMMIT \
-  && mv app ~/backups/neural-ledger-app-$(date +%Y%m%d-%H%M%S) && mv app.new app
-alias nlc='docker compose -p neural-ledger -f app/docker-compose.yml -f deploy/docker-compose.deploy.yml'
+# on nixbox: back up the database (online backup, while the API runs)
+docker exec neural-ledger-api-1 python -c "import sqlite3; s=sqlite3.connect('/app/var/neural_ledger.db'); d=sqlite3.connect('/tmp/b.db'); s.backup(d)"
+( umask 077; docker cp neural-ledger-api-1:/tmp/b.db ~/backups/neural-ledger-db-$(date +%Y%m%d-%H%M%S).db ) && docker exec neural-ledger-api-1 rm /tmp/b.db
+# keep .env, record the commit, build while the old version still serves
+cp -p app/.env app.new/.env && echo <commit> > app.new/DEPLOYED_COMMIT
+(cd app.new && docker compose -p neural-ledger --env-file ../deploy/compose.env -f docker-compose.yml -f docker-compose.data-key.yml \
+  -f ../deploy/docker-compose.deploy.yml build)
+# short cutover
+nlc stop web api && mv app ~/backups/neural-ledger-app-$(date +%Y%m%d-%H%M%S) && mv app.new app
 nlc config | grep -nE 'ports:|published' || echo "no ports"   # must print "no ports"
-nlc up -d --build
+nlc run --rm --no-deps -T api neural-ledger migrate-data --dry-run </dev/null   # only when the release changes the schema or the key
+nlc up -d </dev/null
 ```
 
 The `ledger-data` volume (audit chain, sandbox bank, accounts) survives rebuilds. Never add `-v` to `down` and never prune.
+
+**Over SSH, give every `nlc run` `-T` and `</dev/null`.** Otherwise `docker compose run` reads standard input and swallows the rest of a script piped through `ssh ... 'bash -s'`, which stops it halfway (this happened during the 7012f41 cutover).
+
+### Data key migration (done once, 2026-10-19, release 7012f41)
+
+Releases before 7012f41 kept an offline key file next to the database (`/app/var/neural_ledger.db.key`). Moving to the Docker secret:
+
+1. Create the key (`deploy/secrets/README.md`) and `deploy/compose.env`; back up the database and the old key file to `~/backups`.
+2. `nlc stop web api`, then `nlc run --rm --no-deps -T api neural-ledger migrate-data --dry-run </dev/null`, then without `--dry-run`. It upgrades the schema, re-seals everything with the new key and seals what was still in clear.
+3. Delete the old key file from the volume (`nlc run --rm --no-deps -T api rm -f /app/var/neural_ledger.db.key </dev/null`): deployed mode refuses to start while it exists.
+4. `nlc up -d </dev/null`. `/health` must answer, and `audit_chain_ok` must stay true.
+
+Rotating the key later uses the same command with `--old-key-file` (docs/SECURITY.md, "Data at rest and key management").
 
 ## Verify
 
@@ -94,7 +124,7 @@ The free plan has a single rate limiting rule for the zone, shared with brief.dm
 
 - **Take it offline at once:** `nlc stop cloudflared`. Cloudflare answers 1033 and nothing is exposed; `nlc start cloudflared` brings it back.
 - **Full removal:** `nlc down` (keeps the volume). In Cloudflare, delete only the `neural-ledger` CNAME and the `neural-ledger` tunnel, never those of dmac.cl, app or brief. Restore the rate limiting rule from its `~/backups/cf-ratelimit-entrypoint-*.json` by PATCHing the rule back to its previous expression and description.
-- **Bad release:** move the previous tree back from `~/backups/neural-ledger-app-*` (keep `.env`) and `nlc up -d --build`.
+- **Bad release:** move the previous tree back from `~/backups/neural-ledger-app-*` (keep `.env`) and `nlc up -d --build`. If that release predates the data-key migration (before 7012f41), it cannot read the migrated database: also restore the database backup and the old key file into the volume, and start it with the old two-file command (`-f app/docker-compose.yml -f deploy/docker-compose.deploy.yml`, no `--env-file`).
 
 ## Rotate the tunnel token
 
