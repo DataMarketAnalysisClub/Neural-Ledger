@@ -34,4 +34,24 @@ test.describe("Overview", () => {
     await page.getByRole("radio", { name: /Diego/ }).check({ force: true });
     await expect(page.getByRole("heading", { level: 1 })).not.toContainText("protected of");
   });
+
+  test("the guide panel stays on screen and steps forward", async ({ page }) => {
+    await openOverview(page);
+    await page.getByRole("button", { name: "How to read this page" }).click();
+    const guide = page.getByRole("dialog");
+    await expect(guide).toContainText("Step 1 of");
+    // Pinned to the screen, not the page: on screen wherever the page is scrolled, and above the phone bar.
+    for (const y of [0, 100_000]) {
+      await page.evaluate((top) => window.scrollTo({ top, behavior: "instant" }), y);
+      const fits = await guide.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const bar = document.querySelector("nav[aria-label='Primary']")?.getBoundingClientRect();
+        const floor = bar && bar.height > 0 ? bar.top : window.innerHeight;
+        return box.top >= 0 && box.bottom <= floor;
+      });
+      expect(fits).toBe(true);
+    }
+    await guide.getByRole("button", { name: "Next" }).click();
+    await expect(guide).toContainText("Step 2 of");
+  });
 });
