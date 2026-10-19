@@ -47,6 +47,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteUserProfileStore,
     verify_data_key,
 )
+from ..adapters.outbound.persistence.sqlite_migration import migrate
 from ..adapters.outbound.privacy.azure_language import AzureLanguageDetector
 from ..adapters.outbound.privacy.null import NullDetector
 from ..adapters.outbound.statements.reader import StatementFileReader
@@ -177,14 +178,17 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if s.persistence == "sqlite":
         cipher = _data_cipher(s)  # before the database is opened: a refused key leaves no file behind
         db = SqliteDatabase(s.sqlite_path)
-        verify_data_key(db, cipher)
-        actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db)
-        audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db)
-        rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db)
+        if db.needs_migration:
+            migrate(db, cipher)  # an older file: the current schema, everything sealed; it opens every value, so it checks the key too
+        else:
+            verify_data_key(db, cipher)
+        actions_repo: InMemoryActionRepository | SqliteActionRepository = SqliteActionRepository(db, cipher)
+        audit_log: InMemoryAuditLog | SqliteAuditLog = SqliteAuditLog(db, cipher)
+        rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db, cipher)
         statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
         transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
         transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
-        writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db)
+        writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db, cipher)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
@@ -203,9 +207,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         # Exactly one writes object over the SAME account, session, profile and audit objects the rest of the app uses,
         # built before any request: InMemoryAccountWrites re-points their locks, and SQLite shares one database.
         if db is not None:
-            account_store: InMemoryUserAccountStore | SqliteUserAccountStore = SqliteUserAccountStore(db)
+            account_store: InMemoryUserAccountStore | SqliteUserAccountStore = SqliteUserAccountStore(db, cipher)
             session_store: InMemorySessionStore | SqliteSessionStore = SqliteSessionStore(db)
-            writes: InMemoryAccountWrites | SqliteAccountWrites = SqliteAccountWrites(db)
+            writes: InMemoryAccountWrites | SqliteAccountWrites = SqliteAccountWrites(db, cipher)
         else:
             account_store, session_store = InMemoryUserAccountStore(), InMemorySessionStore()
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)

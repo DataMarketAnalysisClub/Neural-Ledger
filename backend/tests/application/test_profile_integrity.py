@@ -32,6 +32,7 @@ from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, veri
 from neural_ledger.domain.finance.profile import RiskProfile
 from neural_ledger.domain.user.profile import QuestionnaireAnswer, UserProfile
 from neural_ledger.domain.user.questionnaire import CURRENT_VERSION, REGISTRY
+from tests.conftest import TEST_CIPHER
 
 NOW = datetime(2026, 10, 29, 9, tzinfo=UTC)
 PARAMS = "fc-0.1"
@@ -135,9 +136,9 @@ def world(request, tmp_path) -> World:
         accounts, sessions, inner, audit = InMemoryUserAccountStore(), InMemorySessionStore(), InMemoryUserProfileStore(), FailingAuditLog()
     else:
         db = SqliteDatabase(tmp_path / "profile-integrity.db")
-        accounts, sessions, inner, audit = SqliteUserAccountStore(db), SqliteSessionStore(db), SqliteUserProfileStore(db), SqliteAuditLog(db)
+        accounts, sessions, inner, audit = SqliteUserAccountStore(db, TEST_CIPHER), SqliteSessionStore(db), SqliteUserProfileStore(db, TEST_CIPHER), SqliteAuditLog(db, TEST_CIPHER)
     profiles = PersonaOverlayProfileStore([PERSONA], inner)
-    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db)
+    writes = InMemoryAccountWrites(accounts, sessions, profiles, audit) if db is None else SqliteAccountWrites(db, TEST_CIPHER)
     ids = SequentialIds()
     accounts_use_cases = AccountUseCases(accounts, sessions, writes, FakeHasher(), FakeTokens(), FixedClock(NOW), ids)
     session = accounts_use_cases.signup(EMAIL, PASSWORD, "Ana").session

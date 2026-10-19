@@ -12,14 +12,15 @@ from datetime import UTC, datetime
 
 from neural_ledger.adapters.outbound.persistence.sqlite import SqliteAuditLog, SqliteDatabase, SqliteSavingsRuleStore
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, verify_chain
+from tests.conftest import TEST_CIPHER
 
 NOW = datetime(2026, 10, 29, 15, 0, tzinfo=UTC)
 
 
 def test_concurrent_reads_and_writes_do_not_corrupt_results(tmp_path):
     db = SqliteDatabase(tmp_path / "concurrent.db")
-    audit = SqliteAuditLog(db)
-    rules = SqliteSavingsRuleStore(db)
+    audit = SqliteAuditLog(db, TEST_CIPHER)
+    rules = SqliteSavingsRuleStore(db, TEST_CIPHER)
     for i in range(20):
         audit.append(AuditDraft(f"seed_{i}", NOW, "s1", Actor.SYSTEM, AuditKind.DECISION, detail=str(i)))
 

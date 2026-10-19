@@ -42,7 +42,7 @@ def stores(request, tmp_path):
     if request.param == "memory":
         return InMemoryActionRepository(), InMemoryAuditLog()
     db = SqliteDatabase(tmp_path / "test.db")
-    return SqliteActionRepository(db), SqliteAuditLog(db)
+    return SqliteActionRepository(db, TEST_CIPHER), SqliteAuditLog(db, TEST_CIPHER)
 
 
 def test_proposal_round_trip(stores):
@@ -80,7 +80,7 @@ def test_audit_log_is_a_valid_chain(stores):
 def rule_store(request, tmp_path):
     if request.param == "memory":
         return InMemorySavingsRuleStore()
-    return SqliteSavingsRuleStore(SqliteDatabase(tmp_path / "test.db"))
+    return SqliteSavingsRuleStore(SqliteDatabase(tmp_path / "test.db"), TEST_CIPHER)
 
 
 def _rule(rule_id: str, user_id: str) -> SavingsRule:
@@ -107,25 +107,26 @@ def test_a_floor_rule_keeps_its_kind(rule_store):
 def test_a_rule_stored_before_floors_existed_is_a_savings_rule(tmp_path):
     db = SqliteDatabase(tmp_path / "legacy.db")
     payload = {k: v for k, v in to_primitive(_rule("rule_0001", "camila")).items() if k != "action"}
-    db.connection.execute("INSERT INTO savings_rules (rule_id, user_id, payload) VALUES (?, ?, ?)", ("rule_0001", "camila", json.dumps(payload)))
-    assert SqliteSavingsRuleStore(db).for_user("camila") == (_rule("rule_0001", "camila"),)
+    sealed = TEST_CIPHER.seal(json.dumps(payload), "savings_rules|camila|rule_0001")
+    db.connection.execute("INSERT INTO savings_rules (rule_id, user_id, payload) VALUES (?, ?, ?)", ("rule_0001", "camila", sealed))
+    assert SqliteSavingsRuleStore(db, TEST_CIPHER).for_user("camila") == (_rule("rule_0001", "camila"),)
 
 
 def test_sqlite_survives_a_restart(tmp_path):
     """Executed rules, single-use state and the audit chain all outlive the process."""
     path = tmp_path / "durable.db"
     db = SqliteDatabase(path)
-    SqliteSavingsRuleStore(db).add(_rule("rule_0001", "camila"))
-    repo = SqliteActionRepository(db)
+    SqliteSavingsRuleStore(db, TEST_CIPHER).add(_rule("rule_0001", "camila"))
+    repo = SqliteActionRepository(db, TEST_CIPHER)
     repo.add_authorization(Authorization("auth_1", "prop_1", "s1", "camila", TERMS, "sig", NOW, NOW + timedelta(minutes=10)))
     assert repo.consume_authorization("auth_1", NOW) is True
-    SqliteAuditLog(db).append(AuditDraft("evt_1", NOW, "s1", Actor.SYSTEM, AuditKind.DECISION, detail="x"))
+    SqliteAuditLog(db, TEST_CIPHER).append(AuditDraft("evt_1", NOW, "s1", Actor.SYSTEM, AuditKind.DECISION, detail="x"))
     db.connection.close()
 
     reopened = SqliteDatabase(path)
-    assert SqliteSavingsRuleStore(reopened).for_user("camila") == (_rule("rule_0001", "camila"),)
-    assert SqliteActionRepository(reopened).consume_authorization("auth_1", NOW) is False
-    assert verify_chain(SqliteAuditLog(reopened).events()).ok
+    assert SqliteSavingsRuleStore(reopened, TEST_CIPHER).for_user("camila") == (_rule("rule_0001", "camila"),)
+    assert SqliteActionRepository(reopened, TEST_CIPHER).consume_authorization("auth_1", NOW) is False
+    assert verify_chain(SqliteAuditLog(reopened, TEST_CIPHER).events()).ok
 
 
 @pytest.fixture(params=["memory", "sqlite"])
@@ -294,7 +295,7 @@ def transaction_writes(request, tmp_path):
         store, audit = InMemoryTransactionStore(), InMemoryAuditLog()
         return store, InMemoryTransactionWrites(store, audit), audit
     db = SqliteDatabase(tmp_path / "test.db")
-    return SqliteTransactionStore(db, TEST_CIPHER), SqliteTransactionWrites(db, TEST_CIPHER), SqliteAuditLog(db)
+    return SqliteTransactionStore(db, TEST_CIPHER), SqliteTransactionWrites(db, TEST_CIPHER), SqliteAuditLog(db, TEST_CIPHER)
 
 
 def _category_event(event_id: str, user_id: str = "camila"):

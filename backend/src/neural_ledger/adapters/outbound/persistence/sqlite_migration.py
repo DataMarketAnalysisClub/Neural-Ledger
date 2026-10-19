@@ -1,6 +1,6 @@
-"""One-shot data migration for the SQLite file: every sealed column ends up sealed with the new data key.
+"""One-shot data migration for the SQLite file: the current schema, and every sealed column sealed with the new key.
 
-For each value in SEALED_COLUMNS (sqlite.py):
+First the schema is brought to SCHEMA_VERSION (sqlite.upgrade_schema). Then, for each value in SEALED_COLUMNS (sqlite.py):
 - already sealed with the new key, in the current format: left alone;
 - sealed with an old key (the offline `<db>.key` file): opened with it and sealed again with the new key;
 - plain text (written before that column was sealed): sealed with the new key.
@@ -16,8 +16,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from .field_cipher import PREFIX, FieldCipher, FieldCipherError, WrongDataKey
-from .sqlite import SEALED_COLUMNS, SqliteDatabase, write_key_check
+from .field_cipher import FieldCipher, FieldCipherError, WrongDataKey
+from .sqlite import SCHEMA_VERSION, SEALED_COLUMNS, SqliteDatabase, upgrade_schema, write_key_check
 
 
 @dataclass
@@ -34,16 +34,17 @@ class ColumnReport:
 @dataclass
 class MigrationReport:
     dry_run: bool
+    schema_from: int = SCHEMA_VERSION  # the version the file had; SCHEMA_VERSION when there was nothing to upgrade
     columns: dict[str, ColumnReport] = field(default_factory=dict)
 
     @property
     def changed(self) -> int:
-        return sum(c.changed for c in self.columns.values())
+        return sum(c.changed for c in self.columns.values()) + (self.schema_from < SCHEMA_VERSION)
 
 
 def _plaintext(value: str, aad: str, new: FieldCipher, old: Sequence[FieldCipher], where: str) -> tuple[str, str]:
     """(plaintext, how): how is current, rekeyed or sealed."""
-    if not value.startswith(PREFIX):
+    if not new.is_sealed(value):
         return value, "sealed"
     try:
         opened = new.open(value, aad)
@@ -64,6 +65,7 @@ def migrate(db: SqliteDatabase, new: FieldCipher, old: Sequence[FieldCipher] = (
         conn = db.connection
         conn.execute("BEGIN IMMEDIATE")
         try:
+            report.schema_from = upgrade_schema(conn, new)
             for column in SEALED_COLUMNS:
                 counts = report.columns.setdefault(column.table, ColumnReport())
                 for record in conn.execute(column.select).fetchall():
@@ -76,6 +78,8 @@ def migrate(db: SqliteDatabase, new: FieldCipher, old: Sequence[FieldCipher] = (
                     conn.execute(column.update, (new.seal(plaintext, aad), record[0]))
             write_key_check(conn, new)
             conn.execute("ROLLBACK" if dry_run else "COMMIT")
+            if not dry_run:
+                db.schema_version = SCHEMA_VERSION
         except BaseException:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")

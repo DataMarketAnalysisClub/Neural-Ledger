@@ -409,7 +409,7 @@ def test_g11_financial_records_are_encrypted_at_rest(sqlite_system):
     assert services.ledger.list_transactions(USER).data.transactions  # imported and readable through the API
     stored = _stored_bytes(path)
     assert "Compra Nacional VD SHOP ONE" not in stored and "SHOP ONE" not in stored
-    assert "nlenc1:" in stored
+    assert "nlenc2:" in stored and "nlenc1:" not in stored
 
 
 def test_g12_privacy_policy_and_breach_runbook_exist():
