@@ -80,6 +80,14 @@ describe("CopilotPage", () => {
     expect(avatar).toHaveAttribute("data-shape", "round");
   });
 
+  it("sends on Enter on a wide screen", async () => {
+    const mutate = vi.fn();
+    chat = { ...idle(), mutate };
+    render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+    await userEvent.type(screen.getByLabelText("Ask about your money"), "hello{Enter}");
+    expect(mutate).toHaveBeenCalledWith("hello", expect.anything());
+  });
+
   it("keeps the savings-rule panel on a wide screen", () => {
     render(<MemoryRouter><CopilotPage /></MemoryRouter>);
     expect(screen.getByText("Savings rule")).toBeInTheDocument();
@@ -98,6 +106,38 @@ describe("CopilotPage", () => {
       expect(screen.queryByText("Savings rule")).not.toBeInTheDocument();
       expect(screen.getByRole("heading", { level: 1, name: "Copilot" })).toHaveClass("sr-only");
       expect(screen.getByLabelText("Ask about your money")).toBeInTheDocument();
+    });
+
+    it("grows the box upward as the message gets longer, up to a limit, then scrolls inside", async () => {
+      const scrollHeight = vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get");
+      scrollHeight.mockReturnValue(44);
+      phone();
+      const box = screen.getByLabelText("Ask about your money") as HTMLTextAreaElement;
+      expect(box.style.height).toBe("44px");
+
+      scrollHeight.mockReturnValue(96);
+      await userEvent.type(box, "a longer question{Shift>}{Enter}{/Shift}over several lines");
+      expect(box.style.height).toBe("96px");
+      expect(box.style.overflowY).toBe("hidden");
+
+      scrollHeight.mockReturnValue(600);
+      await userEvent.type(box, " and more");
+      expect(box.style.height).toBe("144px");
+      expect(box.style.overflowY).toBe("auto");
+      scrollHeight.mockRestore();
+    });
+
+    it("uses Enter for a new line, since a phone keyboard has no Shift; the arrow button sends", async () => {
+      const mutate = vi.fn();
+      chat = { ...idle(), mutate };
+      phone();
+      const box = screen.getByLabelText("Ask about your money");
+      await userEvent.type(box, "first line{Enter}second line");
+      expect(mutate).not.toHaveBeenCalled();
+      expect(box).toHaveValue("first line\nsecond line");
+
+      await userEvent.click(screen.getByRole("button", { name: "Send" }));
+      expect(mutate).toHaveBeenCalledWith("first line\nsecond line", expect.anything());
     });
 
     it("keeps a new conversation one tap away", async () => {

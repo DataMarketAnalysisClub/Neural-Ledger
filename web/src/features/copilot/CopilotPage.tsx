@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
 import { ArrowUp, Info, NotePencil, SealCheck, Wrench } from "@phosphor-icons/react";
 import { useChat, useConfirmProposal, useExecute, useFinancialState, usePending, usePersona } from "@/api/hooks";
@@ -8,6 +8,9 @@ import { CopilotAvatar, type AvatarState } from "@/components/CopilotAvatar";
 import { Button, ErrorState, PageHeader, StatusBadge, cn } from "@/components/ui";
 import { t, tList } from "@/i18n";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+
+/** The tallest the phone's input grows before it scrolls inside: about six lines. */
+const PHONE_INPUT_MAX = 144;
 
 type Proposal = NonNullable<ActionOutcome["proposal"]>;
 type Authorization = NonNullable<ActionOutcome["authorization"]>;
@@ -139,6 +142,19 @@ function Conversation() {
   // then joins the conversation instead of sitting in a panel of its own.
   const phone = useMediaQuery("(max-width: 1023px)");
   const showReceipt = Boolean(shownProposal || shownAuthorization || receipt);
+
+  // Like a messaging app: the box grows with the message, upward (the chat above gives it room), up to a limit and
+  // then scrolls inside. The chat stays at its end if it was there, so the last message is never pushed out of sight.
+  useLayoutEffect(() => {
+    const box = inputRef.current;
+    if (!phone || !box) return;
+    const log = logRef.current;
+    const atEnd = !log || log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, PHONE_INPUT_MAX)}px`;
+    box.style.overflowY = box.scrollHeight > PHONE_INPUT_MAX ? "auto" : "hidden";
+    if (log && atEnd) log.scrollTop = log.scrollHeight;
+  }, [draft, phone]);
   const receiptPanel = (
     <ProposalReceipt
       proposal={shownProposal}
@@ -216,15 +232,16 @@ function Conversation() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            // A phone keyboard has no Shift: there Enter is a new line and the arrow button sends.
+            if (e.key === "Enter" && !e.shiftKey && !phone) {
               e.preventDefault();
               send(draft);
             }
           }}
           placeholder={t("copilot.inputPlaceholder")}
-          className="max-h-40 min-h-11 flex-1 resize-y rounded-control border border-control bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25"
+          className={cn("min-h-11 flex-1 border border-control bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25", phone ? "resize-none rounded-3xl px-4" : "max-h-40 resize-y rounded-control")}
         />
-        <Button type="submit" variant="primary" size="lg" className="w-11 px-0" disabled={!draft.trim() || chat.isPending} aria-label={t("copilot.send")}>
+        <Button type="submit" variant="primary" size="lg" className={cn("w-11 px-0", phone && "size-11 rounded-full")} disabled={!draft.trim() || chat.isPending} aria-label={t("copilot.send")}>
           <ArrowUp aria-hidden weight="bold" className="size-5" />
         </Button>
       </form>
