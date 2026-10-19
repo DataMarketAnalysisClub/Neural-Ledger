@@ -1,6 +1,6 @@
 """Amounts as people write them: one grammar for the verifier and for every check that an amount is the user's.
 
-"$1.200.000", "1,2M", "15 lucas", "15 mil": `extract_numbers` reads money and percentages the way the response
+"$1.200.000", "1,2M", "1,2 palos", "15 lucas", "15 mil": `extract_numbers` reads money and percentages the way the response
 verifier checks them (counts, days and years are skipped). `written_amounts` is wider on purpose: every number the
 user wrote, so that an amount the copilot proposes can be checked against it (rule 2), never made up by a model.
 """
@@ -15,14 +15,14 @@ _NUMBER = re.compile(
     r"(?P<prefix>(?:CLP|USD|EUR|US\$|CL\$|\$)\s?)?"
     r"(?P<int>\d{1,3}(?:[.,']\d{3})+|\d+)"
     r"(?:[.,](?P<dec>\d{1,2})(?!\d))?"
-    r"\s?(?P<suffix>(?:k|K|mil|lucas|luca|MM|M|millones|million)\b)?"
+    r"\s?(?P<suffix>(?:k|K|mil|lucas|luca|MM|M|millones|million|palos|palo)\b)?"
     r"(?P<pct>\s?%)?"
 )
 _APPROX = re.compile(
     r"(about|around|approx\.?|approximately|roughly|aprox\.?|aproximadamente|cerca de|alrededor de|~)\s*$",
     re.IGNORECASE,
 )
-_SCALE = {"k": 1_000, "K": 1_000, "mil": 1_000, "lucas": 1_000, "luca": 1_000, "M": 1_000_000, "MM": 1_000_000, "millones": 1_000_000, "million": 1_000_000}
+_SCALE = {"k": 1_000, "K": 1_000, "mil": 1_000, "lucas": 1_000, "luca": 1_000, "M": 1_000_000, "MM": 1_000_000, "millones": 1_000_000, "million": 1_000_000, "palos": 1_000_000, "palo": 1_000_000}
 
 
 @dataclass(frozen=True, slots=True)
