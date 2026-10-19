@@ -288,7 +288,21 @@ def validate_snapshot(snapshot: LedgerSnapshot) -> tuple[str, str, tuple[str, ..
     return None
 
 
-def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[FinancialModel]:
+@dataclass(frozen=True, slots=True)
+class CanonicalWindow:
+    """What every stage-1 estimator reads: the deduplicated transactions, the pay cycles of the window and each
+    transaction in it with its cycle. The salary overlay (income_memory.py) reads the same one, never a copy."""
+
+    transactions: tuple[Transaction, ...]  # txn_id duplicates dropped, in (date, txn_id) order
+    last_cycle: Month
+    first_cycle: Month  # first projected cycle
+    window: tuple[Month, ...]
+    in_window: tuple[tuple[Transaction, Month], ...]
+    warnings: tuple[Caveat, ...]  # what deduplication flagged
+
+
+def canonical_window(snapshot: LedgerSnapshot, params: FinanceParams) -> CanonicalWindow | Envelope[FinancialModel]:
+    """Validation, deduplication, H4 and the window; an INVALID_INPUT or INSUFFICIENT_DATA envelope otherwise."""
     version = params.version
     problem = validate_snapshot(snapshot)
     if problem is not None:
@@ -333,7 +347,18 @@ def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[
         )
     window_start = max(earliest, last_cycle.plus(-(params.spend_window_months - 1)))
     window = month_range(window_start, window_start.months_until(last_cycle) + 1)
-    in_window = [(t, cycle_of(t.date)) for t in txns if cycle_of(t.date) >= window_start]
+    in_window = tuple((t, cycle_of(t.date)) for t in txns if cycle_of(t.date) >= window_start)
+    return CanonicalWindow(tuple(txns), last_cycle, first_cycle, window, in_window, tuple(warnings))
+
+
+def estimate_model(snapshot: LedgerSnapshot, params: FinanceParams) -> Envelope[FinancialModel]:
+    version = params.version
+    canonical = canonical_window(snapshot, params)
+    if isinstance(canonical, Envelope):
+        return canonical
+    txns, last_cycle, first_cycle = canonical.transactions, canonical.last_cycle, canonical.first_cycle
+    window, in_window = canonical.window, canonical.in_window
+    warnings: list[Caveat] = list(canonical.warnings)
 
     # 4.1 installments ---------------------------------------------------------------------------
     cuota_lines: list[_CuotaLine] = []
@@ -545,10 +570,7 @@ def _income_model(
     last_cycle: Month,
     warnings: list[Caveat],
 ) -> IncomeModel | Envelope[FinancialModel]:
-    credits = [
-        (t, c) for t, c in in_window
-        if t.kind is TransactionKind.INCOME and t.amount > 0 and _category(t) not in BONUS_CATEGORIES
-    ]
+    credits = income_credits(in_window)
     profile = snapshot.income_profile
     if profile.type is IncomeType.SALARIED and profile.contracted_net:
         contracted = profile.contracted_net
@@ -567,19 +589,38 @@ def _income_model(
 
     if profile.type is IncomeType.SALARIED:
         warnings.append(_caveat("CONTRACT_UNKNOWN", "No contracted net income; income was estimated from percentiles."))
-    totals = defaultdict(int)
-    for t, c in credits:
-        totals[c] += t.amount
-    series = [totals[c] for c in window]  # zero cycles included
+    series = income_series(credits, window)
     if sum(series) <= 0:
         return Envelope.insufficient(("income",), params_version=params.version, message="no income credits in the window")
+    typical, conservative = income_percentiles(series, params)
     return IncomeModel(
         type=profile.type,
-        typical=round_half_up(quantile(series, Fraction(1, 2))),
-        conservative=round_half_up(quantile(series, Fraction(params.conservative_income_percentile, 100))),
+        typical=round_half_up(typical),
+        conservative=round_half_up(conservative),
         cv=coefficient_of_variation(series, params.income_cv_ddof),
         method="percentile",
     )
+
+
+def income_credits(in_window: Sequence[tuple[Transaction, Month]]) -> list[tuple[Transaction, Month]]:
+    """The credits income is estimated from: positive income lines, bonuses excluded (bonuses are never income)."""
+    return [
+        (t, c) for t, c in in_window
+        if t.kind is TransactionKind.INCOME and t.amount > 0 and _category(t) not in BONUS_CATEGORIES
+    ]
+
+
+def income_series(credits: Sequence[tuple[Transaction, Month]], window: Sequence[Month]) -> list[int]:
+    """Per-cycle totals over the window, zero cycles included."""
+    totals: dict[Month, int] = defaultdict(int)
+    for t, c in credits:
+        totals[c] += t.amount
+    return [totals[c] for c in window]
+
+
+def income_percentiles(series: Sequence[int], params: FinanceParams) -> tuple[Fraction, Fraction]:
+    """Typical (P50) and conservative (the parameter register's percentile), exact."""
+    return quantile(series, Fraction(1, 2)), quantile(series, Fraction(params.conservative_income_percentile, 100))
 
 
 def _spend_model(
