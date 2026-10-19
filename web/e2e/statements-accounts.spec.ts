@@ -67,11 +67,12 @@ test("each account imports and reads only its own statements, and an import unlo
   await page.getByRole("radio", { name: "Transactions" }).check({ force: true });
   await expect(page.getByRole("table", { name: "Transactions from imported statements" })).toContainText("CLP −900");
 
-  // The import changed neither the account's data source nor its stored tolerance, and no forecast appeared.
-  expect(await (await page.request.get("/api/v1/me")).json()).toMatchObject({ data_source: "empty" });
+  // The import makes the statements the account's data source (ADR-029) and leaves its tolerance alone. One month
+  // covers no full pay cycle, so the overview says what is missing instead of showing a forecast.
+  expect(await (await page.request.get("/api/v1/me")).json()).toMatchObject({ data_source: "statements" });
   expect(await (await page.request.get("/api/v1/profile")).json()).toMatchObject({ data: { declared_tolerance: null } });
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Overview" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("No financial data yet");
+  await expect(page.getByText(/Missing: statements/).first()).toBeVisible();
   await expect(page.getByText(/CLP/)).toHaveCount(0);
 
   // Second account, in the same tab without a reload: nothing of the first account's import or ledger remains.
@@ -93,7 +94,7 @@ test("each account imports and reads only its own statements, and an import unlo
   await page.getByLabel("Email").fill(first);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("No financial data yet");
+  await expect(page.getByText(/Missing: statements/).first()).toBeVisible();
   await openStatements(page);
   await expect(page.getByRole("button", { name: /Open statement for \*\*\*\*3456/ })).toBeVisible();
   await signOut(page);

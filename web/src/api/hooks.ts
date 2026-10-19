@@ -240,12 +240,14 @@ export function useSimulatePurchase() {
 export function useImportStatement() {
   const { identity } = usePersona();
   const client = useQueryClient();
+  const auth = useOptionalAuth();
   return useMutation({
     mutationFn: (file: Blob) => requestEnvelope<StatementImport>("/v1/statements", { identity, method: "POST", body: file }),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: [identity.user_id, "statements"] });
       void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
       void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+      void auth?.refreshMe(); // an import can turn an empty account into one with statements (ADR-029)
     },
   });
 }

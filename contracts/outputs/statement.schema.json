@@ -27,8 +27,8 @@
           "branch": {"type": ["string", "null"]},
           "confidence": {"type": ["number", "null"], "description": "Lowest OCR confidence over the line's cells; null when read from a text layer."},
           "kind": {
-            "enum": ["purchase", "payment", "refund", "fee", null],
-            "description": "What the bank says the line is, when its layout says it (credit cards). null: the sign decides."
+            "enum": ["purchase", "payment", "refund", "fee", "transfer_own", null],
+            "description": "What the bank says the line is, when its layout says it (credit cards), or transfer_own when a checking layout's rule recognizes the holder's own money moving to their savings or card (ADR-024; posted as movement by rule). null: the sign decides."
           },
           "section": {"type": ["string", "null"], "description": "The printed subtotal the line belongs to (e.g. B, D, E on a card statement)."},
           "installment": {

@@ -62,6 +62,7 @@ from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
 from ..application.services.redaction import StatementRedactor
+from ..application.services.statement_model import FirstFoundModelSource, StatementModelSource
 from ..application.use_cases.accounts import DEMO_PERSONAS, AccountUseCases
 from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
@@ -200,7 +201,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
         accounts = AccountUseCases(
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
-            demo_personas=frozenset(auth.demo_personas),
+            demo_personas=frozenset(auth.demo_personas), transactions=transaction_store,
         )
         profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
 
@@ -225,7 +226,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     else:
         raise ValueError(f"unknown NL_LLM {s.llm!r}")
 
-    financial = FinancialUseCases(source, snapshots, bank, profiles, FC_0_1)
+    # Personas keep their fixtures; every other user gets the model of their own statements (ADR-029).
+    accounts_source = StatementModelSource(statement_store, transaction_store, FC_0_1)
+    financial = FinancialUseCases(FirstFoundModelSource((source, accounts_source)), snapshots, bank, profiles, FC_0_1)
     actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)

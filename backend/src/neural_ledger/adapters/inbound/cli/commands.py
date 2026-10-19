@@ -278,7 +278,7 @@ def main(
         cart.add_argument("--out", type=Path, default=Path("."), help="folder for the files (default: current folder)")
         seed = sub.add_parser("seed", help="import random synthetic cartolas into the database, so the app opens with data")
         seed.add_argument("--user", default=None, help="whose data (default: NL_PERSONA); the web app's users are camila and diego")
-        seed.add_argument("--months", type=int, default=6, help="months of checking-account history, ending with last month")
+        seed.add_argument("--months", type=int, default=7, help="months of checking-account history, ending with last month (7 = six full pay cycles, ADR-029)")
         seed.add_argument("--seed", type=int, default=None, help="same seed, same data: seeding twice with it adds nothing")
         seed.add_argument("--opening", type=int, default=None, help="opening balance of the first month, CLP (default: one salary)")
         seed.add_argument("--salary", type=int, default=None, help="monthly salary, CLP (default: random)")

@@ -44,7 +44,7 @@ cartola:            ## write random cartolas (.xlsx) to var/samples/ to upload o
 	cd backend && PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli cartola --kind card $(SEED_ARG) --out ../var/samples
 
 seed:               ## import random statements into the local SQLite database (then: NL_PERSISTENCE=sqlite make api)
-	cd backend && NL_PERSISTENCE=sqlite PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli seed --user $(PERSONA) --months $(or $(MONTHS),6) $(SEED_ARG)
+	cd backend && NL_PERSISTENCE=sqlite PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli seed --user $(PERSONA) --months $(or $(MONTHS),7) $(SEED_ARG)
 
 reset:              ## developer only: empty the local SQLite database in place (make reset YES=1 skips the prompt; then: make seed)
 	cd backend && NL_PERSISTENCE=sqlite PYTHONPATH=src $(PY) -m neural_ledger.bootstrap.cli reset $(if $(YES),--yes)

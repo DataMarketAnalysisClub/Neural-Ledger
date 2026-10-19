@@ -98,7 +98,7 @@ def test_jev_answers_and_each_transaction_records_it(monkeypatch):
     (imported,) = _import_cartola(services).data.imports
     assert imported.ledger.classifier == "jev:jev-1.14-20261014"  # only Jev answered
     transactions = services.ledger.list_transactions("camila").data.transactions
-    charges = [t for t in transactions if t.amount < 0]
+    charges = [t for t in transactions if t.amount < 0 and t.classifier != "rule"]  # own money goes by rule (ADR-024)
     assert charges and {t.classifier for t in charges} == {"jev:jev-1.14-20261014"} and {t.category for t in charges} == {"dining"}
     income = [t for t in transactions if t.amount > 0]
     assert income and {(t.category, t.classifier) for t in income} == {("income", "rule")}  # never asked
@@ -109,7 +109,7 @@ def test_jev_without_a_key_falls_back_to_naive_bayes_for_the_whole_statement():
     (imported,) = _import_cartola(services).data.imports
     assert imported.statement.verified and imported.ledger.posted == imported.statement.line_count
     assert imported.ledger.classifier.startswith("naive_bayes@")
-    charges = [t for t in services.ledger.list_transactions("camila").data.transactions if t.amount < 0]
+    charges = [t for t in services.ledger.list_transactions("camila").data.transactions if t.amount < 0 and t.classifier != "rule"]
     assert {t.classifier.split("@")[0] for t in charges} == {"naive_bayes"}
 
 

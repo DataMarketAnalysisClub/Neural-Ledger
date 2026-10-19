@@ -39,13 +39,14 @@ function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
 export function ProfilePage() {
   const auth = useAuth();
   const { identity } = usePersona();
-  // Only a read-only demo persona has financial data; any other account stays empty and asks for no capacity.
+  // A read-only demo persona has its fixture; an account has financial data once it imported statements (ADR-029).
   const readOnly = auth.me?.data_source === "persona";
+  const hasModel = readOnly || auth.me?.data_source === "statements";
   const profile = useQuery({ queryKey: [identity.user_id, "profile"], queryFn: accountsApi.profile });
   const permitted = useQuery({
     queryKey: [identity.user_id, "profile-permitted", profile.data?.data?.declared_tolerance ?? "conservative", auth.me?.data_source],
     queryFn: () => accountsApi.permitted(profile.data?.data?.declared_tolerance ?? "conservative"),
-    enabled: readOnly && Boolean(profile.data?.data),
+    enabled: hasModel && Boolean(profile.data?.data),
   });
 
   if (profile.isPending) return <Loading className="max-w-3xl" />;
@@ -73,7 +74,7 @@ export function ProfilePage() {
           {!readOnly && <Button asChild variant="secondary" className="mt-5"><Link to="/onboarding">{t(record.questionnaire_version ? "profile.updateAnswers" : "profile.repeat")}</Link></Button>}
         </Section>
         <Section id="permitted" title={t("profile.permitted")}>
-          {!readOnly ? <p className="text-sm text-ink-2">{t("profile.capacityMissing")}</p> : permitted.isPending ?
+          {!hasModel ? <p className="text-sm text-ink-2">{t("profile.capacityMissing")}</p> : permitted.isPending ?
             <Loading className="max-w-xs" /> : permitted.isError ? <ErrorState error={permitted.error} onRetry={() => void permitted.refetch()} /> : permission && (
               <>
                 <p className="text-xl font-semibold text-ink">{tDynamic("plan.profile.levels", permission.permitted)}</p>
@@ -86,7 +87,7 @@ export function ProfilePage() {
         </Section>
       </div>
 
-      {!readOnly && (
+      {!hasModel && (
         <Section id="financial-data" title={t("profile.emptyTitle")} className="mt-10 border-t border-line pt-10">
           <p className="max-w-prose text-sm text-ink-2">{t("profile.emptyDetail")}</p>
         </Section>

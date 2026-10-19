@@ -469,3 +469,24 @@ def test_demo_mode_keeps_the_header_and_has_no_accounts_surface():
     assert adapters.audit_log.events() == events
     upload = client.post("/v1/statements", content=b"%PDF-1.4\n", headers={"Content-Type": "application/pdf"})
     assert upload.status_code not in (400, 401, 403)
+
+
+def test_an_account_with_imported_statements_reads_its_own_forecast(accounts):
+    """ADR-029 step 2: data_source becomes "statements" with the first posted transaction, and seven months of
+    statements give the account its own forecast through its session, in both persistence modes."""
+    from datetime import date
+
+    from neural_ledger.adapters.outbound.statements.synthetic import SyntheticStatements
+
+    client, _, _ = accounts
+    user_id = _signup(client).json()["user_id"]
+    empty = client.get("/v1/forecast")
+    assert empty.status_code == 409 and empty.json()["missing"] == ["statements"]
+
+    for sample in SyntheticStatements().checking(4, date(2026, 9, 30), months=7):
+        assert client.post("/v1/statements", content=sample.content, headers={"Content-Type": "application/octet-stream"}).status_code == 200
+    me = client.get("/v1/me").json()
+    validate(me, "auth/me.schema.json")
+    assert (me["user_id"], me["data_source"]) == (user_id, "statements")
+    forecast = client.get("/v1/forecast")
+    assert forecast.status_code == 200 and forecast.json()["as_of"] == "2026-09-29"

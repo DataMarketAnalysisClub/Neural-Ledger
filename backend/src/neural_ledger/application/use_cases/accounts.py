@@ -18,7 +18,7 @@ from ...domain.audit.events import Actor, AuditDraft, AuditKind
 from ...domain.shared.errors import InvalidInput
 from ...domain.user.account import SESSION_PREFIX, USER_PREFIX, Session, UserAccount, normalize_email, token_digest, validate_password
 from ...domain.user.profile import UserProfile
-from ..ports import AccountWrites, Clock, IdGenerator, PasswordHasher, SessionStore, TokenGenerator, UserAccountStore
+from ..ports import AccountWrites, Clock, IdGenerator, PasswordHasher, SessionStore, TokenGenerator, TransactionStore, UserAccountStore
 
 
 class AccountStatus(str, Enum):
@@ -69,10 +69,12 @@ class AccountUseCases:
         ids: IdGenerator,
         *,
         demo_personas: frozenset[str] = frozenset(),
+        transactions: TransactionStore | None = None,
     ) -> None:
         if not demo_personas <= frozenset(DEMO_PERSONAS):
             raise ValueError("demo sessions open only the allowlisted personas")
         self._demo_personas = frozenset(demo_personas)
+        self._transactions = transactions  # only to tell an account with imported statements from an empty one
         self._accounts = accounts
         self._sessions = sessions
         self._writes = writes
@@ -130,11 +132,16 @@ class AccountUseCases:
         return AccountOutcome(AccountStatus.OK, session=IssuedSession(persona, session.session_ref, session.expires_at, token))
 
     def data_source(self, user_id: str) -> str:
-        """persona (no account: a demo session), sample (the account chose sample data) or empty."""
+        """persona (no account: a demo session), sample (the account chose sample data), statements (the account
+        has imported statements: its model comes from them, ADR-029) or empty."""
         account = self._accounts.get(user_id)
         if account is None:
             return "persona"
-        return "sample" if account.sample_data else "empty"
+        if account.sample_data:
+            return "sample"
+        if self._transactions is not None and self._transactions.has_transactions(user_id):
+            return "statements"
+        return "empty"
 
     def resolve(self, token: str) -> Session | None:
         """The active session for this token. Read-only: using a session never extends it."""

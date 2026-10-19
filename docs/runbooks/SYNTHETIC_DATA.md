@@ -16,7 +16,7 @@ Both write the same files. `seed` simply imports them for you through the **real
 - **Santander checking account, `Cartola de cuenta Corriente` (.xlsx)**, one per month. A salary on the last weekday, rent on the 5th, utilities and subscriptions on fixed days, 25 to 45 card purchases at supermarkets, cafés, transport, pharmacies and shops, an occasional ATM withdrawal, and a transfer to savings on payday. Totals, the closing balance and every daily balance are computed from the movements, so the statement **reconciles and is posted** to the transaction ledger. Consecutive months chain: each one opens at the previous closing balance. A charge that would overdraw the account is left out.
 - **BICE credit card, `Movimientos Nacionales de Tarjeta de Crédito` (.xlsx)**: this month's unbilled movements, a few purchases in cuotas (`1 de 3`, `1 de 6`), the payment of the previous bill and sometimes a refund. Like the real export, it is **provisional**: stored and shown, never posted to the ledger.
 
-Merchants come from the classifier's training vocabulary, so most charges get a spending category. With `NL_CLASSIFIER=jev,naive_bayes` the categories come from Jev instead (ADR-032): seeding then calls Jev once per distinct merchant, about 30 calls for six months of history, and falls back to naive Bayes without a key. This is live mode, so it needs `NL_HMAC_SECRET` set. Rent, the savings transfer and ATM withdrawals stay `uncategorized`, because the classifier was not trained on them; that is the classifier's real behavior, not a generator bug. The holder (`CLIENTE SINTETICO`, RUT `11.111.111-1`, an `example.com` email) and the account numbers are fictional, and redaction masks them at import anyway.
+Merchants come from the classifier's training vocabulary, so most charges get a spending category. With `NL_CLASSIFIER=jev,naive_bayes` the categories come from Jev instead (ADR-032): seeding then calls Jev once per distinct merchant, about 30 calls for seven months of history, and falls back to naive Bayes without a key. This is live mode, so it needs `NL_HMAC_SECRET` set. Rent and ATM withdrawals stay `uncategorized`, because the classifier was not trained on them; that is the classifier's real behavior, not a generator bug. The savings transfer is a `movement` by the Santander layout's own-money rule (ADR-024), so it is not spending. The holder (`CLIENTE SINTETICO`, RUT `11.111.111-1`, an `example.com` email) and the account numbers are fictional, and redaction masks them at import anyway.
 
 **Seeds.** Every run prints its seed. The same seed gives the same bytes, so `--seed 42` reproduces a file or a database exactly. Seeding twice with the same seed adds nothing (the statements are duplicates). A different seed adds a second, independent account history.
 
@@ -58,7 +58,7 @@ The API must read the same SQLite file the seed writes to. With the in-memory st
 
 ```bash
 docker compose up --build -d
-docker compose exec api neural-ledger seed --user camila            # 6 months + this month's card export
+docker compose exec api neural-ledger seed --user camila            # 7 months + this month's card export
 docker compose exec api neural-ledger seed --user diego --seed 42   # the other persona, reproducible
 ```
 
@@ -67,12 +67,14 @@ Open http://localhost:3000, pick the persona you seeded, and go to Statements.
 **Locally.**
 
 ```bash
-make seed                                   # camila, 6 months, random seed (printed)
+make seed                                   # camila, 7 months, random seed (printed)
 make seed PERSONA=diego MONTHS=12 SEED=42
 NL_PERSISTENCE=sqlite make api              # the API on the same database (backend/var/neural_ledger.db)
 ```
 
-Options of `neural-ledger seed`: `--user` (default `NL_PERSONA`, i.e. `camila`), `--months` (default 6, ending last month), `--seed`, `--opening`, `--salary`, `--no-card`. On Windows: `.\scripts\dev.ps1 seed --user diego --seed 42`, then start the API with `NL_PERSISTENCE=sqlite`.
+Options of `neural-ledger seed`: `--user` (default `NL_PERSONA`, i.e. `camila`), `--months` (default 7, ending last month: six full pay cycles, the least the forecast accepts, ADR-029), `--seed`, `--opening`, `--salary`, `--no-card`. On Windows: `.\scripts\dev.ps1 seed --user diego --seed 42`, then start the API with `NL_PERSISTENCE=sqlite`.
+
+**For a signed-up account** (accounts mode), seed its own id, as `/v1/me` shows it (`usr_…`): its financial screens then use the seeded statements, so the forecast, purchase check and plan show that account's numbers. Six calendar months are only five full pay cycles, because the first month's salary is paid on the previous month's payday; the screens then say `history (at least 6 months, found 5)`.
 
 **Users.** The web app identifies users by the `X-User-Id` header and offers two personas, `camila` and `diego`. Seed one of them to see the data in the UI. Any other `--user` works through the API and CLI only.
 

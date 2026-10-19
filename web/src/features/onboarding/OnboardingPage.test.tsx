@@ -61,7 +61,7 @@ describe("versioned questionnaire", () => {
     const { container } = mount("/profile");
     await waitFor(() => expect(screen.getByRole("heading", { name: "Your profile" })).toBeInTheDocument());
 
-    expect(screen.getByText("Capacity is unavailable until financial data is available. No permitted profile can be shown yet.")).toBeInTheDocument();
+    expect(screen.getByText(/Capacity is unavailable until financial data is available\. Import at least 7 months/)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "No financial data yet" })).toHaveTextContent("A new account starts empty.");
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();

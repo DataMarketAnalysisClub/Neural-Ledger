@@ -20,7 +20,7 @@ from ..shared.month import Month
 
 # Reader, redaction and reconciliation rules; outputs carry it as params_version. st-0.3 combines card statements
 # and multi-statement files (ids now include the currency) with personal data removed at import (ADR-028).
-STATEMENTS_VERSION = "st-0.3"
+STATEMENTS_VERSION = "st-0.4"
 
 
 class LineKind(str, Enum):
@@ -30,6 +30,7 @@ class LineKind(str, Enum):
     PAYMENT = "payment"  # a payment to the card: the holder's own money moving, never income
     REFUND = "refund"
     FEE = "fee"  # commissions, interest, taxes
+    TRANSFER_OWN = "transfer_own"  # checking: the holder's own money moving (to savings, to the card), by the layout's rule
 
 
 @dataclass(frozen=True, slots=True)
