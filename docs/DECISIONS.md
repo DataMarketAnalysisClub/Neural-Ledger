@@ -365,6 +365,26 @@ The gate for keeping Jev first: higher coverage on unseen merchants with a wrong
 
 **Consequences:** until it is agreed, the demo and CI run offline, and any Jev result shown is labelled as a local, synthetic-data run.
 
+## Financial education (Role B)
+
+### ADR-040 · Financial education by retrieval: concept cards, ChromaDB, definitions not advice · Built on `c/education-rag` (needs Role B review)
+**Context:** users ask what a term means ("¿qué es el interés compuesto?", "what is an ETF?"). The `EXPLAIN` intent answered with one fixed paragraph, so every term got the same text. Letting the model answer from memory would be unverifiable: the verifier can check that a number is a fact, not that a definition is right, and a wrong definition of a credit or investing term does harm.
+**Decision:**
+- **Team-owned cards.** The explanations come from concept cards the team writes: one Markdown file per concept and language (Spanish and English, same `id`), about 70 in all (`adapters/outbound/knowledge/corpus/`; the format and rules are in its `README.md`). Cards are written in our own words from public sources (Investopedia, CMF Educa, Banco Central, SII, Superintendencia de Pensiones), and each card lists its sources and how it used them. The repository is public, so no source text is copied.
+- **A `KnowledgeBase` port** (`application/ports.py`): `search(query, lang, k)` returns scored passages. Two adapters: `LexicalKnowledgeBase` (standard-library BM25 over title, aliases and body; offline; the default and the fallback) and `ChromaKnowledgeBase` (ChromaDB with the multilingual `paraphrase-multilingual-MiniLM-L12-v2`, 384 dimensions, so Spanish and English questions reach the same cards). `NL_KNOWLEDGE_BASE=chroma,lexical` tries them in order, like the classifier chain (`FallbackKnowledgeBase`); a `KNOWLEDGE_BASES` registry in `bootstrap/container.py` wires them.
+- **A T0 tool, `search_financial_concepts`,** allowed on `Intent.EXPLAIN`. It takes a query, an optional language and `k` (1 to 5), and returns an envelope. The scripted narration of `EXPLAIN` now narrates the top passage instead of the fixed paragraph.
+- **Card numbers are facts.** Every number in a card body is declared in the card's `numbers`, and the envelope turns each into a `Fact`. The verifier lets the agent say only those. A card test fails if the body has an undeclared number.
+- **`NOT_ADVICE` caveat.** Every explanation carries a warning that it is general information, not advice. The agent must mention it, and the verifier enforces that like any other warning.
+- **Card text is untrusted data.** A passage reaches the model wrapped by `wrap_passage` (`{"untrusted_text": ...}`, at most 1,500 characters), as merchant text does. A passage cannot reach a T1 or T2 tool.
+- **Definitions yes, recommendations no.** The agent may define investing terms (stock, bond, ETF, fondo mutuo, APV, crypto). "What is an ETF" routes to `EXPLAIN`; "en qué invierto" still goes to `OUT_OF_SCOPE` and `REFUSAL_SCOPE`. Cards never recommend a product, an institution, an amount, and never call anything "safe".
+- **Quality gate.** `tests/rag_eval` runs about 40 Spanish and English questions against the expected card ids: recall@3 of at least 0.8 for lexical and 0.9 for Chroma. `min_score` is tuned on it, not guessed.
+**Consequences:** a new optional extra `rag` (`chromadb` and an embedding runtime); without it the system runs on `lexical` and nothing else changes. The Chroma index lives under `NL_KB_DIR` (default `./var/chroma`), one collection per corpus hash, so editing a card rebuilds the index and never serves a stale one; every answer records the `knowledge_base` name (`lexical/<hash8>` or `chroma/<model>/<hash8>`). The first Chroma run downloads the embedding model. Adding a card is a content change with its own test and eval questions (`docs/ARCHITECTURE.md`, "Add a concept card"). New contract files: `search_financial_concepts.input.schema.json` and `financial_concepts.schema.json`. `params_version` stays `fc-0.3` and golden answers E01–E14 do not move. In Docker the index runs in its own `chroma` container (`chromadb/chroma:1.5.9`, opt-in with `docker compose --profile rag`, volume `chroma-data`, no published port), reached over HTTP through `NL_KB_URL`: the vector store can be restarted or upgraded without rebuilding the API, and the default image stays on `lexical` without the extra. The API still embeds the questions, so the container only stores and searches vectors; if it is down, the fallback answers from `lexical`. Relevance floors per index: lexical 0.45, Chroma 0.30 (`KB_MIN_SCORES`, from `tests/rag_eval`). Scope (Oct 19): cards define terms and point to the right institution; deductions, legal points and regulators' roles beyond one sentence are out of scope.
+**Alternatives considered:**
+- *Answer from the model's memory:* no source, nothing to check, and the answer changes with the model. Rejected.
+- *Copy Investopedia (or another site's) text:* rejected for licensing; the repository is public. Cards are in our own words and cite the source.
+- *Chroma's default English-only embedder:* rejected; our users write Spanish.
+- *pgvector or FAISS:* not needed at about 70 cards. The port keeps the choice open if the corpus grows.
+
 ---
 
 ## Investment accounts (Role C)

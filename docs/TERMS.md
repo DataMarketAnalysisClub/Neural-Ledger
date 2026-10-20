@@ -50,9 +50,7 @@ Nothing can tell a real statement from a synthetic one. At import the app masks 
 - **Suitability.** A plan never goes beyond the lower of the risk you declared in the questionnaire and what your finances permit. Until you answer the questionnaire, the conservative profile is used.
 - **Known limits of the engine today:**
   - the savings plan does not always grow with a higher profile, and a purchase can, in some cases, raise the planned amount (ADR-014, pending a team decision);
-  - there is no suitability report you can download (UG01);
-  - a proposal made before your situation changed is not withdrawn automatically: review the terms before you confirm (UG02);
-  - the app does not warn you when a near-term goal goes off track (UG03).
+  - a plan tells you, in the chat, the risk you declared, what your finances permit and what limits them, but there is no suitability report you can download (UG01).
 - **The AI can misread you.** It may misunderstand a message or answer something you did not ask. It cannot move money or change your profile, but read every card before confirming.
 
 ## 8. Acceptable use

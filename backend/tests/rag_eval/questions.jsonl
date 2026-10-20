@@ -1,0 +1,52 @@
+{"q": "¿Qué es un presupuesto y para qué sirve?", "lang": "es", "expected": ["budget"]}
+{"q": "how do I make a monthly spending plan", "lang": "en", "expected": ["budget"]}
+{"q": "explain the 50/30/20 rule", "lang": "en", "expected": ["rule_50_30_20"]}
+{"q": "¿cómo funciona la regla 50 30 20?", "lang": "es", "expected": ["rule_50_30_20"]}
+{"q": "¿qué es un fondo de emergencia?", "lang": "es", "expected": ["emergency_fund"]}
+{"q": "what is an emergency fund for", "lang": "en", "expected": ["emergency_fund"]}
+{"q": "como defino una meta de ahorro", "lang": "es", "expected": ["savings_goal"]}
+{"q": "what does pay yourself first mean", "lang": "en", "expected": ["pay_yourself_first"]}
+{"q": "¿qué es el sueldo líquido?", "lang": "es", "expected": ["net_income"]}
+{"q": "difference between fixed and variable expenses", "lang": "en", "expected": ["fixed_and_variable_expenses"]}
+{"q": "¿qué es la liquidez?", "lang": "es", "expected": ["liquidity"]}
+{"q": "what is a liquidity floor", "lang": "en", "expected": ["liquidity_floor"]}
+{"q": "¿qué es la tasa de interés?", "lang": "es", "expected": ["interest_rate"]}
+{"q": "what is an interst rate", "lang": "en", "expected": ["interest_rate"]}
+{"q": "¿qué significa la CAE de un crédito?", "lang": "es", "expected": ["cae"]}
+{"q": "que es la carga anual equivalente", "lang": "es", "expected": ["cae"]}
+{"q": "how do installments work on a credit card", "lang": "en", "expected": ["installments"]}
+{"q": "¿cómo funcionan las compras en cuotas?", "lang": "es", "expected": ["installments"]}
+{"q": "what is revolving credit", "lang": "en", "expected": ["revolving_credit"]}
+{"q": "¿qué pasa si pago solo el pago mínimo de la tarjeta?", "lang": "es", "expected": ["minimum_payment"]}
+{"q": "what is a credit report", "lang": "en", "expected": ["credit_report"]}
+{"q": "¿qué es el informe de deudas o DICOM?", "lang": "es", "expected": ["credit_report"]}
+{"q": "debt avalanche vs snowball", "lang": "en", "expected": ["debt_avalanche_and_snowball"]}
+{"q": "¿qué es la razón deuda ingreso?", "lang": "es", "expected": ["debt_to_income_ratio"]}
+{"q": "¿qué es el interés compuesto?", "lang": "es", "expected": ["compound_interest"]}
+{"q": "what is compund interest", "lang": "en", "expected": ["compound_interest"]}
+{"q": "what is simple interest", "lang": "en", "expected": ["simple_interest"]}
+{"q": "¿qué es la inflación?", "lang": "es", "expected": ["inflation"]}
+{"q": "why do prices go up every year", "lang": "en", "expected": ["inflation"]}
+{"q": "¿qué es la UF?", "lang": "es", "expected": ["unidad_de_fomento"]}
+{"q": "what is the unidad de fomento", "lang": "en", "expected": ["unidad_de_fomento"]}
+{"q": "difference between real and nominal returns", "lang": "en", "expected": ["real_vs_nominal"]}
+{"q": "¿qué es el valor del dinero en el tiempo?", "lang": "es", "expected": ["time_value_of_money"]}
+{"q": "what is opportunity cost", "lang": "en", "expected": ["opportunity_cost"]}
+{"q": "¿qué es un depósito a plazo?", "lang": "es", "expected": ["time_deposit"]}
+{"q": "what is a stock", "lang": "en", "expected": ["stock"]}
+{"q": "¿qué es una acción de una empresa?", "lang": "es", "expected": ["stock"]}
+{"q": "¿qué es un bono?", "lang": "es", "expected": ["bond"]}
+{"q": "what is a mutual fund", "lang": "en", "expected": ["mutual_fund"]}
+{"q": "¿qué es un fondo mutuo?", "lang": "es", "expected": ["mutual_fund"]}
+{"q": "what is an ETF", "lang": "en", "expected": ["etf"]}
+{"q": "¿qué es la diversificación?", "lang": "es", "expected": ["diversification"]}
+{"q": "how are risk and return related", "lang": "en", "expected": ["risk_and_return"]}
+{"q": "¿qué es el APV?", "lang": "es", "expected": ["apv"]}
+{"q": "what is a cryptocurrency like bitcoin", "lang": "en", "expected": ["cryptocurrency"]}
+{"q": "¿cómo funcionan las AFP?", "lang": "es", "expected": ["afp_pension_system"]}
+{"q": "¿qué es el excedente protegido?", "lang": "es", "expected": ["protected_surplus"]}
+{"q": "how much money do I really have available", "lang": "en", "expected": ["protected_surplus"]}
+{"q": "¿qué tiempo va a hacer mañana en Santiago?", "lang": "es", "expected": []}
+{"q": "write me a poem about the ocean", "lang": "en", "expected": []}
+{"q": "¿quién ganó el partido de fútbol ayer?", "lang": "es", "expected": []}
+{"q": "how do I reset my phone password", "lang": "en", "expected": []}

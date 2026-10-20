@@ -134,6 +134,7 @@ export interface ActionOutcome {
     | "PROPOSAL_EXPIRED"
     | "PROPOSAL_NOT_PENDING"
     | "TERMS_CHANGED"
+    | "PLAN_SUPERSEDED"
     | "AUDIT_UNAVAILABLE";
   detail?: string | null;
   field?: string | null;

@@ -21,6 +21,8 @@ from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
 from ..adapters.outbound.investments.fintual import FintualInvestmentProvider
 from ..adapters.outbound.investments.fintual_documents import FintualDocumentReader
 from ..adapters.outbound.investments.fixture import FixtureInvestmentProvider
+from ..adapters.outbound.knowledge.corpus_loader import load_cards
+from ..adapters.outbound.knowledge.lexical import LexicalKnowledgeBase
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
 from ..adapters.outbound.llm.openrouter import OpenRouterLanguageModel
 from ..adapters.outbound.llm.scripted import ScriptedLanguageModel
@@ -79,12 +81,15 @@ from ..application.ports import (
     Clock,
     EmailDomainCheck,
     InvestmentProvider,
+    KnowledgeBase,
     McpClient,
     PersonalDataDetector,
     TransactionClassifier,
 )
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
+from ..application.services.knowledge_fallback import FallbackKnowledgeBase
+from ..application.services.knowledge_threshold import ThresholdKnowledgeBase
 from ..application.services.llm_fallback import FallbackLanguageModel
 from ..application.services.posting import LedgerPosting
 from ..application.services.redaction import StatementRedactor
@@ -95,12 +100,14 @@ from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.connections import ConnectionUseCases
 from ..application.use_cases.documents import DocumentUseCases
+from ..application.use_cases.education import EducationUseCases
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.investments import InvestmentUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
 from ..application.use_cases.statements import StatementUseCases
 from ..domain.agent.policy import AP_0_1
+from ..domain.education.concepts import ConceptCard
 from ..domain.finance.params import FC_0_1
 from ..domain.permissions.policy import PP_0_1
 from . import data_key
@@ -115,6 +122,22 @@ logger = logging.getLogger(__name__)
 CLASSIFIERS: dict[str, Callable[[Settings], TransactionClassifier]] = {
     "naive_bayes": lambda s: SklearnTextClassifier(naive_bayes, method="naive_bayes"),
     "jev": lambda s: JevTransactionClassifier(_jev(s)),
+}
+
+
+
+def _chroma(s: Settings, cards: tuple[ConceptCard, ...]) -> KnowledgeBase:
+    from ..adapters.outbound.knowledge.chroma import ChromaKnowledgeBase  # imports nothing optional; chromadb loads at first search
+
+    return ChromaKnowledgeBase(cards, s.kb_dir, s.kb_embedding_model, url=s.kb_url)
+
+
+# Concept-card indexes for explanations, by NL_KNOWLEDGE_BASE (comma-separated, tried in order: chroma,lexical), ADR-040.
+# lexical is BM25 in the standard library (offline, the default); chroma needs the `rag` extra and downloads the
+# embedding model into NL_KB_DIR at first use. To add a method, implement KnowledgeBase and add an entry here.
+KNOWLEDGE_BASES: dict[str, Callable[[Settings, tuple[ConceptCard, ...]], KnowledgeBase]] = {
+    "lexical": lambda s, cards: LexicalKnowledgeBase(cards),
+    "chroma": _chroma,
 }
 
 # Personal-data detectors, by NL_PII_DETECTOR: a second layer after the domain rules on every imported statement
@@ -142,6 +165,13 @@ class Adapters:
     actions_repo: InMemoryActionRepository | SqliteActionRepository
     audit_log: InMemoryAuditLog | SqliteAuditLog
     source: PersonaFixtureSource | LedgerModelSource
+    knowledge_base: KnowledgeBase | None = None
+
+
+# Relevance floor per index, by NL_KNOWLEDGE_BASE name (ADR-040): scores are on different scales, so each index in the
+# chain is wrapped with its own floor (ThresholdKnowledgeBase) before the fallback. From the WP2 eval on the 70 cards:
+# lexical answerable min 0.573 / off-topic max 0.379; chroma answerable min 0.425 / off-topic max 0.23.
+KB_MIN_SCORES: dict[str, float] = {"lexical": 0.45, "chroma": 0.30}
 
 
 # NL_EMAIL_CHECKS, applied in order at sign-up: disposable (offline blocklist) and dns (the domain receives mail).
@@ -318,7 +348,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     # Personas keep their fixtures; every other user gets the model of their own statements (ADR-029).
     accounts_source = StatementModelSource(statement_store, transaction_store, FC_0_1)
     financial = FinancialUseCases(FirstFoundModelSource((source, accounts_source)), snapshots, bank, profiles, FC_0_1)
-    actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
+    actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1, plan_origin=financial.plan_origin)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
     unknown = [name for name in s.classifiers if name not in CLASSIFIERS]
@@ -327,6 +357,12 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     chain = [CLASSIFIERS[name](s) for name in s.classifiers]
     classifier = chain[0] if len(chain) == 1 else FallbackClassifier(chain)
     posting = LedgerPosting(classifier, transaction_store)
+    unknown = [name for name in s.knowledge_bases if name not in KNOWLEDGE_BASES]
+    if unknown:
+        raise ValueError(f"unknown NL_KNOWLEDGE_BASE {', '.join(unknown)!r} (known: {', '.join(KNOWLEDGE_BASES)})")
+    cards = load_cards()
+    kb_chain = [ThresholdKnowledgeBase(KNOWLEDGE_BASES[name](s, cards), KB_MIN_SCORES[name]) for name in s.knowledge_bases]
+    knowledge_base = kb_chain[0] if len(kb_chain) == 1 else FallbackKnowledgeBase(kb_chain)
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
@@ -342,11 +378,13 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
         financial, audit_log, clock, ids, snapshots, investments=investments,
     )
+    # The floor is applied per index (KB_MIN_SCORES, ThresholdKnowledgeBase) when the chain is built, so 0 here.
+    education = EducationUseCases(knowledge_base, 0.0, profiles)
     mcp, bank_feed = _connectors(s, clock)
     connections = ConnectionUseCases(connection_store, mcp, bank_feed, statements, audit_log, clock, ids, s.connectors_mode)
     registry = build_registry(
-        financial, actions, profile_uc, audit_uc, documents, investments, load_tool_definitions(s.resolved_contracts_dir), audit_log,
-        clock, ids, PP_0_1.version, connections,
+        financial, actions, profile_uc, audit_uc, documents, investments, education,
+        load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version, connections,
     )
     chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
 
@@ -374,7 +412,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         documents=documents,
         connections=connections,
     )
-    return services, Adapters(clock, bank, actions_repo, audit_log, source)
+    return services, Adapters(clock, bank, actions_repo, audit_log, source, knowledge_base)
 
 
 def build_services(settings: Settings | None = None) -> ApplicationServices:

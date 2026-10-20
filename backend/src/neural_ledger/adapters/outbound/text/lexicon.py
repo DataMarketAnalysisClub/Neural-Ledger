@@ -16,21 +16,40 @@ _INSTRUMENTS = (
     r"(invert\w*|invier\w*|inversi[oó]n\w*|invest\w*|fondos? mutuos?|mutual funds?|acciones|stocks?|shares|cripto\w*|"
     r"crypto\w*|bitcoin|etfs?)"
 )
-_ADVICE = r"(recomi[eé]nd\w*|recommend\w*|aconsej\w*|advice|advise\w*|sugi[eé]r\w*|suger\w*|suggest\w*|should i|deber[ií]a|conviene|vale la pena|worth|good idea|buena idea)"
+_PICK = r"(recomi[eé]nd\w*|recommend\w*|aconsej\w*|advice|advise\w*|sugi[eé]r\w*|suger\w*|suggest\w*|should i|deber[ií]a|conviene|vale la pena|worth|good idea|buena idea)"
+
+# Asking what an investing term means is education (ADR-040); asking what to buy or invest in is advice.
+_DEFINITION = r"(?:what (?:is|are)|what's|what does|qu[eé] (?:es|son|significa)|expl[ií]ca\w*|explain|define|definici[oó]n|meaning of|significado)"
+_INVESTING_TERM = (
+    r"(?:stocks?|shares?|bonds?|etfs?|mutual funds?|index funds?|crypto\w*|bitcoin|ethereum|acci[oó]n|acciones|bonos?|"
+    r"fondos? mutuos?|fondos? de inversi[oó]n|apv|ahorro previsional|cripto\w*|dep[oó]sitos? a plazo|afp|"
+    r"diversifica\w*|invest(?:ing|ment|ments)?|inversi[oó]n\w*|invierto|invert\w*)"
+)
+_ADVICE = (
+    r"(?:should|would you|recommend\w*|best|worth|good (?:idea|investment|time)|buy|sell|invest in|put my|which|"
+    r"deber[ií]a|conviene|recomi[eé]nd\w*|recomendar\w*|mejor|vale la pena|compr\w*|vend\w*|invierto|invertir en|meto|"
+    r"cu[aá]l(?:es)?)"
+)
+EDUCATION_QUESTION = re.compile(rf"^(?!.*\b{_ADVICE}\b)(?=.*\b{_DEFINITION}\b).*\b{_INVESTING_TERM}\b", re.I | re.S)
+INVESTMENT_ADVICE = re.compile(rf"^(?=.*\b{_ADVICE}\b).*\b{_INVESTING_TERM}\b", re.I | re.S)
 
 # Order = precedence when several intents match.
 INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
     # Advice on what to invest in stays out of scope even when it names the user's own account (ADR-044).
     (Intent.OUT_OF_SCOPE, re.compile(
-        rf"\b{_ADVICE}\b.{{0,60}}\b{_INSTRUMENTS}\b|\b{_INSTRUMENTS}\b.{{0,60}}\b{_ADVICE}\b|"
+        rf"\b{_PICK}\b.{{0,60}}\b{_INSTRUMENTS}\b|\b{_INSTRUMENTS}\b.{{0,60}}\b{_PICK}\b|"
         r"\b(en qu[eé]|which|what)\s+(fondo|fund|acciones|stocks?|invierto|invertir|invest)\b", re.I)),
-    # The user's own investments at a provider: read-only, through get_investments.
+    # The user's own investments at a provider: read-only, through get_investments. Before the broader advice
+    # pattern below, which would read "¿cuál es mi inversión en Fintual?" as advice.
     (Intent.INVESTMENTS, re.compile(
         r"\b(fintual|mis inversiones|mi inversi[oó]n|mi portafolio|mi cartera|tengo invertido|he invertido|llevo invertido|"
         r"invertido en|my investments?|my portfolio|i(?:'ve| have) invested|invested in|"
         # The statements the user imports, and the contributions they show (statement import).
         r"(?:cartola|estado de cuenta|certificado) de (?:mis )?(?:inversiones|transacciones|fondos)|investment statement|"
         r"mis aportes|he aportado|aporto|my contributions)\b", re.I)),
+    # Then: "¿qué acción compro?" is advice, refused; "¿qué es un ETF?" is a definition, explained (ADR-040).
+    (Intent.OUT_OF_SCOPE, INVESTMENT_ADVICE),
+    (Intent.EXPLAIN, EDUCATION_QUESTION),
     (Intent.OUT_OF_SCOPE, re.compile(
         r"\b(stocks?|shares|acciones|crypto\w*|bitcoin|btc|ethereum|cripto\w*|forex|trading|invest(?:ing|ment|ments)?|"
         r"invert\w*|inversi[oó]n\w*|tax(?:es)?|impuestos?)\b", re.I)),
@@ -41,7 +60,10 @@ INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
         r"(?:keep|mantener|mant[eé]n) (?:at least|al menos|como m[ií]nimo))\b", re.I)),
     (Intent.EXECUTE_ACTION, re.compile(
         r"\b(execute|ejecut\w*|go ahead|adelante|do it|hazlo|activate|activa\w*|transfer\w*|transfi\w*|move|mueve|send|env[ií]a)\b", re.I)),
-    (Intent.EXPLAIN, re.compile(r"\b(what is an?|what's an?|what are|qu[eé] (?:es|son)|explain (?:what|how)|expl[ií]came|define)\b", re.I)),
+    (Intent.EXPLAIN, re.compile(
+        r"\b(what is an?|what's an?|what are|qu[eé] (?:es|son)|explain (?:what|how)|expl[ií]came|define|"
+        # "what is compound interest?" is a term; "what is my balance / the forecast" is not (ADR-040).
+        r"what (?:is|does) (?!my\b|your\b|the\b|it\b|this\b|that\b|there\b|left\b|going\b|happening\b)[a-z]+)\b", re.I)),
     (Intent.SAVINGS_PLAN, re.compile(r"\b(sav(?:e|ing|ings)|ahorr\w*|set aside|put away|guardar)\b", re.I)),
     (Intent.AFFORD_PURCHASE, re.compile(
         r"\b(afford|buy|purchase|compr\w*|laptop|notebook|phone|cuotas?|installments?|make it work|alcanza)\b", re.I)),
@@ -84,6 +106,17 @@ _MONTHS = {
 _INSTALLMENTS = re.compile(r"\b(\d{1,2})\s*(?:cuotas?|installments?|payments?|meses|months)\b", re.I)
 _ISO_MONTH = re.compile(r"\b(20\d{2})-(0[1-9]|1[0-2])\b")
 _NAMED_MONTH = re.compile(r"\b(?:in|from|starting|en|desde|a partir de)\s+(" + "|".join(_MONTHS) + r")\b", re.I)
+
+
+_SPANISH = re.compile(
+    r"[¿¡ñáéíóú]|\b(qu[eé]|es|el|la|los|las|un|una|de|del|que|c[oó]mo|significa|expl[ií]came|son|mi|mis|para|por|y)\b", re.I
+)
+_ENGLISH = re.compile(r"\b(what|is|are|the|a|an|of|how|does|mean|explain|my|for|and|to)\b", re.I)
+
+
+def language_of(text: str) -> str:
+    """es or en, by marker words and accents; Spanish when it is a tie (the app's Chilean users)."""
+    return "en" if len(_ENGLISH.findall(text)) > len(_SPANISH.findall(text)) else "es"
 
 
 def money_amounts(text: str) -> list[int]:
