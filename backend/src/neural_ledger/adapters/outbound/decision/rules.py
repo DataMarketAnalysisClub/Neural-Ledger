@@ -43,7 +43,8 @@ class RulesDecisionModel:
         return answers
 
     def _intent(self, text: str, q: ChoiceQuestion) -> Judgment:
-        matched = [intent for intent, pattern in INTENT_PATTERNS if pattern.search(text)]
+        # An intent may have several patterns (out_of_scope does); count each intent once.
+        matched = list(dict.fromkeys(intent for intent, pattern in INTENT_PATTERNS if pattern.search(text)))
         if not matched:
             label, confidence = Intent.SMALLTALK.value, 0.5
         else:

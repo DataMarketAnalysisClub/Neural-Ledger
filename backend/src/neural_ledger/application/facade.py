@@ -13,6 +13,7 @@ from .use_cases.chat import ChatUseCase
 from .use_cases.connections import ConnectionUseCases
 from .use_cases.documents import DocumentUseCases
 from .use_cases.financial import FinancialUseCases
+from .use_cases.investments import InvestmentUseCases
 from .use_cases.ledger import LedgerUseCases
 from .use_cases.profile import ProfileEditing, ProfileUseCases
 from .use_cases.statements import StatementUseCases
@@ -44,6 +45,7 @@ class ApplicationServices:
     audit: AuditUseCases
     statements: StatementUseCases
     ledger: LedgerUseCases
+    investments: InvestmentUseCases  # linking is accounts mode only (HTTP); the agent's read works in every mode
     chat: ChatUseCase
     registry: ToolRegistry
     default_user: str

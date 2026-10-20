@@ -21,8 +21,12 @@ REFUSAL_INJECTION = (
     "confirm in the app, within fixed limits. This request was logged."
 )
 REFUSAL_SCOPE = (
-    "I can't help with investments, crypto or tax advice. I can check whether a purchase fits your "
-    "future commitments, show what is really available, and set up a savings rule."
+    "I can't give investment, crypto or tax advice. I can check whether a purchase fits your "
+    "future commitments, show what is really available, set up a savings rule, and describe the investment statements you import."
+)
+NOT_LINKED = (
+    "I don't have your investments yet. Download your investment statement and your transactions certificate from Fintual "
+    "and drop them in the Investments section; then I can tell you what you hold, what you put in and how it has done."
 )
 CLARIFY = "Just to be sure: do you want to check a purchase, see your forecast, or set up a savings rule?"
 READ_ONLY_NOTE = "I'm in read-only mode right now, so I can analyze but not prepare or execute actions."
@@ -64,6 +68,7 @@ _BLOCK_SENTENCES = {
     "AUTHORIZATION_REPLAYED": "That authorization was already used.",
     "AUTHORIZATION_TAMPERED": "The stored terms no longer match what you confirmed.",
     "AUTHORIZATION_NOT_FOUND": "There is no confirmed authorization for that.",
+    "AUTHORIZATION_MISMATCH": "The requested terms don't match what you authorized.",
     "WRONG_OWNER": "That authorization belongs to someone else.",
     "UNKNOWN_DESTINATION": "That destination is not allowed.",
     "UNKNOWN_SOURCE": "That source account is not allowed.",
@@ -127,6 +132,8 @@ def _narrate_one(name: str, payload: Payload, cur: str) -> list[str]:
         return [_BLOCK_SENTENCES.get(reason, "I can't do that.") + " The attempt was logged."]
     if status == "INVALID_INPUT":
         return [f"I couldn't use that input ({payload.get('field')}): {payload.get('message')}"]
+    if status == "INSUFFICIENT_DATA" and name == "get_investments" and payload.get("missing") == ["investment_account"]:
+        return [NOT_LINKED]
     if status == "INSUFFICIENT_DATA" and name == "search_financial_concepts":
         return [no_concept_card("en", unavailable="knowledge_base" in payload.get("missing", ()))]
     if status == "INSUFFICIENT_DATA":
@@ -300,7 +307,8 @@ def _action(p: Payload, cur: str) -> list[str]:
         return ["The sandbox could not complete the action, so nothing was executed. Please confirm again to retry."]
     if status == "BLOCKED":
         reason = outcome.get("reason", "")
-        if reason == "AUTHORIZATION_MISMATCH":
+        # Malformed requested terms are also a mismatch, but carry no amounts to compare.
+        if reason == "AUTHORIZATION_MISMATCH" and outcome.get("authorized_amount") is not None and outcome.get("requested_amount") is not None:
             first = (
                 f"You authorized {_money(outcome['authorized_amount'], cur)}, but the request was for "
                 f"{_money(outcome['requested_amount'], cur)}."
@@ -383,6 +391,8 @@ def _spending(p: Payload, cur: str) -> list[str]:
 
 def _document(p: Payload, cur: str) -> list[str]:
     d = p["data"]
+    if d["kind"] == "investment":
+        return _investment_document(d["investment"])
     if d["kind"] == "receipt":
         r = d["receipt"]
         if r["total"] is None:
@@ -418,6 +428,67 @@ def _expense(p: Payload, cur: str) -> list[str]:
     how = {"cash": ", paid in cash", "card": ", paid by card"}.get(d["payment"], "")
     kind = f", {d['category']}" if d["category"] != "uncategorized" else ""
     return [f"I prepared the expense: {_money(d['amount'], cur)} on {d['spent_on']}{how}{kind}. Check it and confirm it in the card below; nothing is saved until you do."]
+
+
+def _investment_document(imported: Payload) -> list[str]:
+    """What changed with the document the user dropped. An unverified or repeated one is said by its warning."""
+    document = imported["document"]
+    if not document["verified"] or imported["duplicate"]:
+        return []
+    what = "investment statement" if document["kind"] == "holdings" else "transactions certificate"
+    text = [f"I read your Fintual {what} and updated what I know about your investments."]
+    overview = imported.get("overview")
+    return text + (_statement_figures(overview) if overview else [])
+
+
+def _statement_figures(d: Payload) -> list[str]:
+    """The imported documents' figures. Goal names are never repeated (S30), and fund names are a checked pattern."""
+    money = d["currency"]
+    text = []
+    if d["total_value"] is not None:
+        count = f"{len(d['funds'])} fund" + ("" if len(d["funds"]) == 1 else "s")
+        text.append(f"According to the Fintual statement you imported, on {d['as_of']} your investments were worth {_money(d['total_value'], money)} across {count}.")
+    c = d["contributions"]
+    if c is not None:
+        out = f"withdrew {_money(c['withdrawn'], money)}" if c["withdrawn"] else "withdrew nothing"
+        text.append(
+            f"From {c['first_day']} to {c['last_day']} you contributed {_money(c['contributed'], money)} and {out}, "
+            f"so you put in a net {_money(c['net_contributed'], money)}."
+        )
+        text.append(
+            f"That is about {_money(c['monthly_average'], money)} a month on average, with contributions in {c['active_months']} of those {c['months']} months."
+        )
+    if d["total_gain"] is not None:
+        kind = "a gain" if d["total_gain"] >= 0 else "a loss"
+        share = f" ({abs(d['gain_pct']):.1f}% of what you put in)" if d["gain_pct"] is not None else ""
+        text.append(f"So far that is {kind} of {_money(d['total_gain'], money)}{share}.")
+    valued = [g for g in d["goals"] if g["value"] is not None]
+    if len(valued) > 1:
+        largest = max(valued, key=lambda g: (g["value"], g["goal_id"]))
+        text.append(f"Your largest goal holds {_money(largest['value'], money)}.")
+    return text
+
+
+def _investments(p: Payload, cur: str) -> list[str]:
+    """Figures from the payload, which its facts carry. Goal names are never repeated: they are the user's text at the
+    provider, and this reply is stored as the assistant's own words, where untrusted text would lose its wrapper (S30).
+    The app shows the names next to the reply."""
+    d = p["data"]
+    if d["source"] == "statement":
+        return _statement_figures(d)
+    money = d["currency"]
+    goals = d["goals"]
+    count = f"{len(goals)} goal" + ("" if len(goals) == 1 else "s")
+    text = [f"Your linked Fintual account holds {_money(d['total_value'], money)} across {count}, as of the sync on {d['as_of']}."]
+    if d["total_gain"] is not None:
+        kind = "a gain" if d["total_gain"] >= 0 else "a loss"
+        text.append(f"You have deposited a net {_money(d['total_deposited'], money)}, so that is {kind} of {_money(d['total_gain'], money)} so far.")
+    elif goals:
+        text.append("Fintual does not report the deposits of every goal, so I can't tell the gain so far.")
+    if len(goals) > 1:
+        largest = max(goals, key=lambda g: (g["value"], g["goal_id"]))
+        text.append(f"The largest of them holds {_money(largest['value'], money)}.")
+    return text
 
 
 _MARKDOWN = re.compile(r"\*\*|__|`|^\s*(?:#+|[-*>]|\d+[.)])\s+", re.M)
@@ -474,6 +545,7 @@ _HANDLERS = {
     "get_connected_data": _connected,
     "get_latest_document": _document,
     "propose_expense": _expense,
+    "get_investments": _investments,
     "search_financial_concepts": _concepts,
 }
 _SAYS_ITS_OWN_CAVEATS = {"search_financial_concepts"}  # the not-advice sentence, in the card's language

@@ -56,6 +56,14 @@ class AuditKind(str, Enum):
     ACCOUNT_DELETED = "ACCOUNT_DELETED"  # the user deleted their account; detail commits to the events it erased
     DEMO_DATA_RESET = "DEMO_DATA_RESET"  # a shared demo persona's stored data was reset; same commitment
     ERASED = "ERASED"  # a tombstone: an erased event's place in the chain, content gone
+    # An investment account at another institution (ADR-044): linked, read again, or unlinked by the user, or one of
+    # its statements imported or deleted. The detail names the provider and counts only: never the email, the token,
+    # a goal name or an amount.
+    INVESTMENTS_LINKED = "INVESTMENTS_LINKED"
+    INVESTMENTS_SYNCED = "INVESTMENTS_SYNCED"
+    INVESTMENTS_UNLINKED = "INVESTMENTS_UNLINKED"
+    INVESTMENT_DOCUMENT_IMPORTED = "INVESTMENT_DOCUMENT_IMPORTED"
+    INVESTMENT_DOCUMENTS_REMOVED = "INVESTMENT_DOCUMENTS_REMOVED"
 
 
 class Actor(str, Enum):

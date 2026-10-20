@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/investments/documents_removed.schema.json",
+  "title": "InvestmentDocumentsRemoved",
+  "description": "Body of DELETE /v1/investments/documents (ADR-044): the signed-in account forgets every investment document it imported, audited as INVESTMENT_DOCUMENTS_REMOVED with the count only. A demo persona or demo mode gets 403 with the READ_ONLY link outcome. A linked account, if any, stays.",
+  "type": "object",
+  "required": ["removed"],
+  "properties": {
+    "removed": {"type": "integer", "minimum": 0}
+  },
+  "additionalProperties": false
+}

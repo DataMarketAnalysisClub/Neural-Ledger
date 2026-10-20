@@ -9,6 +9,7 @@ import {
   PiggyBank,
   PlugsConnected,
   Receipt,
+  TrendUp,
   UserCircle,
 } from "@phosphor-icons/react";
 import { BrandMark } from "@/components/BrandMark";
@@ -37,6 +38,7 @@ const NAV: NavItem[] = [
   { to: "/copilot", label: "nav.copilot", icon: CopilotGlyph },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
   { to: "/statements", label: "nav.statements", icon: Files },
+  { to: "/investments", label: "nav.investments", icon: TrendUp },
   { to: "/connections", label: "nav.connections", icon: PlugsConnected },
   { to: "/profile", label: "auth.account", icon: UserCircle },
 ];

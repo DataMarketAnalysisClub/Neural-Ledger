@@ -9,8 +9,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from neural_ledger.adapters.outbound.decision.rules import RulesDecisionModel
+from neural_ledger.adapters.outbound.investments.fixture import FixtureInvestmentProvider
 from neural_ledger.adapters.outbound.llm.scripted import ScriptedLanguageModel
-from neural_ledger.adapters.outbound.persistence.memory import InMemoryConversationStore
+from neural_ledger.adapters.outbound.persistence.memory import InMemoryConversationStore, InMemoryInvestmentStore
 from neural_ledger.adapters.outbound.system.ids import UuidIds
 from neural_ledger.application.catalog import build_registry
 from neural_ledger.application.ports import KnowledgeBaseUnavailable
@@ -18,6 +19,7 @@ from neural_ledger.application.services.decisions import DecisionService
 from neural_ledger.application.services.tools import ToolRegistry
 from neural_ledger.application.use_cases.chat import ChatUseCase
 from neural_ledger.application.use_cases.education import EducationUseCases
+from neural_ledger.application.use_cases.investments import InvestmentUseCases
 from neural_ledger.bootstrap.contracts import load_tool_definitions
 from neural_ledger.domain.agent.policy import AP_0_1
 from neural_ledger.domain.education.concepts import CardNumber, ConceptCard, Passage, Source
@@ -88,6 +90,7 @@ def education(kb, min_score: float = 0.3, profiles=None) -> EducationUseCases:
 def registry_with(services, adapters, kb, min_score: float = 0.3) -> ToolRegistry:
     return build_registry(
         services.financial, services.actions, services.profiles, services.audit, services.documents,
+        InvestmentUseCases(FixtureInvestmentProvider(), InMemoryInvestmentStore(adapters.audit_log), adapters.clock, UuidIds()),
         education(kb, min_score), load_tool_definitions(CONTRACTS), adapters.audit_log, adapters.clock, UuidIds(), PP_0_1.version,
     )
 

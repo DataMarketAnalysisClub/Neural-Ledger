@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/investments/link_outcome.schema.json",
+  "title": "InvestmentLinkOutcome",
+  "description": "Body of every /v1/investments/link and /v1/investments/sync response (ADR-044). HTTP status by status: LINKED 201 (POST link) or 200 (GET link), SYNCED 200, UNLINKED 200, NOT_LINKED 404, INVALID_INPUT 422 (field names the input; never its value), ACCESS_REJECTED 422 (the provider refused the email and password), READ_REFUSED 502 (the provider accepted the sign-in but refused to share the goals with that token; nothing is stored), RELINK_REQUIRED 409 (the provider no longer accepts the stored link: link again), CONFLICT 409 (the link changed during the request), PROVIDER_UNAVAILABLE 503, READ_ONLY 403 (demo mode or a demo persona). link never carries the token, and the email only masked (first character and domain). A malformed body (not JSON, unknown or missing fields, a field of the wrong type) answers the AuthError of auth/error.schema.json, 422 with its field, like the other user-only writes.",
+  "type": "object",
+  "required": ["status", "link"],
+  "properties": {
+    "status": {"enum": ["LINKED", "SYNCED", "UNLINKED", "NOT_LINKED", "INVALID_INPUT", "ACCESS_REJECTED", "READ_REFUSED", "RELINK_REQUIRED", "CONFLICT", "PROVIDER_UNAVAILABLE", "READ_ONLY"]},
+    "link": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/link"}]},
+    "field": {"type": ["string", "null"]},
+    "message": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "link": {
+      "type": "object",
+      "required": ["provider", "email", "linked_at", "synced_at", "goals", "synthetic", "relink_required"],
+      "properties": {
+        "provider": {"enum": ["fintual"]},
+        "email": {"type": "string", "pattern": "^.\\*\\*\\*@.+$|^\\*\\*\\*$", "description": "Masked: the first character of the address and its domain."},
+        "linked_at": {"type": "string", "format": "date-time"},
+        "synced_at": {"type": ["string", "null"], "format": "date-time"},
+        "goals": {"type": ["integer", "null"], "minimum": 0},
+        "synthetic": {"type": "boolean"},
+        "relink_required": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {"status": "LINKED", "link": {"provider": "fintual", "email": "p***@example.invalid", "linked_at": "2026-10-29T12:00:00-03:00", "synced_at": "2026-10-29T12:00:00-03:00", "goals": 3, "synthetic": true, "relink_required": false}},
+    {"status": "ACCESS_REJECTED", "link": null, "field": null, "message": "the provider did not accept these credentials"}
+  ]
+}
