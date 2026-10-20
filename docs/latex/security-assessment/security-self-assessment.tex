@@ -158,8 +158,9 @@ publishes port 8000 for development, so a deployment must use the override.
     stored (S17).
   \item \textbf{Passwords}: scrypt with $N = 2^{14}$, $r = 8$, $p = 1$. Sign-in costs the same and answers the same
     whether or not the email exists (S20); sign-up reveals a registered email with 409.
-  \item \textbf{Rate limits} (G07): per caller and per IP, one-minute windows. Ten sign-in or sign-up attempts per IP,
-    five account deletions per caller, ten uploads per caller, and ten per caller on investment syncs and on each connection call.
+  \item \textbf{Rate limits} (G07): per caller and per IP, one-minute windows. Ten sign-in or sign-up attempts per IP;
+    a request with no session and no identity header is counted by its IP, so one address using its budget up never
+    locks out another. Five account deletions per caller, ten uploads per caller, and ten per caller on investment syncs and on each connection call.
     Counters live in memory, per process.
   \item \textbf{Input}: uploads are typed by their bytes and capped at 15\,MB (C05); hand-parsed JSON bodies are capped at
     16\,KiB; SQL is always parameterized, and a static test checks every SQLite module (C08).
