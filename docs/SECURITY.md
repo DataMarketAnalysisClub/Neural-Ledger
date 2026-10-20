@@ -193,7 +193,7 @@ The routes in G02 and G05 are proposals; change the test with the API design. G0
 
 **Norms.** **Ley 19.496** art. 3 b) (truthful, timely information) is binding. The suitability benchmark is international good practice: **MiFID II** art. 25(2), **Delegated Regulation (EU) 2017/565** art. 54, and **ESMA's suitability guidelines** ([ESMA35-43-3172, 2022](https://prod.finanssivalvonta.fi/globalassets/en/publications/supervision-releases/2023/esma35-43-3172_guidelines_on_certain_aspects_of_the_mifid_ii_suitability_requirements.pdf)): GL1 informing the client, GL3 necessary information, GL4 reliable information without undue self-assessment, GL5 keeping it up to date, GL8 ability to bear losses, GL9 alternatives, GL12 records. In Chile, **Ley 21.521** (Fintec) regulates investment advice through CMF registration (NCG 502; NCG 503 accredits the advisor's own *idoneidad*). A savings and budgeting copilot is not investment advice today; review this if the product starts recommending financial instruments.
 
-**Results** (`make test-suitability`, 2026-10-14, offline): 18 passed (the 17 checks below and the table check), 3 xfailed (the gaps), 0 failed.
+**Results** (`make test-suitability`, 2026-10-19, offline): 24 passed (the checks below, with UG02 and UG03 covered by several tests each, and the table check), 0 xfailed, 0 failed. The three gaps UG01–UG03 were closed on branch `c/suitability-gaps`.
 
 | ID | Check | Norm | Result | Evidence |
 |---|---|---|---|---|
@@ -208,13 +208,13 @@ The routes in G02 and G05 are proposals; change the test with the API design. G0
 | `U04` | `FITS_ALL` only when the conservative path holds; every alternative offered fits when re-simulated and is no larger; alternatives come only with a no | ESMA GL8, GL9; Ley 19.496 art. 3 b) | Pass | 40 purchases (3 fit all, 14 typical only, 3 breach all, 20 baseline breach), 33 alternatives re-checked |
 | `U05` | The same state gives the same plan and snapshot id, and the proposal's audit event points at that snapshot | ESMA GL12; ADR-013 | Pass | Camila |
 | `U06` | A rule is at most what goals and reserve need and the profile's share of the lowest month, sums to its allocation, is rounded down to 10,000, and is zero only with H2 | ESMA GL8; Ley 19.496 art. 3 b) | Pass | 26 models × 3 profiles |
-| `UG01` | A plan states the tolerance, capacity and binding factor behind it (a suitability report) | Del. Reg. art. 54(12); ESMA GL1; Ley 19.496 art. 3 b) | Gap (xfail) | Plan facts carry neither tolerance, capacity nor binding factor |
-| `UG02` | A proposal from a superseded financial state is refused | ESMA GL5 | Gap (xfail) | A plan computed before a new statement is still `PROPOSED` |
-| `UG03` | An off-track near-term goal is a warning the agent must mention (H3 as an emitted rule) | ESMA GL8; Ley 19.496 art. 3 b) | Gap (xfail) | `goal_status.on_track` is false with no warning |
+| `UG01` | A plan states the tolerance, capacity and binding factor behind it (a suitability report) | Del. Reg. art. 54(12); ESMA GL1; Ley 19.496 art. 3 b) | Pass | Plan facts carry `profile.permitted`, `profile.tolerance`, `profile.capacity`, `capacity.level` and `capacity.binding_factor`; `plan.profile` equals the permitted profile |
+| `UG02` | A proposal from a superseded financial state is refused | ESMA GL5 | Pass | A plan sized before a new statement is `BLOCKED` with `PLAN_SUPERSEDED` at proposal and at confirmation, audited; a hostile model replaying the old snapshot id creates no proposal; the recomputed plan is proposed |
+| `UG03` | An off-track near-term goal is a warning the agent must mention (H3 as an emitted rule) | ESMA GL8; Ley 19.496 art. 3 b) | Pass | `GOAL_OFF_TRACK` names the goal; a reply without it fails `MISSING_WARNING`; Camila's on-track trip and a goal beyond the 12-month window give none; amounts unchanged |
 
 **Related evidence elsewhere:** S09 (an aggressive request despite low capacity is capped) and S08 (the verifier rejects "safe money" and contradictions) in `tests/security`. The two strict xfails in `tests/property/test_plan_counterexamples.py` show that `size_plan` is not monotone in profile or purchases (ADR-014, team decision pending). That is a known suitability caveat: a higher profile can give a smaller rule.
 
-**Suggested fixes.** UG01: add `profile.tolerance`, `profile.capacity` and `capacity.binding_factor` to `plan_facts`. UG02: put the model's `source_version` in the stored plan and refuse a proposal when it differs from the current one. UG03: emit an `H3` hard rule and a `GOAL_OFF_TRACK` caveat whose `must_mention` names the goal. All three change the financial engine's outputs, so they need Role A's approval and a `params_version` decision.
+**Fixes (2026-10-19).** UG01: the plan envelope repeats the permitted-profile facts and the capacity level and binding factor. UG02: a stored plan records the origin of its state (source version, as-of date, parameters, the user's floor); proposing or confirming it is refused once the current origin differs or cannot be loaded. UG03: `plan_caveats` emits `GOAL_OFF_TRACK` for each near-term goal not on track. None changes an amount, so `params_version` and the golden answers stay; UG03 changes the Financial Core's H3 statement and needs Role A sign-off.
 
 ## Known risks (residual)
 

@@ -329,6 +329,20 @@ def test_ug02_a_proposal_cannot_be_confirmed_after_the_state_changes(camila, ser
     assert (outcome.status, outcome.reason, outcome.authorization) == ("BLOCKED", "PLAN_SUPERSEDED", None)
 
 
+def test_ug02_a_hostile_model_cannot_propose_a_snapshot_from_before_a_new_statement(camila, services, adapters, monkeypatch):
+    """Model assumed hostile: it replays the snapshot id of a plan the user saw before a new statement arrived."""
+    stale = services.financial.savings_plan("camila").snapshot_id
+    serve(adapters, monkeypatch, replace(camila, source_version=camila.source_version + "-new-statement"))
+    llm = ScriptedFakeLLM([call("propose_savings_rule", plan_snapshot_id=stale), say("Your savings rule is ready to confirm.")])
+    chat_with(services, adapters, llm).handle(SESSION, "camila", "Set up my savings rule")
+    results = [e for r in llm.requests for e in r.entries if isinstance(e, ToolResultEntry) and e.name == "propose_savings_rule"]
+    assert results and results[-1].payload["outcome"]["reason"] == "PLAN_SUPERSEDED", "the scripted model must reach the tool"
+    kinds = [e.draft.kind.value for e in adapters.audit_log.events()]
+    assert "PROPOSAL_CREATED" not in kinds
+    blocked = [e.draft for e in adapters.audit_log.events() if e.draft.kind.value == "ACTION_BLOCKED"]
+    assert blocked and blocked[-1].blocked_reason == "PLAN_SUPERSEDED"
+
+
 def test_ug03_an_off_track_near_term_goal_is_a_warning_the_agent_must_mention(camila, services, adapters, monkeypatch):
     """ESMA GL8, Ley 19.496 art. 3 b): H3 is emitted as a warning naming the goal; the rule amount does not change."""
     as_of = Month.of(camila.as_of)
