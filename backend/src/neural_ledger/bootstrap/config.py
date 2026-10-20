@@ -60,7 +60,8 @@ class Settings:
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
     email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
     knowledge_bases: tuple[str, ...] = ("lexical",)  # concept cards (ADR-039), tried in order, e.g. ("chroma", "lexical"); see KNOWLEDGE_BASES
-    kb_dir: str = "./var/chroma"  # the Chroma index and the embedding model's weights
+    kb_dir: str = "./var/chroma"  # the Chroma index (embedded mode) and the embedding model's weights
+    kb_url: str | None = None  # a Chroma server, e.g. http://chroma:8000 (docker compose --profile rag); None = embedded in kb_dir
     kb_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
     @property
@@ -137,6 +138,7 @@ class Settings:
             email_checks=email_checks,
             knowledge_bases=knowledge_bases or cls.knowledge_bases,
             kb_dir=get("NL_KB_DIR", cls.kb_dir),
+            kb_url=get("NL_KB_URL", "") or None,
             kb_embedding_model=get("NL_KB_EMBEDDING_MODEL", cls.kb_embedding_model),
         )
 

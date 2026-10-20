@@ -108,7 +108,7 @@ CLASSIFIERS: dict[str, Callable[[Settings], TransactionClassifier]] = {
 def _chroma(s: Settings, cards: tuple[ConceptCard, ...]) -> KnowledgeBase:
     from ..adapters.outbound.knowledge.chroma import ChromaKnowledgeBase  # imports nothing optional; chromadb loads at first search
 
-    return ChromaKnowledgeBase(cards, s.kb_dir, s.kb_embedding_model)
+    return ChromaKnowledgeBase(cards, s.kb_dir, s.kb_embedding_model, url=s.kb_url)
 
 
 # Concept-card indexes for explanations, by NL_KNOWLEDGE_BASE (comma-separated, tried in order: chroma,lexical), ADR-039.

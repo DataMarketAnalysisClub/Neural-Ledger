@@ -156,3 +156,27 @@ def test_the_loader_names_the_file_of_a_bad_card(tmp_path, lang, name, header, m
     with pytest.raises(ValueError, match=message) as error:
         load_cards(tmp_path)
     assert f"{name}.md" in str(error.value)
+
+
+def test_chroma_reaches_a_server_when_given_a_url(monkeypatch):
+    chromadb = pytest.importorskip("chromadb")
+    from neural_ledger.adapters.outbound.knowledge.chroma import ChromaKnowledgeBase
+
+    calls = []
+
+    def http_client(host, port, ssl):
+        calls.append((host, port, ssl))
+        return chromadb.EphemeralClient()  # stands in for the server container
+
+    monkeypatch.setattr(chromadb, "HttpClient", http_client)
+    kb = ChromaKnowledgeBase(CARDS, None, "fake-bow-url", embedding_function=fake_embedding, url="http://chroma:8000")
+    assert kb.search("budget", "en", 1)
+    assert calls == [("chroma", 8000, False)]
+
+
+def test_chroma_rejects_a_url_that_is_not_http():
+    pytest.importorskip("chromadb")
+    from neural_ledger.adapters.outbound.knowledge.chroma import ChromaKnowledgeBase
+
+    with pytest.raises(KnowledgeBaseUnavailable):
+        ChromaKnowledgeBase(CARDS, None, "fake-bow", embedding_function=fake_embedding, url="chroma:8000").search("budget", "en", 1)

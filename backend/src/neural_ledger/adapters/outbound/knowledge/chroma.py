@@ -5,8 +5,11 @@ dimensions), so a Spanish question finds an English card and the other way round
 Runtime through fastembed: no torch, and the weights are downloaded once into NL_KB_DIR/models.
 
 The index is built at first use, never shipped: the collection is named after the corpus hash and the model,
-so a changed card or another model gets a fresh collection, and the old ones are dropped from NL_KB_DIR.
-`path=None` keeps the index in memory (tests, one-off evaluations).
+so a changed card or another model gets a fresh collection, and the old ones are dropped.
+Where the index lives: `url` (NL_KB_URL) = a Chroma server in its own container, reached over HTTP; otherwise
+`path` (NL_KB_DIR) = an embedded index on disk; `path=None` keeps it in memory (tests, one-off evaluations).
+Embedding always happens here, never in the server: the server only stores and searches vectors, and the model's
+weights are cached under `path`.
 
 Scores are 1 - cosine distance, floored at 0: a passage pointing the other way from the question scores 0.
 Cards in the asked language come first; when none of them scores above 0, the other language answers.
@@ -22,6 +25,7 @@ import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from ....application.ports import KnowledgeBaseUnavailable
 from ....domain.education.concepts import LANGUAGES, ConceptCard, Passage
@@ -47,10 +51,16 @@ def document_text(card: ConceptCard) -> str:
 
 class ChromaKnowledgeBase:
     def __init__(
-        self, cards: Sequence[ConceptCard], path: str | None, model: str = DEFAULT_MODEL, embedding_function: EmbeddingFunction | None = None
+        self,
+        cards: Sequence[ConceptCard],
+        path: str | None,
+        model: str = DEFAULT_MODEL,
+        embedding_function: EmbeddingFunction | None = None,
+        url: str | None = None,
     ) -> None:
         self._cards = {(c.lang, c.id): c for c in cards}
         self._path = path
+        self._url = url
         self._model = model
         self._embed = embedding_function
         digest = corpus_hash(cards)
@@ -100,14 +110,23 @@ class ChromaKnowledgeBase:
                     import chromadb
                 except ImportError as exc:
                     raise KnowledgeBaseUnavailable("the chroma knowledge base needs the `rag` extra (pip install 'neural-ledger[rag]')") from exc
-                client = chromadb.EphemeralClient() if self._path is None else chromadb.PersistentClient(path=self._path)
+                client = self._client(chromadb)
                 collection = client.get_or_create_collection(self._collection_name, metadata={"hnsw:space": "cosine"}, embedding_function=None)
                 if collection.count() != len(self._cards):
                     self._fill(collection)
-                if self._path is not None:
+                if self._url is not None or self._path is not None:
                     self._drop_stale(client)
                 self._collection = collection
             return self._collection
+
+    def _client(self, chromadb: Any) -> Any:
+        if self._url is not None:
+            parsed = urlparse(self._url)
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise KnowledgeBaseUnavailable(f"NL_KB_URL must be an http(s) URL, got {self._url!r}")
+            port = parsed.port or (443 if parsed.scheme == "https" else 8000)
+            return chromadb.HttpClient(host=parsed.hostname, port=port, ssl=parsed.scheme == "https")
+        return chromadb.EphemeralClient() if self._path is None else chromadb.PersistentClient(path=self._path)
 
     def _fill(self, collection: Any) -> None:
         cards = list(self._cards.values())

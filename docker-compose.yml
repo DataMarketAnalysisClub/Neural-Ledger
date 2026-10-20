@@ -8,6 +8,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        EXTRAS: ${NL_API_EXTRAS:-api,pdf,ml}
     env_file:
       - path: .env
         required: false
@@ -29,6 +31,9 @@ services:
       # container's nginx). Port 8000 is published for development, and a caller on it can set the header
       # too: in a deployment publish only the web port.
       FORWARDED_ALLOW_IPS: "127.0.0.1,172.16.0.0/12,192.168.0.0/16"
+      # The concept index lives in the chroma container (ADR-039); it is used only when NL_KNOWLEDGE_BASE in .env
+      # names chroma. The API embeds the questions itself (model weights cached on ledger-data under /app/var/chroma).
+      NL_KB_URL: http://chroma:8000
     ports:
       - "8000:8000"
     volumes:
@@ -43,5 +48,16 @@ services:
     ports:
       - "3000:3000"
 
+  # Vector store for the concept cards (ADR-039), opt-in: `docker compose --profile rag up` with, in .env,
+  # NL_API_EXTRAS=api,pdf,ml,rag and NL_KNOWLEDGE_BASE=chroma,lexical. Without it the API answers from the
+  # offline lexical index. No port is published: only the api container reaches it on the compose network.
+  # The index is rebuilt from the cards when they change, so the volume holds no data that is not in the repo.
+  chroma:
+    image: chromadb/chroma:1.5.9  # match the chromadb client the rag extra installs
+    profiles: ["rag"]
+    volumes:
+      - chroma-data:/data  # the image's persist_path (/config.yaml)
+
 volumes:
   ledger-data:
+  chroma-data:
