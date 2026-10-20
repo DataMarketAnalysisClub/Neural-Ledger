@@ -21,6 +21,7 @@ from .ports import AuditLog, Clock, IdGenerator
 from .services.tools import Tool, ToolContext, ToolDefinition, ToolRegistry
 from .use_cases.actions import ActionUseCases, ActorContext
 from .use_cases.audit import AuditUseCases
+from .use_cases.connections import ConnectionUseCases
 from .use_cases.documents import DocumentUseCases
 from .use_cases.education import EducationUseCases
 from .use_cases.financial import FinancialUseCases
@@ -53,6 +54,12 @@ def _actor(ctx: ToolContext) -> ActorContext:
     return ActorContext(ctx.session_id, ctx.user_id, Actor.AGENT, ctx.intent, ctx.intent_confidence, ctx.checks, ctx.user_text)
 
 
+def _connected(connections: ConnectionUseCases | None, ctx: ToolContext) -> Any:
+    if connections is None:
+        raise InvalidInput("connection", "connections are not available on this server")
+    return connections.connected_data(ctx.user_id)
+
+
 def _propose_floor(financial: FinancialUseCases, actions: ActionUseCases, args: Mapping[str, Any], ctx: ToolContext) -> Any:
     cycle = financial.first_cycle(ctx.user_id)
     if not isinstance(cycle, tuple):
@@ -72,6 +79,7 @@ def build_registry(
     clock: Clock,
     ids: IdGenerator,
     policy_version: str,
+    connections: ConnectionUseCases | None = None,
 ) -> ToolRegistry:
     tools = (
         # T0: read
@@ -92,6 +100,8 @@ def build_registry(
             Tier.T0,
             lambda a, c: education.explain(c.user_id, a.get("query"), a.get("lang"), a.get("k", 3)),
         ),
+        # Reads what the user's last sync stored; nothing reaches a connected service from here (ADR-047).
+        Tool("get_connected_data", Tier.T0, lambda a, c: _connected(connections, c)),
         # T1: analyze and suggest
         Tool(
             "forecast_cashflow",

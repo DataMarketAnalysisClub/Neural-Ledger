@@ -7,6 +7,7 @@ import {
   Files,
   LinkSimple,
   PiggyBank,
+  PlugsConnected,
   Receipt,
   UserCircle,
 } from "@phosphor-icons/react";
@@ -36,6 +37,7 @@ const NAV: NavItem[] = [
   { to: "/copilot", label: "nav.copilot", icon: CopilotGlyph },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
   { to: "/statements", label: "nav.statements", icon: Files },
+  { to: "/connections", label: "nav.connections", icon: PlugsConnected },
   { to: "/profile", label: "auth.account", icon: UserCircle },
 ];
 

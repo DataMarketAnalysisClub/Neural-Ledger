@@ -37,6 +37,7 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
 | A concept card (a term the copilot can explain) | `adapters/outbound/knowledge/corpus/<lang>/<id>.md`, es and en (recipe below) | `tests/unit/test_concept_cards.py`, `tests/rag_eval` |
 | A different way to search the cards | a `KnowledgeBase` adapter in `adapters/outbound/knowledge/` + a `KNOWLEDGE_BASES` entry in `container.py` (recipe below) | `tests/adapters/test_knowledge_base.py`, `tests/rag_eval` |
+| A read-only connection to another app (ADR-047) | an MCP server needs nothing: users add it by URL. Another bank aggregator: a `BankFeed` adapter in `adapters/outbound/connections/` returning `BankAccount` + `BankMovement`, wired in `_connectors` (`container.py`); `domain/connections/bank.py` turns each sync into a statement for the usual import | `tests/adapters/test_fintoc.py` (fake server), `tests/security/test_connectors.py` |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes

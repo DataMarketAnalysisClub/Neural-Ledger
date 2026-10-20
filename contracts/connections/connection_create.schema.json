@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/connections/connection_create.schema.json",
+  "title": "ConnectionCreate",
+  "description": "Body of POST /v1/connections: add an MCP server (ADR-047). The address must be https and resolve only to public addresses. The token, if any, is sent as a Bearer header to that server only, stored sealed and never returned. consent records that the user agrees to read this service's data into Neural Ledger.",
+  "type": "object",
+  "required": ["name", "url", "consent"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 60},
+    "url": {"type": "string", "minLength": 1, "maxLength": 500},
+    "token": {"type": ["string", "null"], "maxLength": 4000},
+    "consent": {"const": true}
+  },
+  "additionalProperties": false
+}

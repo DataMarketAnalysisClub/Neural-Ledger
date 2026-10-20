@@ -27,6 +27,7 @@ from ....domain.actions.terms import (
     SavingsRule,
 )
 from ....domain.audit.events import ERASED_SESSION, ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
+from ....domain.connections.model import Connection, ConnectionKind, ConnectionSnapshot, RemoteTool
 from ....domain.finance.profile import RiskProfile
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
@@ -98,6 +99,21 @@ CREATE TABLE IF NOT EXISTS receipts (
     payload    TEXT NOT NULL,
     UNIQUE (user_id, receipt_id)
 );
+CREATE TABLE IF NOT EXISTS connections (
+    sequence      INTEGER PRIMARY KEY,
+    connection_id TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    payload       TEXT NOT NULL,
+    UNIQUE (user_id, connection_id)
+);
+CREATE TABLE IF NOT EXISTS connection_results (
+    sequence      INTEGER PRIMARY KEY,
+    connection_id TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    tool          TEXT NOT NULL,
+    payload       TEXT NOT NULL,
+    UNIQUE (user_id, connection_id, tool)
+);
 CREATE TABLE IF NOT EXISTS savings_rules (
     sequence INTEGER PRIMARY KEY,
     rule_id  TEXT NOT NULL UNIQUE,
@@ -137,6 +153,8 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "statements": ("SELECT COUNT(*) FROM statements", "DELETE FROM statements"),
     "transactions": ("SELECT COUNT(*) FROM transactions", "DELETE FROM transactions"),
     "receipts": ("SELECT COUNT(*) FROM receipts", "DELETE FROM receipts"),
+    "connections": ("SELECT COUNT(*) FROM connections", "DELETE FROM connections"),
+    "connection_results": ("SELECT COUNT(*) FROM connection_results", "DELETE FROM connection_results"),
     "savings_rules": ("SELECT COUNT(*) FROM savings_rules", "DELETE FROM savings_rules"),
     "user_profiles": ("SELECT COUNT(*) FROM user_profiles", "DELETE FROM user_profiles"),
     "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
@@ -654,6 +672,102 @@ def _receipt_from(payload: dict) -> StoredReceipt:
     )
 
 
+class SqliteConnectionStore:
+    """Connections and their latest answers (ADR-047). The payload, which holds the secret (an MCP token or a bank
+    link), is sealed with the data key like every personal column; ids and the owner stay in clear for lookups."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def add(self, connection: Connection, secret: str | None) -> None:
+        payload = self._seal(connection, secret)
+        with self._db.lock:
+            self._db.connection.execute(
+                "INSERT INTO connections (connection_id, user_id, payload) VALUES (?, ?, ?)", (connection.connection_id, connection.user_id, payload)
+            )
+
+    def get(self, user_id: str, connection_id: str) -> Connection | None:
+        found = self._row(user_id, connection_id)
+        return found[0] if found else None
+
+    def for_user(self, user_id: str) -> tuple[Connection, ...]:
+        rows = self._db.fetchall("SELECT connection_id, payload FROM connections WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(self._open(user_id, cid, payload)[0] for cid, payload in rows)
+
+    def update(self, connection: Connection) -> bool:
+        with self._db.lock:
+            row = self._db.connection.execute(
+                "SELECT payload FROM connections WHERE user_id = ? AND connection_id = ?", (connection.user_id, connection.connection_id)
+            ).fetchone()
+            if row is None:
+                return False
+            secret = self._open(connection.user_id, connection.connection_id, row[0])[1]
+            cursor = self._db.connection.execute(
+                "UPDATE connections SET payload = ? WHERE user_id = ? AND connection_id = ?",
+                (self._seal(connection, secret), connection.user_id, connection.connection_id),
+            )
+            return cursor.rowcount == 1
+
+    def secret(self, user_id: str, connection_id: str) -> str | None:
+        found = self._row(user_id, connection_id)
+        return found[1] if found else None
+
+    def put_results(self, user_id: str, connection_id: str, results: Sequence[ConnectionSnapshot]) -> None:
+        with _account_transaction(self._db) as conn:
+            conn.execute("DELETE FROM connection_results WHERE user_id = ? AND connection_id = ?", (user_id, connection_id))
+            for r in results:
+                aad = _aad("connection_results", user_id, f"{connection_id}|{r.tool}")
+                conn.execute(
+                    "INSERT INTO connection_results (connection_id, user_id, tool, payload) VALUES (?, ?, ?, ?)",
+                    (connection_id, user_id, r.tool, self._cipher.seal(json.dumps(to_primitive(r)), aad)),
+                )
+
+    def results(self, user_id: str, connection_id: str) -> tuple[ConnectionSnapshot, ...]:
+        rows = self._db.fetchall(
+            "SELECT tool, payload FROM connection_results WHERE user_id = ? AND connection_id = ? ORDER BY sequence", (user_id, connection_id)
+        )
+        out = []
+        for tool, payload in rows:
+            p = json.loads(self._cipher.open(payload, _aad("connection_results", user_id, f"{connection_id}|{tool}")))
+            out.append(ConnectionSnapshot(p["connection_id"], p["user_id"], p["tool"], datetime.fromisoformat(p["fetched_at"]), p["content"], bool(p["ok"])))
+        return tuple(out)
+
+    def remove(self, user_id: str, connection_id: str) -> bool:
+        with _account_transaction(self._db) as conn:
+            conn.execute("DELETE FROM connection_results WHERE user_id = ? AND connection_id = ?", (user_id, connection_id))
+            return conn.execute("DELETE FROM connections WHERE user_id = ? AND connection_id = ?", (user_id, connection_id)).rowcount == 1
+
+    def _row(self, user_id: str, connection_id: str) -> tuple[Connection, str | None] | None:
+        row = self._db.fetchone("SELECT payload FROM connections WHERE user_id = ? AND connection_id = ?", (user_id, connection_id))
+        return self._open(user_id, connection_id, row[0]) if row else None
+
+    def _seal(self, connection: Connection, secret: str | None) -> str:
+        payload = {"connection": to_primitive(connection), "secret": secret}
+        return self._cipher.seal(json.dumps(payload), _aad("connections", connection.user_id, connection.connection_id))
+
+    def _open(self, user_id: str, connection_id: str, sealed: str) -> tuple[Connection, str | None]:
+        payload = json.loads(self._cipher.open(sealed, _aad("connections", user_id, connection_id)))
+        return _connection_from(payload["connection"]), payload["secret"]
+
+
+def _connection_from(p: dict) -> Connection:
+    return Connection(
+        connection_id=p["connection_id"],
+        user_id=p["user_id"],
+        kind=ConnectionKind(p["kind"]),
+        name=p["name"],
+        endpoint=p["endpoint"],
+        created_at=datetime.fromisoformat(p["created_at"]),
+        tools=tuple(
+            RemoteTool(t["name"], t["description"], t["read_only_hint"], t["destructive_hint"], tuple(t["required_args"])) for t in p["tools"]
+        ),
+        enabled=tuple(p["enabled"]),
+        last_synced_at=datetime.fromisoformat(p["last_synced_at"]) if p.get("last_synced_at") else None,
+        state=p.get("state"),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SealedColumn:
     """One column sealed with the data key: how to read every row, rebuild its associated data and rewrite it.
@@ -679,6 +793,14 @@ SEALED_COLUMNS: tuple[SealedColumn, ...] = (
     SealedColumn(
         "receipts", "SELECT rowid, user_id, receipt_id, payload FROM receipts ORDER BY rowid",
         "UPDATE receipts SET payload = ? WHERE rowid = ?", lambda r: _receipt_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "connections", "SELECT rowid, user_id, connection_id, payload FROM connections ORDER BY rowid",
+        "UPDATE connections SET payload = ? WHERE rowid = ?", lambda r: _aad("connections", r[1], r[2]),
+    ),
+    SealedColumn(
+        "connection_results", "SELECT rowid, user_id, connection_id, tool, payload FROM connection_results ORDER BY rowid",
+        "UPDATE connection_results SET payload = ? WHERE rowid = ?", lambda r: _aad("connection_results", r[1], f"{r[2]}|{r[3]}"),
     ),
     SealedColumn(
         "user_profiles", "SELECT rowid, user_id, payload FROM user_profiles ORDER BY rowid",
@@ -1099,6 +1221,8 @@ _ERASE_SQL: dict[str, str] = {
     "statements": "DELETE FROM statements WHERE user_id = ?",
     "transactions": "DELETE FROM transactions WHERE user_id = ?",
     "receipts": "DELETE FROM receipts WHERE user_id = ?",
+    "connections": "DELETE FROM connections WHERE user_id = ?",
+    "connection_results": "DELETE FROM connection_results WHERE user_id = ?",
     "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
     "proposals": "DELETE FROM proposals WHERE user_id = ?",
     "authorizations": "DELETE FROM authorizations WHERE user_id = ?",

@@ -63,6 +63,18 @@ class Settings:
     kb_dir: str = "./var/chroma"  # the Chroma index (embedded mode) and the embedding model's weights
     kb_url: str | None = None  # a Chroma server, e.g. http://chroma:8000 (docker compose --profile rag); None = embedded in kb_dir
     kb_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    connectors: str = "fixture"  # fixture (synthetic MCP server and bank) | live (real servers the user adds, Fintoc), ADR-047
+    connectors_live: bool = False  # NL_DEPLOYMENT=deployed turns live connectors off unless this is true
+    mcp_allow_private: bool = False  # local development only: lets an MCP server on http://localhost be added
+    fintoc_secret_key: str | None = None
+    fintoc_public_key: str | None = None
+
+    @property
+    def connectors_mode(self) -> str:
+        """off | fixture | live: what /v1/connections reports. A public deployment never reaches real services by default."""
+        if self.connectors == "live" and self.deployment == "deployed" and not self.connectors_live:
+            return "off"
+        return self.connectors
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -140,6 +152,11 @@ class Settings:
             kb_dir=get("NL_KB_DIR", cls.kb_dir),
             kb_url=get("NL_KB_URL", "") or None,
             kb_embedding_model=get("NL_KB_EMBEDDING_MODEL", cls.kb_embedding_model),
+            connectors=get("NL_CONNECTORS", cls.connectors),
+            connectors_live=_flag(get("NL_CONNECTORS_LIVE", "false"), "NL_CONNECTORS_LIVE"),
+            mcp_allow_private=_flag(get("NL_MCP_ALLOW_PRIVATE", "false"), "NL_MCP_ALLOW_PRIVATE"),
+            fintoc_secret_key=e.get("FINTOC_SECRET_KEY") or None,
+            fintoc_public_key=e.get("FINTOC_PUBLIC_KEY") or None,
         )
 
 
