@@ -146,3 +146,19 @@ def test_s38_the_model_cannot_reach_a_connected_service(services, adapters):
     reply = chat_with(services, adapters, hostile).handle("s-s38b", USER, "actualiza mi app conectada")
     assert server.calls == []  # no tool syncs: get_connected_data reads what the user's last sync stored
     assert reply.blocked_reason is not None
+
+
+def test_live_connectors_make_the_mode_live_unless_a_deployment_turns_them_off():
+    assert make_settings(connectors="live").mode == "live"
+    assert make_settings(connectors="live", deployment="deployed").mode == "offline"
+    assert make_settings(connectors="live", deployment="deployed", connectors_live=True).mode == "live"
+    assert make_settings().mode == "offline"
+
+
+def test_health_reports_the_connectors_mode():
+    from fastapi.testclient import TestClient
+
+    from neural_ledger.adapters.inbound.http.app import create_app
+
+    services, _ = build(make_settings())
+    assert TestClient(create_app(services)).get("/health").json()["connectors"] == "fixture"

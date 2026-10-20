@@ -228,6 +228,7 @@ def create_app(
             "pii_detector": services.pii_detector,
             "classifier": services.classifier,
             "investments": services.investments.adapter,
+            "connectors": services.connections.mode if services.connections else "off",
             "params_version": services.financial.params.version,
             "audit_chain_ok": check.ok,
             "tools": list(services.registry.names),
