@@ -40,7 +40,7 @@ application and say so (ADR-038). After option B:
 
 The largest residual risks (\cref{sec:residual}) are four. A notice cannot stop a visitor from uploading real data (R01,
 R02). Anyone with root on the host can read both the key and the data (R03). Until the server is migrated, the demo
-still runs the old configuration (R24). Finally, data export, consent and opposition are not built (R23).
+still runs the old configuration (R24). Finally, consent and opposition are not built (R23).
 
 \textbf{Version 1.1} reviewed four features merged since (ADR-039, ADR-040, ADR-044, ADR-047). They bring new
 third-party text, a provider token with full access, and outbound calls to addresses users choose. The agent stays
@@ -158,8 +158,9 @@ publishes port 8000 for development, so a deployment must use the override.
     stored (S17).
   \item \textbf{Passwords}: scrypt with $N = 2^{14}$, $r = 8$, $p = 1$. Sign-in costs the same and answers the same
     whether or not the email exists (S20); sign-up reveals a registered email with 409.
-  \item \textbf{Rate limits} (G07): per caller and per IP, one-minute windows. Ten sign-in or sign-up attempts per IP,
-    five account deletions per caller, ten uploads per caller, and ten per caller on investment syncs and on each connection call.
+  \item \textbf{Rate limits} (G07): per caller and per IP, one-minute windows. Ten sign-in or sign-up attempts per IP;
+    a request with no session and no identity header is counted by its IP, so one address using its budget up never
+    locks out another. Five account deletions per caller, ten uploads per caller, and ten per caller on investment syncs and on each connection call.
     Counters live in memory, per process.
   \item \textbf{Input}: uploads are typed by their bytes and capped at 15\,MB (C05); hand-parsed JSON bodies are capped at
     16\,KiB; SQL is always parameterized, and a static test checks every SQLite module (C08).
@@ -305,7 +306,7 @@ Demo personas are reset, not deleted, and the reset is recorded as \code{DEMO_DA
     Suitability report & Plans state the permitted profile and why; superseded plans refused; off-track goals warned & UG01--UG03, \code{tests/suitability} \\
     Rate limits on outside calls & Each \code{POST /v1/connections*} has its own budget: 10 per caller, 30 per IP & \code{test_every_call_to_an_outside_service_has_its_own_budget} \\
     Live mode reporting & Live connectors make the mode live and \code{/health} reports \code{connectors} & \code{tests/security/test_connectors.py} \\
-    Data export & One file with what a deletion would erase; never a hash, token or secret; audited & G02, \code{tests/security/test_data_export.py} \\
+    Data export & One file with what a deletion would erase, proposals and authorizations included (only the latest investment snapshot); every erased table mapped to a section; never a hash, token, secret or signature; audited & G02, \code{tests/security/test_data_export.py} \\
     Memory & No tool writes; only the user confirms; consent gates every read; stale entries never reach a model; an import cannot outlive a deleted account & \code{test_memory_agent.py}, \code{test_import_after_deletion.py}, \code{test_memory_dependency.py}, \code{test_memory_acceptance.py} \\
     \bottomrule
   \end{tabularx}
@@ -366,8 +367,8 @@ server. The register is our own analysis of the code and of the option B change.
   R25 & A connected MCP server lies: a tool labelled read-only and argument-free moves money or changes the user's account there & M & H & Only the user's sync calls tools, with empty arguments; write verbs refused; labels re-checked each sync; off in deployed mode & Accepted with a warning to users; C \\
   R26 & DNS rebinding: an address that resolves to a public IP when checked and to a private one when the client connects & L & M & Public-address check, no redirects, 10\,s, 1\,MB; marked \code{shortcut:} in the adapter & Open; C: pin the checked address in the connection \\
   R27 & A stolen Fintual token reads the whole account: the API has no read-only scope and no revocation & L & H & Sealed and bound to user and adapter; never returned, logged or prompted; deployed mode refuses \code{fintual} & Open; C \\
-  R28 & \code{NL_CONNECTORS=live} sends tokens to user-chosen servers and to Fintoc, but \code{/health} still reports \code{offline} & M & M & Deployed mode keeps connectors off unless \code{NL_CONNECTORS_LIVE} is set & Fixed in PR \#58 (merged): live connectors make the mode live, \code{/health} reports them; C \\
-  R29 & Connection syncs are limited only by the general 300 per minute budget, and each one calls an outside server & M & L & 10\,s timeout and 1\,MB cap per call & Fixed in PR \#58 (merged): 10 per caller, 30 per IP; C \\
+  R28 & \code{NL_CONNECTORS=live} sends tokens to user-chosen servers and to Fintoc, but \code{/health} still reports \code{offline} & L & M & Deployed mode keeps connectors off unless \code{NL_CONNECTORS_LIVE} is set & Fixed in PR \#58 (merged): live connectors make the mode live, \code{/health} reports them; C \\
+  R29 & Connection syncs are limited only by the general 300 per minute budget, and each one calls an outside server & L & L & 10\,s timeout and 1\,MB cap per call & Fixed in PR \#58 (merged): 10 per caller, 30 per IP; C \\
   R30 & A concept card states a wrong definition; the verifier checks numbers, not meaning & L & M & Team-written cards with cited sources; card tests; eval gate; \code{EDUCATIONAL_NOT_ADVICE} warning & Open; B: review cards \\
   R31 & The first Fintoc sync has no previous balance, so it cannot be reconciled & H & L & Stored unverified (\code{NO_SUMMARY}) and not posted; later syncs reconcile & Accepted; A \\
   R32 & The memory fence orders one API process only, and a dependent action proposal created before a memory change was seen stays pending until its 30 minutes end & L & L & Counters are compared on every read, so a change from another process is still caught; a proposal's terms never come from memory; one process is how the API runs & Accepted; C \\

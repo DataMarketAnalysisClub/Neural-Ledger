@@ -1,10 +1,10 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * 200 body of GET /v1/me/export (G02, Ley 21.719 arts. 5 and 9), sent as a JSON file download (Content-Disposition: attachment). Everything stored about the signed-in user, from the same stores DELETE /v1/account erases: the account (null for a demo persona), the profile with its questionnaire answers, imported statements, ledger transactions, receipts, connections with their last answers, active savings rules, investments (the link without its access token, the latest snapshot and imported documents), memory (ADR-048: the consent with its counters and every declaration version, superseded ones included; null when the server has no memory) and the user's own audit events, the DATA_EXPORTED event of this export included. Never included: the password hash, session tokens, connection secrets or the investment access token. Sections hold the stored records as they are kept (ids, ISO 8601 times, money as integers in minor units); merchant, issuer and connection text is untrusted data. The format string changes whenever a section is added, renamed or changes shape. HTTP only: no agent tool reads it.
+ * 200 body of GET /v1/me/export (G02, Ley 21.719 arts. 5 and 9), sent as a JSON file download (Content-Disposition: attachment). Everything stored about the signed-in user, from the same stores DELETE /v1/account erases: the account (null for a demo persona), the profile with its questionnaire answers, imported statements, ledger transactions, receipts, connections with their last answers, active savings rules, savings-rule proposals (pending and confirmed) and the authorizations confirmed from them (without their signature), investments (the link without its access token, the latest snapshot and imported documents), memory (ADR-048: the consent with its counters and every declaration version, superseded ones included; null when the server has no memory) and the user's own audit events, the DATA_EXPORTED event of this export included. Never included: the password hash, session tokens, connection secrets, the investment access token, an authorization's signature (action_hash, which never leaves the server) or a pending memory proposal (it expires within minutes; the declarations it would add are exported once confirmed). Sections hold the stored records as they are kept (ids, ISO 8601 times, money as integers in minor units); merchant, issuer and connection text is untrusted data. The format string changes whenever a section is added, renamed or changes shape. HTTP only: no agent tool reads it.
  */
 export interface DataExport {
-  format: "neural-ledger-export-2";
+  format: "neural-ledger-export-3";
   exported_at: string;
   user_id: string;
   account: null | {
@@ -20,6 +20,32 @@ export interface DataExport {
     results: {}[];
   }[];
   savings_rules: {}[];
+  /**
+   * Every savings-rule or liquidity-floor proposal of the user, pending or confirmed, as stored. Terms come from the stored plan snapshot or the user's own message, never from model text.
+   */
+  proposals: {
+    proposal_id: string;
+    session_id: string;
+    user_id: string;
+    terms: ActionTerms;
+    source_snapshot_id: string;
+    created_at: string;
+    expires_at: string;
+    status: "pending" | "confirmed";
+  }[];
+  /**
+   * Every authorization the user confirmed, used or not (consumed_at null until executed). The signature over the terms (action_hash) is left out: it never leaves the server.
+   */
+  authorizations: {
+    authorization_id: string;
+    proposal_id: string;
+    session_id: string;
+    user_id: string;
+    terms: ActionTerms;
+    created_at: string;
+    expires_at: string;
+    consumed_at: string | null;
+  }[];
   investments: {
     link: {} | null;
     latest_snapshot: {} | null;
@@ -34,6 +60,18 @@ export interface DataExport {
     declarations: MemoryExport;
   };
   audit_events: {}[];
+}
+/**
+ * The confirmation contract (Spec v0 section 5). The UI shows exactly these terms and execution must match them exactly. The amount comes from a stored plan snapshot (create_savings_rule) or from the user's own message (set_liquidity_floor, ADR-037), never from model text. A set_liquidity_floor moves no money: source and destination are both the account it protects (checking).
+ */
+export interface ActionTerms {
+  action: "create_savings_rule" | "set_liquidity_floor";
+  amount: number;
+  currency: string;
+  frequency: "monthly";
+  source_account: string;
+  destination: string;
+  effective_date: string;
 }
 /**
  * The memory part of the user's data export (G02): every declaration of every chain, superseded versions included, in chain and version order. Derived conclusions are not exported: they are recomputed from the statements.

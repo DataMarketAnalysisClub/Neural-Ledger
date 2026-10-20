@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/auth/data_export.schema.json",
   "title": "DataExport",
-  "description": "200 body of GET /v1/me/export (G02, Ley 21.719 arts. 5 and 9), sent as a JSON file download (Content-Disposition: attachment). Everything stored about the signed-in user, from the same stores DELETE /v1/account erases: the account (null for a demo persona), the profile with its questionnaire answers, imported statements, ledger transactions, receipts, connections with their last answers, active savings rules, investments (the link without its access token, the latest snapshot and imported documents), memory (ADR-048: the consent with its counters and every declaration version, superseded ones included; null when the server has no memory) and the user's own audit events, the DATA_EXPORTED event of this export included. Never included: the password hash, session tokens, connection secrets or the investment access token. Sections hold the stored records as they are kept (ids, ISO 8601 times, money as integers in minor units); merchant, issuer and connection text is untrusted data. The format string changes whenever a section is added, renamed or changes shape. HTTP only: no agent tool reads it.",
+  "description": "200 body of GET /v1/me/export (G02, Ley 21.719 arts. 5 and 9), sent as a JSON file download (Content-Disposition: attachment). Everything stored about the signed-in user, from the same stores DELETE /v1/account erases: the account (null for a demo persona), the profile with its questionnaire answers, imported statements, ledger transactions, receipts, connections with their last answers, active savings rules, savings-rule proposals (pending and confirmed) and the authorizations confirmed from them (without their signature), investments (the link without its access token, the latest snapshot and imported documents), memory (ADR-048: the consent with its counters and every declaration version, superseded ones included; null when the server has no memory) and the user's own audit events, the DATA_EXPORTED event of this export included. Never included: the password hash, session tokens, connection secrets, the investment access token, an authorization's signature (action_hash, which never leaves the server) or a pending memory proposal (it expires within minutes; the declarations it would add are exported once confirmed). Sections hold the stored records as they are kept (ids, ISO 8601 times, money as integers in minor units); merchant, issuer and connection text is untrusted data. The format string changes whenever a section is added, renamed or changes shape. HTTP only: no agent tool reads it.",
   "type": "object",
-  "required": ["format", "exported_at", "user_id", "account", "profile", "statements", "transactions", "receipts", "connections", "savings_rules", "investments", "memory", "audit_events"],
+  "required": ["format", "exported_at", "user_id", "account", "profile", "statements", "transactions", "receipts", "connections", "savings_rules", "proposals", "authorizations", "investments", "memory", "audit_events"],
   "properties": {
-    "format": {"const": "neural-ledger-export-2"},
+    "format": {"const": "neural-ledger-export-3"},
     "exported_at": {"type": "string", "format": "date-time"},
     "user_id": {"type": "string", "minLength": 1},
     "account": {
@@ -33,6 +33,44 @@
       "items": {"type": "object", "required": ["connection_id", "results"], "properties": {"results": {"type": "array", "items": {"type": "object"}}}}
     },
     "savings_rules": {"type": "array", "items": {"type": "object"}},
+    "proposals": {
+      "description": "Every savings-rule or liquidity-floor proposal of the user, pending or confirmed, as stored. Terms come from the stored plan snapshot or the user's own message, never from model text.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["proposal_id", "session_id", "user_id", "terms", "source_snapshot_id", "created_at", "expires_at", "status"],
+        "properties": {
+          "proposal_id": {"type": "string"},
+          "session_id": {"type": "string"},
+          "user_id": {"type": "string"},
+          "terms": {"$ref": "../actions/action_terms.schema.json"},
+          "source_snapshot_id": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "expires_at": {"type": "string", "format": "date-time"},
+          "status": {"enum": ["pending", "confirmed"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "authorizations": {
+      "description": "Every authorization the user confirmed, used or not (consumed_at null until executed). The signature over the terms (action_hash) is left out: it never leaves the server.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["authorization_id", "proposal_id", "session_id", "user_id", "terms", "created_at", "expires_at", "consumed_at"],
+        "properties": {
+          "authorization_id": {"type": "string"},
+          "proposal_id": {"type": "string"},
+          "session_id": {"type": "string"},
+          "user_id": {"type": "string"},
+          "terms": {"$ref": "../actions/action_terms.schema.json"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "expires_at": {"type": "string", "format": "date-time"},
+          "consumed_at": {"type": ["string", "null"], "format": "date-time"}
+        },
+        "additionalProperties": false
+      }
+    },
     "investments": {
       "type": "object",
       "required": ["link", "latest_snapshot", "documents"],
@@ -71,7 +109,7 @@
   "additionalProperties": false,
   "examples": [
     {
-      "format": "neural-ledger-export-2",
+      "format": "neural-ledger-export-3",
       "exported_at": "2026-10-20T12:00:00+00:00",
       "user_id": "usr_1",
       "account": {"email": "ana@accounts.invalid", "created_at": "2026-10-01T09:00:00+00:00", "sample_data": false},
@@ -81,12 +119,18 @@
       "receipts": [],
       "connections": [],
       "savings_rules": [],
+      "proposals": [
+        {"proposal_id": "prop_1", "session_id": "s1", "user_id": "usr_1", "terms": {"action": "create_savings_rule", "amount": 50000, "currency": "CLP", "frequency": "monthly", "source_account": "checking", "destination": "sandbox_savings", "effective_date": "2026-11-01"}, "source_snapshot_id": "snap_1", "created_at": "2026-10-20T11:50:00+00:00", "expires_at": "2026-10-20T12:00:00+00:00", "status": "confirmed"}
+      ],
+      "authorizations": [
+        {"authorization_id": "auth_1", "proposal_id": "prop_1", "session_id": "s1", "user_id": "usr_1", "terms": {"action": "create_savings_rule", "amount": 50000, "currency": "CLP", "frequency": "monthly", "source_account": "checking", "destination": "sandbox_savings", "effective_date": "2026-11-01"}, "created_at": "2026-10-20T11:51:00+00:00", "expires_at": "2026-10-20T11:56:00+00:00", "consumed_at": null}
+      ],
       "investments": {"link": null, "latest_snapshot": null, "documents": []},
       "memory": {"consent": {"consent": "missing", "consent_generation": 0, "memory_revision": 0}, "declarations": {"catalog_version": "mem-0.1", "declarations": []}},
       "audit_events": [{"sequence": 4, "kind": "DATA_EXPORTED", "user_id": "usr_1"}]
     },
     {
-      "format": "neural-ledger-export-2",
+      "format": "neural-ledger-export-3",
       "exported_at": "2026-10-20T12:00:00+00:00",
       "user_id": "camila",
       "account": null,
@@ -96,6 +140,8 @@
       "receipts": [],
       "connections": [],
       "savings_rules": [],
+      "proposals": [],
+      "authorizations": [],
       "investments": {"link": null, "latest_snapshot": null, "documents": []},
       "memory": {"consent": {"consent": "missing", "consent_generation": 0, "memory_revision": 0}, "declarations": {"catalog_version": "mem-0.1", "declarations": []}},
       "audit_events": []

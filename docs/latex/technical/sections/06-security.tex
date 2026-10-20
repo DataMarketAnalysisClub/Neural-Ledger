@@ -24,7 +24,7 @@ evaluates them, rates the remaining risks and lists what is out of scope.
     Provider credentials & A Fintual password or token, an MCP token or a Fintoc link leaks, or the agent links an account & Password used once and dropped; tokens sealed and bound to user and adapter; never in a response, log, prompt or audit; link and unlink are T3 (S31, S38) \\
     Connected servers & A user-added address reaches the internal network (SSRF), or a ``read-only'' tool writes & HTTPS and public addresses only, no redirects, size and time limits; tools enabled only if read-only, argument-free and without a write verb; only the user's sync calls them (S35, S37) \\
     Declared memory & The model writes, confirms or reads stale memory, or a revoked consent keeps being used & No tool writes; the user confirms; a revocable consent gates every read; stamped entries never reach a model once a counter moves; a per-user fence orders changes against reply publication (\cref{sec:memory}) \\
-    Copy of one's data & The export leaks a secret, or omits data a deletion would erase & The copy is built from the same stores the erasure empties; never the password hash, a token or a connection secret (\cref{sec:export}) \\
+    Copy of one's data & The export leaks a secret, or omits data a deletion would erase & The copy is built from the same stores the erasure empties, and a test maps every erased table to it; never the password hash, a token, a connection secret or a signature (\cref{sec:export}) \\
     \bottomrule
   \end{tabularx}
   \caption{Assets, threats and the controls that answer them (\texttt{docs/SECURITY.md}).}\label{tab:threats}

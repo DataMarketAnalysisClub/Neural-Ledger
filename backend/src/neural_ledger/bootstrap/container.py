@@ -350,8 +350,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if auth.accounts:
         # The same stores the erasure empties, so the copy holds what a deletion would erase.
         data_export = DataExport(
-            account_store, profiles, statement_store, transaction_store, receipt_store, connection_store, bank, investment_store, audit_log,
-            clock, ids, memory,
+            account_store, profiles, statement_store, transaction_store, receipt_store, connection_store, bank, investment_store, actions_repo,
+            audit_log, clock, ids, memory,
         )
 
     models = []
