@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/connections/sync_result.schema.json",
+  "title": "ConnectionSync",
+  "description": "data of POST /v1/connections/{id}/sync (ADR-047). An MCP sync calls each enabled tool once, without arguments, and stores each answer redacted; a failed tool carries an error code, never the server's message. A bank sync imports the new movements as statements through the usual import (statements), which may be unverified: the first sync has no earlier balance to check against.",
+  "type": "object",
+  "required": ["connection", "results", "statements"],
+  "properties": {
+    "connection": {"$ref": "connection.schema.json"},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool", "ok", "error"],
+        "properties": {"tool": {"type": "string"}, "ok": {"type": "boolean"}, "error": {"type": ["string", "null"]}},
+        "additionalProperties": false
+      }
+    },
+    "statements": {"oneOf": [{"$ref": "../outputs/statement_import.schema.json"}, {"type": "null"}]}
+  },
+  "additionalProperties": false
+}

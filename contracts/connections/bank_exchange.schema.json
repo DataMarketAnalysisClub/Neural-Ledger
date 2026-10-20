@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/connections/bank_exchange.schema.json",
+  "title": "BankExchange",
+  "description": "Body of POST /v1/connections/bank: connect the user's bank (ADR-047). exchange_token is what the aggregator's widget returned; the server trades it for a read-only link it stores sealed. In fixture mode any non-empty token connects the synthetic bank.",
+  "type": "object",
+  "required": ["exchange_token", "consent"],
+  "properties": {
+    "exchange_token": {"type": "string", "minLength": 1, "maxLength": 500},
+    "consent": {"const": true}
+  },
+  "additionalProperties": false
+}

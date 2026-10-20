@@ -19,6 +19,7 @@ const PlanPage = lazy(() => import("@/features/plan/PlanPage").then((m) => ({ de
 const CopilotPage = lazy(() => import("@/features/copilot/CopilotPage").then((m) => ({ default: m.CopilotPage })));
 const AuditPage = lazy(() => import("@/features/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
 const ProfilePage = lazy(() => import("@/features/profile/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+const ConnectionsPage = lazy(() => import("@/features/connections/ConnectionsPage").then((m) => ({ default: m.ConnectionsPage })));
 const StatementsPage = lazy(() => import("@/features/statements/StatementsPage").then((m) => ({ default: m.StatementsPage })));
 const InvestmentsPage = lazy(() => import("@/features/investments/InvestmentsPage").then((m) => ({ default: m.InvestmentsPage })));
 const SignInPage = lazy(() => import("@/features/auth/AuthPages").then((m) => ({ default: m.SignInPage })));
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="/audit" element={<FinancialRoute><AuditPage /></FinancialRoute>} />
         <Route path="/statements" element={<BackendRoute title="statements.title" detail="statements.mockUnavailable"><StatementsPage /></BackendRoute>} />
         <Route path="/investments" element={<BackendRoute title="investments.title" detail="investments.mockUnavailable"><InvestmentsPage /></BackendRoute>} />
+        <Route path="/connections" element={<ConnectionsPage />} />
         <Route path="/profile" element={auth.mode === "accounts" ? <ProfilePage /> : <Navigate to="/" replace />} />
         <Route path="/signin" element={<Navigate to="/" replace />} />
         <Route path="/signup" element={<Navigate to={auth.mode === "accounts" ? "/onboarding" : "/"} replace />} />

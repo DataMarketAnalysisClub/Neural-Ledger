@@ -301,6 +301,16 @@ def _profile(p: Payload, cur: str) -> list[str]:
     return [f"Profile loaded for {p['data']['display_name']['untrusted_text']}."]
 
 
+def _connected(p: Payload, cur: str) -> list[str]:
+    """Hosts and dates only: the answers are the services' untrusted text, and their figures are theirs (ADR-047)."""
+    sources = p["data"]["connections"]
+    read = [s for s in sources if any(r["ok"] for r in s["results"])]
+    if not read:
+        return ["Your connected services have no data yet: sync them from the Connections screen first."]
+    parts = [f"{s['host']} (synced {str(s['last_synced_at'])[:10]})" for s in read]
+    return [f"I read what you last synced from {', '.join(parts)}."]  # the EXTERNAL_DATA warning follows, said once
+
+
 def _spending(p: Payload, cur: str) -> list[str]:
     d = p["data"]
     c = d["check"]
@@ -474,6 +484,7 @@ _HANDLERS = {
     "get_audit_events": _audit,
     "get_user_profile": _profile,
     "get_spending_status": _spending,
+    "get_connected_data": _connected,
     "get_latest_document": _document,
     "propose_expense": _expense,
     "get_investments": _investments,

@@ -27,6 +27,13 @@ import type { InvestmentOverview } from "@/contracts/outputs/investments";
 import type { InvestmentLinkOutcome } from "@/contracts/investments/link_outcome";
 import type { InvestmentLinkRequest } from "@/contracts/investments/link_request";
 import type { InvestmentDocumentsRemoved } from "@/contracts/investments/documents_removed";
+import type { Connections } from "@/contracts/connections/connections";
+import type { Connection } from "@/contracts/connections/connection";
+import type { ConnectionCreate } from "@/contracts/connections/connection_create";
+import type { ConnectionToolsUpdate } from "@/contracts/connections/tools_update";
+import type { ConnectionSync } from "@/contracts/connections/sync_result";
+import type { ConnectedData } from "@/contracts/outputs/connected_data";
+import type { BankStart } from "@/contracts/connections/bank_start";
 import { ApiError, request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type Envelope, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
@@ -478,4 +485,67 @@ export function useExecute() {
       void client.invalidateQueries({ queryKey: [identity.user_id, "state"] }); // the rule counter is re-read, never incremented locally
     },
   });
+}
+
+// ---- Read-only connections (ADR-047) --------------------------------------------------------
+
+export type { Connections, Connection, ConnectionSync, ConnectedData, BankStart };
+export type ConnectionTool = Connection["tools"][number];
+
+export function useConnections() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "connections"], queryFn: () => requestEnvelope<Connections>("/v1/connections", { identity }) });
+}
+
+/** What the copilot reads: the last sync's answers. Missing data (nothing connected) is an ApiError (409). */
+export function useConnectedData() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "connections", "data"], queryFn: () => requestEnvelope<ConnectedData>("/v1/connections/data", { identity }) });
+}
+
+function useConnectionMutation<A, T>(call: (args: A, identity: ApiIdentity, sessionId: string) => Promise<Envelope<T>>, extra: string[] = []) {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: A) => call(args, identity, sessionId),
+    onSettled: () => {
+      for (const key of ["connections", "audit", ...extra]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+    },
+  });
+}
+
+export function useAddConnection() {
+  return useConnectionMutation((body: Omit<ConnectionCreate, "consent">, identity, sessionId) =>
+    requestEnvelope<Connection>("/v1/connections", { identity, method: "POST", body: { ...body, consent: true, session_id: sessionId } }),
+  );
+}
+
+export function useSetConnectionTools() {
+  return useConnectionMutation(({ id, enabled }: { id: string; enabled: string[] }, identity, sessionId) =>
+    requestEnvelope<Connection>(`/v1/connections/${encodeURIComponent(id)}/tools`, { identity, method: "PUT", body: { enabled, session_id: sessionId } satisfies ConnectionToolsUpdate & { session_id: string } }),
+  );
+}
+
+/** A bank sync imports statements, so the ledger screens are re-read too. */
+export function useSyncConnection() {
+  return useConnectionMutation((id: string, identity, sessionId) =>
+    requestEnvelope<ConnectionSync>(`/v1/connections/${encodeURIComponent(id)}/sync`, { identity, method: "POST", query: { session_id: sessionId } }),
+  ["statements", "transactions"]);
+}
+
+export function useRemoveConnection() {
+  return useConnectionMutation((id: string, identity, sessionId) =>
+    requestEnvelope<Connection>(`/v1/connections/${encodeURIComponent(id)}`, { identity, method: "DELETE", query: { session_id: sessionId } }),
+  );
+}
+
+export function useBankStart() {
+  const { identity } = usePersona();
+  return useMutation({ mutationFn: () => requestEnvelope<BankStart>("/v1/connections/bank/start", { identity, method: "POST" }) });
+}
+
+export function useConnectBank() {
+  return useConnectionMutation((exchangeToken: string, identity, sessionId) =>
+    requestEnvelope<Connection>("/v1/connections/bank", { identity, method: "POST", body: { exchange_token: exchangeToken, consent: true, session_id: sessionId } }),
+  );
 }

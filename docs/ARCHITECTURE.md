@@ -37,6 +37,7 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
 | An investment provider (another institution, ADR-044) | an `InvestmentProvider` adapter in `adapters/outbound/investments/` (read-only: sign in and list goals; no credential in any error) + an `INVESTMENT_PROVIDERS` entry in `container.py` | a fake-transport test like `tests/adapters/test_fintual_provider.py`, plus S30 and S31 |
 | A provider's statement format (ADR-044, step 2) | an `InvestmentDocumentReader` adapter in `adapters/outbound/investments/` on `ocr_tabular.read_pages` (rows only, never the holder), its `DocumentKind.INVESTMENT` marks in `domain/receipts/model.py`, and checks in `domain/investments/documents.py` | synthetic PDFs like `tests/investment_samples.py` with figures worked out by hand, plus S32 |
+| A read-only connection to another app (ADR-047) | an MCP server needs nothing: users add it by URL. Another bank aggregator: a `BankFeed` adapter in `adapters/outbound/connections/` returning `BankAccount` + `BankMovement`, wired in `_connectors` (`container.py`); `domain/connections/bank.py` turns each sync into a statement for the usual import | `tests/adapters/test_fintoc.py` (fake server), `tests/security/test_connectors.py` |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes

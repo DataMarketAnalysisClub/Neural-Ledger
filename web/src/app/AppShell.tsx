@@ -7,6 +7,7 @@ import {
   Files,
   LinkSimple,
   PiggyBank,
+  PlugsConnected,
   Receipt,
   TrendUp,
   UserCircle,
@@ -38,6 +39,7 @@ const NAV: NavItem[] = [
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
   { to: "/statements", label: "nav.statements", icon: Files },
   { to: "/investments", label: "nav.investments", icon: TrendUp },
+  { to: "/connections", label: "nav.connections", icon: PlugsConnected },
   { to: "/profile", label: "auth.account", icon: UserCircle },
 ];
 

@@ -10,6 +10,9 @@ from dataclasses import dataclass
 from ..adapters.outbound.bank.simulated import SimulatedSandboxBank
 from ..adapters.outbound.classifier.jev import JevTransactionClassifier
 from ..adapters.outbound.classifier.sklearn_text import SklearnTextClassifier, naive_bayes
+from ..adapters.outbound.connections.fintoc import FintocBankFeed
+from ..adapters.outbound.connections.fixture import FixtureBankFeed, FixtureMcpClient
+from ..adapters.outbound.connections.mcp_http import HttpMcpClient
 from ..adapters.outbound.decision.jev import OPENROUTER_BASE_URL, JevDecisionModel
 from ..adapters.outbound.decision.rules import RulesDecisionModel
 from ..adapters.outbound.email.domains import DisposableEmailBlocklist, DnsEmailDomainCheck
@@ -27,6 +30,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemoryAccountWrites,
     InMemoryActionRepository,
     InMemoryAuditLog,
+    InMemoryConnectionStore,
     InMemoryConversationStore,
     InMemoryInvestmentStore,
     InMemoryReceiptStore,
@@ -45,6 +49,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteAccountWrites,
     SqliteActionRepository,
     SqliteAuditLog,
+    SqliteConnectionStore,
     SqliteDatabase,
     SqliteInvestmentStore,
     SqliteReceiptStore,
@@ -69,7 +74,9 @@ from ..adapters.outbound.system.signer import HmacSigner
 from ..adapters.outbound.system.tokens import SecretsTokens
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices, AuthConfig
-from ..application.ports import EmailDomainCheck, InvestmentProvider, PersonalDataDetector, TransactionClassifier
+from ..application.ports import (
+    BankFeed, Clock, EmailDomainCheck, InvestmentProvider, McpClient, PersonalDataDetector, TransactionClassifier,
+)
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
 from ..application.services.llm_fallback import FallbackLanguageModel
@@ -80,6 +87,7 @@ from ..application.use_cases.accounts import DEMO_PERSONAS, AccountUseCases
 from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
+from ..application.use_cases.connections import ConnectionUseCases
 from ..application.use_cases.documents import DocumentUseCases
 from ..application.use_cases.financial import FinancialUseCases
 from ..application.use_cases.investments import InvestmentUseCases
@@ -183,6 +191,18 @@ def _auth_config(s: Settings) -> AuthConfig:
     return AuthConfig(s.auth, origins, s.cookie_secure, demo_personas)
 
 
+def _connectors(s: Settings, clock: Clock) -> tuple[McpClient, BankFeed | None]:
+    """ADR-047: synthetic servers by default; live ones reach the network and, for the bank, need Fintoc's keys."""
+    if s.connectors not in ("fixture", "live"):
+        raise ValueError(f"unknown NL_CONNECTORS {s.connectors!r} (fixture | live)")
+    if s.mcp_allow_private and s.deployment == "deployed":
+        raise ValueError("NL_MCP_ALLOW_PRIVATE is for local development only and is refused with NL_DEPLOYMENT=deployed")
+    if s.connectors == "fixture":
+        return FixtureMcpClient(), FixtureBankFeed(clock)
+    bank = FintocBankFeed(s.fintoc_secret_key, s.fintoc_public_key) if s.fintoc_secret_key and s.fintoc_public_key else None
+    return HttpMcpClient(allow_private=s.mcp_allow_private), bank
+
+
 def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapters]:
     s = settings or Settings.from_env()
     if s.deployment not in data_key.DEPLOYMENTS:
@@ -223,6 +243,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         rule_store: InMemorySavingsRuleStore | SqliteSavingsRuleStore = SqliteSavingsRuleStore(db, cipher)
         statement_store: InMemoryStatementStore | SqliteStatementStore = SqliteStatementStore(db, cipher)
         receipt_store: InMemoryReceiptStore | SqliteReceiptStore = SqliteReceiptStore(db, cipher)
+        connection_store: InMemoryConnectionStore | SqliteConnectionStore = SqliteConnectionStore(db, cipher)
         transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
         transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
         writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db, cipher)
@@ -231,6 +252,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
         receipt_store = InMemoryReceiptStore()
+        connection_store = InMemoryConnectionStore()
         transaction_writes = InMemoryTransactionWrites(transaction_store, audit_log)
         writable_profiles = InMemoryUserProfileStore()
         investment_store = InMemoryInvestmentStore(audit_log)
@@ -256,7 +278,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
             erasure = InMemoryAccountErasure(
                 account_store, session_store, profiles, audit_log, statement_store, transaction_store, rule_store, actions_repo,
-                receipt_store, investment_store,
+                receipt_store, investment_store, connection_store,
             )
         accounts = AccountUseCases(
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
@@ -314,9 +336,11 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
         financial, audit_log, clock, ids, snapshots, investments=investments,
     )
+    mcp, bank_feed = _connectors(s, clock)
+    connections = ConnectionUseCases(connection_store, mcp, bank_feed, statements, audit_log, clock, ids, s.connectors_mode)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, documents, investments, load_tool_definitions(s.resolved_contracts_dir), audit_log,
-        clock, ids, PP_0_1.version,
+        clock, ids, PP_0_1.version, connections,
     )
     chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
 
@@ -342,6 +366,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         profile_editing=profile_editing,
         persistence=s.persistence,
         documents=documents,
+        connections=connections,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source)
 

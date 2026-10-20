@@ -110,7 +110,10 @@ export interface Summary {
   currency: string;
   period_start: string;
   period_end: string;
-  source: "text" | "ocr" | "xlsx";
+  /**
+   * api: movements read through a bank aggregator (ADR-047), not a file.
+   */
+  source: "text" | "ocr" | "xlsx" | "api";
   imported_at: string;
   line_count: number;
   /**
