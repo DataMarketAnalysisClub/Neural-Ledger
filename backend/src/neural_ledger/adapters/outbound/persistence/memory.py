@@ -12,9 +12,9 @@ from ....application.conversation import Entry
 from ....application.ports import ErasureReport, IdCollision, UserProfileStore
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
+from ....domain.connections.model import Connection, ConnectionSnapshot
 from ....domain.investments.documents import MAX_DOCUMENTS, StoredInvestmentDocument
 from ....domain.investments.model import MAX_SNAPSHOTS, InvestmentLink, InvestmentSnapshot
-from ....domain.connections.model import Connection, ConnectionSnapshot
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.receipts.model import StoredReceipt
 from ....domain.statements.model import StoredStatement

@@ -75,7 +75,13 @@ from ..adapters.outbound.system.tokens import SecretsTokens
 from ..application.catalog import build_registry
 from ..application.facade import ApplicationServices, AuthConfig
 from ..application.ports import (
-    BankFeed, Clock, EmailDomainCheck, InvestmentProvider, McpClient, PersonalDataDetector, TransactionClassifier,
+    BankFeed,
+    Clock,
+    EmailDomainCheck,
+    InvestmentProvider,
+    McpClient,
+    PersonalDataDetector,
+    TransactionClassifier,
 )
 from ..application.services.classifier_fallback import FallbackClassifier
 from ..application.services.decisions import DecisionService
