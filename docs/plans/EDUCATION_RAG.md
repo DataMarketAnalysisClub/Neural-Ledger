@@ -48,18 +48,11 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - [x] Example card: `protected_surplus` (es, en)
 - [ ] Review pass: own words, numbers declared, no advice, Chilean Spanish
 - [x] Khan Academy pass (Oct 19): 28 of 35 concepts now cite Khan Academy Financial Literacy articles (CC BY-NC-SA, used as reference, own words; checked with an 8-word overlap scan against the downloaded articles)
-- [ ] Source check before release (Chilean facts Khan does not cover):
-    - [x] `afp_pension_system`: multifondos A–E and default assignment by age, from the Superintendencia de Pensiones fondos page
-    - [ ] `apv`: regime A/B tax treatment (the SP APV page confirms the UF-capped exemption and the early-withdrawal surcharge, not the regimes)
-    - [ ] `afp_pension_system`: default-fund age brackets and that the contribution rate is set by law
-    - [ ] `mutual_fund` (AGF, CMF supervision), `stock` (brokers, CMF), `cryptocurrency` (legal tender), `etf`: a Chilean page with a path; several still cite the bare cmfchile.cl home page
+- [x] Scope narrowed (Oct 19, team's sources.md): cards define terms and point to the right institution. Deductions, legal points, rates, caps and regulators' roles beyond one sentence are out of scope, which retires most of the earlier source checks.
+    - [x] `apv`: regimes A and B defined from the Superintendencia de Pensiones article and Fintual's help page (the earlier card had them swapped)
+    - [x] `mutual_fund`, `stock`, `bond`, `etf`: one "regulated by the CMF" sentence; `cryptocurrency`: legal-tender claim dropped
+    - [x] `net_income`: no deductions; `cae`, `credit_report`, `interest_rate`: no laws, rights or rate ceilings
     - [ ] `time_deposit`: UF-indexed deposits (hedged as "some banks")
-    - [x] `inflation`: IPC published by the INE (ine.gob.cl); the Banco Central target sentence was removed
-    - [ ] `unidad_de_fomento`: cite the Banco Central directly (bcentral.cl did not load; es.wikipedia and SII cited)
-    - [ ] `net_income`, `liquidity`: no Khan coverage; AFP, health and impuesto único deductions against spensiones.cl and sii.cl
-    - [ ] `cae`, `credit_report`: Ley 20.555 disclosure and informe comercial rights against CMF, SERNAC and Ley 19.628
-    - [x] `minimum_payment`, `revolving_credit`: statement and payoff mechanics from Khan Academy
-    - [x] `debt_to_income_ratio`: unsourced "carga financiera" mention dropped
     - [ ] `rule_50_30_20`: the Santiago rent / 60-20-20 remark has no source
 
 ### WP2 · Retrieval adapters and wiring
@@ -90,12 +83,12 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 ### Integration (after the packages)
 - [x] Merge WP2–WP4 into `c/education-rag`; `ruff check .`; `make test-all` green
 - [x] Run `tests/rag_eval` with Chroma and the real model; record in `evidence/rag_eval/`
-- [ ] Docker: decide whether the image ships the `rag` extra (size) or stays on `lexical`
+- [x] Docker: Chroma runs in its own container (`docker compose --profile rag`, `NL_KB_URL`); the default image stays on `lexical`
 - [ ] PR `c/education-rag` → `staging`
 
 ## Results so far
 
-- Retrieval eval (52 questions, 70 cards, after the Khan Academy pass): lexical recall@3 1.0, MRR 0.958; Chroma recall@3 1.0, MRR 0.972 (`evidence/rag_eval/`). Floors still separate: lexical 0.558 vs 0.387, Chroma 0.421 vs 0.228.
+- Retrieval eval (52 questions, 70 cards, after the Khan Academy pass): lexical recall@3 1.0, MRR 0.958; Chroma recall@3 1.0, MRR 0.972 (`evidence/rag_eval/`). After the scope pass: lexical recall@3 1.0 (MRR 0.979), Chroma recall@3 1.0 (MRR 0.972). Floors still separate: lexical 0.556 vs 0.409 (floor 0.45, the margin is narrowing), Chroma 0.41 vs 0.261 (floor 0.30).
 - Score thresholds differ by method: lexical about 0.45, Chroma about 0.30 (off-topic max 0.379 and 0.23).
 - `rag` extra adds about 340 MB to site-packages plus the 240 MB model.
 - [x] Chroma miss: "how much money do I really have available" → paraphrased aliases on `protected_surplus`; Chroma recall@3 now 1.0
