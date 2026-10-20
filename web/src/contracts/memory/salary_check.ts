@@ -6,7 +6,7 @@
 export type MemoryWarningCode = "INCOME_RAISE_ASSUMED" | "SALARY_DIFFERS" | "SALARY_CONFLICT" | "SALARY_UNIDENTIFIED";
 
 /**
- * What the statements say about a salary_net chain, derived on every read from the declarations, the eligible credits, statement coverage and fc-0.4 (ADR-049). Nothing here is stored. Evidence is tied to the expected payday of each pay month, not to the credit's calendar month. `numeric_effect` says whether the forecast uses the declaration (applied) or only keeps it for checking (saved_only); a declaration is never a credited salary.
+ * What the statements say about a salary_net chain, derived on every read from the declarations, the eligible credits, statement coverage and the verification rules named by params_version (ADR-049). Nothing here is stored. Evidence is tied to the expected payday of each pay month, not to the credit's calendar month. `numeric_effect` says whether the forecast uses the declaration (applied) or only keeps it for checking (saved_only); a declaration is never a credited salary. In this release memory is saved only: numeric_effect is always saved_only, reasons is empty (no income is applied, so none of its warnings applies), and the financial results keep their own params_version (fc-0.3).
  */
 export interface SalaryCheck {
   /**
@@ -27,6 +27,9 @@ export interface SalaryCheck {
    * Why the effect is what it is; each code is also a warning of the financial tools that use memory.
    */
   reasons: MemoryWarningCode[];
+  /**
+   * The version of the verification rules that produced this check (salary-check-0.1: tolerance 5%, window ±3 business days, conflict after 2 consecutive misses), not the financial parameters.
+   */
   params_version: string;
 }
 export interface Payday {

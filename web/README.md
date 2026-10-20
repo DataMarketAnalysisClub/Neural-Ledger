@@ -30,7 +30,7 @@ cd web && npm run dev
 | `npm run contracts` | Regenerates `src/contracts/` from `../contracts` (commit the result; CI checks it is current) |
 | `npm run lint` / `npm run typecheck` | ESLint and TypeScript |
 | `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, redaction chips, statement import and identity-scoped statement queries, accounts sessions and profile, axe accessibility checks |
-| `npm run e2e` | Playwright against a running stack. The demo specs (`demo-arc`, `overview`, `statements`) need a demo-mode API; the accounts specs (`signup`, `statements-accounts`) skip unless `/health` reports `auth: "accounts"`, so run each set against its own stack |
+| `npm run e2e` | Playwright against a running stack. The demo specs (`demo-arc`, `overview`, `statements`) need a demo-mode API; the accounts specs (`signup`, `statements-accounts`, `memory-accounts`) skip unless `/health` reports `auth: "accounts"`, so run each set against its own stack |
 | `npm run build` | Production bundle in `dist/` |
 
 ## Rules

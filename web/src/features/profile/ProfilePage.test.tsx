@@ -22,9 +22,9 @@ function Page() {
   return <PersonaProvider><ProfilePage /></PersonaProvider>;
 }
 
-const exported = { format: "neural-ledger-export-1", exported_at: "2026-10-20T12:00:00+00:00", user_id: "usr_ana", account: null, profile: null,
+const exported = { format: "neural-ledger-export-2", exported_at: "2026-10-20T12:00:00+00:00", user_id: "usr_ana", account: null, profile: null,
   statements: [], transactions: [], receipts: [], connections: [], savings_rules: [],
-  investments: { link: null, latest_snapshot: null, documents: [] }, audit_events: [] };
+  investments: { link: null, latest_snapshot: null, documents: [] }, memory: { consent: { consent: "missing", consent_generation: 0, memory_revision: 0 }, declarations: { catalog_version: "mem-0.1", declarations: [] } }, audit_events: [] };
 
 function serve(user_id: string, data_source: string, deletion: () => Response, exporting = () => new Response(JSON.stringify(exported), { status: 200 })) {
   let signedIn = true;
@@ -40,6 +40,7 @@ function serve(user_id: string, data_source: string, deletion: () => Response, e
       if (response.status === 200 && data_source !== "persona") signedIn = false;
       return response;
     }
+    if (path.endsWith("/v1/memory")) return new Response(JSON.stringify({ catalog_version: "mem-0.1", consent: "missing", items: [] }), { status: 200 });
     if (path.endsWith("/v1/profile")) return new Response(JSON.stringify(profile(user_id, user_id === "camila" ? "Camila" : "Ana")), { status: 200 });
     return new Response(JSON.stringify({ status: "INSUFFICIENT_DATA", params_version: "fc-0.3", missing: ["financial data"], facts: [], warnings: [] }), { status: 409 });
   });

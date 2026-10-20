@@ -6,7 +6,7 @@
 export type MemoryWarningCode = "INCOME_RAISE_ASSUMED" | "SALARY_DIFFERS" | "SALARY_CONFLICT" | "SALARY_UNIDENTIFIED";
 
 /**
- * data of the copilot's get_user_memory tool (T0, ADR-048): typed values and derived conclusions only. No text, no glosa, no origin and no store payload reaches the model. Without the memory consent, or for a shared persona, `items` is empty.
+ * data of the copilot's get_user_memory tool (T0, ADR-048): typed values and derived conclusions only. No text, no glosa, no origin and no store payload reaches the model. Without the memory consent, or for a shared persona, `items` is empty. In this release memory is saved only: numeric_effect is saved_only and reasons is empty. When every version starts later than today's pay month, the item is the next one and upcoming is null.
  */
 export interface MemorySummary {
   catalog_version: "mem-0.1";

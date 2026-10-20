@@ -34,6 +34,14 @@ import type { ConnectionToolsUpdate } from "@/contracts/connections/tools_update
 import type { ConnectionSync } from "@/contracts/connections/sync_result";
 import type { ConnectedData } from "@/contracts/outputs/connected_data";
 import type { BankStart } from "@/contracts/connections/bank_start";
+import type { MemoryView } from "@/contracts/memory/memory_view";
+import type { MemoryConsent } from "@/contracts/memory/memory_consent";
+import type { MemoryConsentUpdate } from "@/contracts/memory/memory_consent_update";
+import type { MemoryExport } from "@/contracts/memory/memory_export";
+import type { MemoryDeletion } from "@/contracts/memory/memory_deletion";
+import type { IncomeDeclaration } from "@/contracts/memory/income_declaration";
+import type { IncomeProposal } from "@/contracts/memory/income_proposal";
+import { mergeCounters, type MemoryCounters } from "@/features/memory/counters";
 import { ApiError, request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type Envelope, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
@@ -41,6 +49,7 @@ import type { ProfileTolerance } from "./profile";
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
 export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate, DocumentIngest, SpendingStatus, Receipts };
 export type { InvestmentOverview, InvestmentLinkOutcome, InvestmentLinkRequest };
+export type { MemoryView, MemoryConsent, MemoryExport, MemoryDeletion, IncomeDeclaration, IncomeProposal, MemoryCounters };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -445,8 +454,14 @@ export function useSetCategory() {
 export function useChat() {
   const { identity, sessionId } = usePersona();
   const client = useQueryClient();
+  const note = useNoteMemoryCounters();
   return useMutation({
     mutationFn: (message: string) => request<ChatReply>("/v1/chat", { identity, method: "POST", body: { session_id: sessionId, message } }),
+    onSuccess: (reply) => {
+      // The server read these counters; and memory may have moved since in another tab, so ask for the latest.
+      note(reply.memory_dependency);
+      if (reply.memory_dependency) void client.invalidateQueries({ queryKey: [identity.user_id, "memory-consent"] });
+    },
     onSettled: () => {
       void client.invalidateQueries({ queryKey: [identity.user_id, "pending"] });
       void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
@@ -548,4 +563,115 @@ export function useConnectBank() {
   return useConnectionMutation((exchangeToken: string, identity, sessionId) =>
     requestEnvelope<Connection>("/v1/connections/bank", { identity, method: "POST", body: { exchange_token: exchangeToken, consent: true, session_id: sessionId } }),
   );
+}
+
+// ---- User memory (ADR-048): saved only; the user's own HTTP flows, nothing optimistic ---------------------------
+
+const countersKey = (userId: string) => [userId, "memory-counters"] as const;
+
+/**
+ * The largest memory counters this tab has seen for the identity (features/memory/counters.ts): from every consent
+ * response and every chat reply. They only grow, so a late or out-of-order response never makes an obsolete reply
+ * visible again. Null until one is seen.
+ */
+export function useMemoryCounters(): MemoryCounters | null {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  const key = countersKey(identity.user_id);
+  // Never fetched: written by useNoteMemoryCounters, read here; a refetch keeps what is cached.
+  const { data } = useQuery({ queryKey: key, queryFn: () => client.getQueryData<MemoryCounters | null>(key) ?? null, enabled: false, staleTime: Infinity });
+  return data ?? null;
+}
+
+export function useNoteMemoryCounters() {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return useCallback(
+    (seen: MemoryCounters | null | undefined) => {
+      if (seen) client.setQueryData<MemoryCounters | null>(countersKey(identity.user_id), (known) => mergeCounters(known, seen));
+    },
+    [client, identity.user_id],
+  );
+}
+
+/** Every memory query of this identity: a write re-reads them all, so no card or list keeps an old revision. */
+function useMemoryRefresh() {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return () => {
+    for (const key of ["memory", "memory-consent", "audit"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+  };
+}
+
+/** The consent and the counters that tell a reply or a card it is obsolete (memory_consent). */
+export function useMemoryConsent(enabled = true) {
+  const { identity } = usePersona();
+  const note = useNoteMemoryCounters();
+  return useQuery({
+    queryKey: [identity.user_id, "memory-consent"],
+    queryFn: async () => {
+      const consent = await request<MemoryConsent>("/v1/memory/consent", { identity });
+      note(consent);
+      return consent;
+    },
+    enabled,
+  });
+}
+
+export function useSetMemoryConsent() {
+  const { identity } = usePersona();
+  const refresh = useMemoryRefresh();
+  const note = useNoteMemoryCounters();
+  return useMutation({
+    mutationFn: (consent: MemoryConsentUpdate["consent"]) =>
+      request<MemoryConsent>("/v1/memory/consent", { identity, method: "PUT", body: { consent } satisfies MemoryConsentUpdate }),
+    onSuccess: note,
+    onSettled: refresh,
+  });
+}
+
+/** What Neural Ledger keeps about the user. Available without consent; the check is then null. */
+export function useMemory(enabled = true) {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "memory"], queryFn: () => request<MemoryView>("/v1/memory", { identity }), enabled });
+}
+
+/** The card's confirmation: the amount the user selected or typed, with the proposal's origin (the server's). */
+export function useConfirmMemory() {
+  const { identity, sessionId } = usePersona();
+  const refresh = useMemoryRefresh();
+  return useMutation({
+    mutationFn: ({ proposalId, ...declaration }: { proposalId: string } & Omit<IncomeDeclaration, "session_id">) =>
+      request<MemoryView>(`/v1/memory/proposals/${encodeURIComponent(proposalId)}/confirm`, {
+        identity,
+        method: "POST",
+        body: { ...declaration, session_id: sessionId } satisfies IncomeDeclaration,
+      }),
+    onSettled: refresh,
+  });
+}
+
+/** Perfil's declaration: a new version of the chain (expected_version), or its first one. */
+export function useDeclareIncome() {
+  const { identity } = usePersona();
+  const refresh = useMemoryRefresh();
+  return useMutation({
+    mutationFn: (declaration: IncomeDeclaration) => request<MemoryView>("/v1/profile/income", { identity, method: "PUT", body: declaration }),
+    onSettled: refresh,
+  });
+}
+
+export function useDeleteMemoryChain() {
+  const { identity } = usePersona();
+  const refresh = useMemoryRefresh();
+  return useMutation({
+    mutationFn: (chainId: string) => request<MemoryDeletion>(`/v1/memory/${encodeURIComponent(chainId)}`, { identity, method: "DELETE" }),
+    onSettled: refresh,
+  });
+}
+
+/** Every declaration version, for the user to download (G02). Read on demand, never cached. */
+export function useMemoryExport() {
+  const { identity } = usePersona();
+  return useMutation({ mutationFn: () => request<MemoryExport>("/v1/memory/export", { identity }) });
 }

@@ -13,7 +13,8 @@ let chat: ReturnType<typeof idle> = idle();
 let ingest: ReturnType<typeof idle> = idle();
 let correction: ReturnType<typeof idle> = idle();
 let expenseConfirm: ReturnType<typeof idle> & { isSuccess?: boolean } = idle();
-afterEach(() => { chat = idle(); ingest = idle(); correction = idle(); expenseConfirm = idle(); vi.useRealTimers(); });
+let counters: { consent_generation: number; memory_revision: number } | null = null; // what the tab knows (useMemoryCounters)
+afterEach(() => { chat = idle(); ingest = idle(); correction = idle(); expenseConfirm = idle(); counters = null; vi.useRealTimers(); });
 
 vi.mock("@/api/hooks", () => ({
   usePersona: () => ({ persona: "camila", sessionId, newSession }),
@@ -26,6 +27,9 @@ vi.mock("@/api/hooks", () => ({
   useIngestDocument: () => ingest,
   useCorrectReceipt: () => correction,
   useConfirmExpense: () => expenseConfirm,
+  useConfirmMemory: () => idle(),
+  useMemoryConsent: () => ({ data: undefined }),
+  useMemoryCounters: () => counters,
 }));
 
 describe("CopilotPage", () => {
@@ -358,5 +362,67 @@ describe("CopilotPage", () => {
 
     expect(expenseConfirm.mutate).toHaveBeenCalledWith({ proposalId: "exp_1", payment: "card", category: "dining" }, expect.anything());
     expect(chat.mutate).toHaveBeenLastCalledWith("I saved the expense. How much can I spend now?", expect.anything());
+  });
+
+  describe("a reply built on memory (ADR-048 §6)", () => {
+    const at = (consent_generation: number, memory_revision: number) => ({ consent_generation, memory_revision });
+    const base = { actions: [], warnings: [], blocked_reason: null, fallback_used: false, verification: { ok: true } };
+    const salaryReply = (dependency: ReturnType<typeof at> | null, extra: object = {}) => ({
+      ...base, text: "You declared a net salary of 1,234,567 CLP.", tools_called: ["get_user_memory"],
+      facts: [{ key: "memory.salary_net_1.amount", value: 1234567, unit: "CLP" }], memory_dependency: dependency, ...extra,
+    });
+    const answering = (...replies: unknown[]) => {
+      const queue = [...replies];
+      chat = { ...idle(), mutate: vi.fn((_m: string, options?: { onSuccess?: (r: unknown) => void }) => options?.onSuccess?.(queue.shift())) };
+    };
+    const ask = (name = "Will I be OK in December?") => userEvent.click(screen.getByRole("button", { name }));
+    const log = () => screen.getByRole("log");
+
+    it("hides the whole reply, even one with no card, when the tab already knows memory moved (a late response)", async () => {
+      counters = at(2, 1); // revoked in the profile while the request was in flight
+      answering(salaryReply(at(1, 1)));
+      render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+      await ask();
+      expect(log()).not.toHaveTextContent("1,234,567");
+      expect(log()).not.toHaveTextContent("get_user_memory");
+      expect(log()).toHaveTextContent("Your memory settings changed after this reply was written");
+    });
+
+    it("never shows an older reply again when responses arrive out of order", async () => {
+      counters = at(1, 2);
+      answering(salaryReply(at(1, 2), { text: "Newer: 1,300,000 CLP." }), salaryReply(at(1, 1)));
+      render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+      await ask();
+      await ask("Just make it work.");
+      expect(log()).toHaveTextContent("Newer: 1,300,000 CLP.");
+      expect(log()).not.toHaveTextContent("1,234,567");
+    });
+
+    it("hides a reply that was shown once memory moves, and its proposal with it", async () => {
+      counters = at(1, 1);
+      const proposal = {
+        proposal_id: "prop_dep", session_id: "s1", user_id: "camila", source_snapshot_id: "plan_1", status: "pending",
+        created_at: "2026-10-29T12:00:00-03:00", expires_at: "2099-10-29T12:30:00-03:00",
+        terms: { action: "create_savings_rule", amount: 777000, currency: "CLP", frequency: "monthly", source_account: "checking", destination: "sandbox_savings", effective_date: "2027-01-01" },
+      };
+      answering(salaryReply(at(1, 1), { pending_proposal: proposal }));
+      const view = render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+      await ask();
+      expect(log()).toHaveTextContent("1,234,567");
+      expect(document.body).toHaveTextContent("777,000");
+
+      counters = at(2, 1);
+      view.rerender(<MemoryRouter><CopilotPage /></MemoryRouter>);
+      expect(log()).not.toHaveTextContent("1,234,567");
+      expect(document.body).not.toHaveTextContent("777,000");
+    });
+
+    it("keeps showing a reply that did not rely on memory", async () => {
+      counters = at(5, 5);
+      answering({ ...base, text: "Not comfortably.", tools_called: [], facts: [], memory_dependency: null });
+      render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+      await ask();
+      expect(log()).toHaveTextContent("Not comfortably.");
+    });
   });
 });
