@@ -16,7 +16,7 @@ export type Origin =
     };
 
 /**
- * One stored version of a memory chain, as GET /v1/memory and the export show it (ADR-047). Only the user confirms a declaration; whether evidence supports it is derived on read (salary_check), never stored. The origin is an opaque reference: memory keeps neither the message nor its hash. The owner comes from authentication and is not part of the view.
+ * One stored version of a memory chain, as GET /v1/memory and the export show it (ADR-048). Only the user confirms a declaration; whether evidence supports it is derived on read (salary_check), never stored. The origin is an opaque reference: memory keeps neither the message nor its hash. The owner comes from authentication and is not part of the view.
  */
 export interface MemoryDeclaration {
   memory_id: string;
@@ -37,7 +37,7 @@ export interface MemoryDeclaration {
   audit_ref: string;
 }
 /**
- * A typed value of the closed memory catalog mem-0.1 (ADR-047). One type today: salary_net, the user's declared net salary from a pay month on. Unknown types and fields are refused; a boolean is not an amount. A value is what the user declared, never a credited salary.
+ * A typed value of the closed memory catalog mem-0.1 (ADR-048). One type today: salary_net, the user's declared net salary from a pay month on. Unknown types and fields are refused; a boolean is not an amount. A value is what the user declared, never a credited salary.
  */
 export interface MemoryValue {
   type: "salary_net";
@@ -50,7 +50,7 @@ export interface SalaryNet {
   amount: number;
   net: true;
   /**
-   * YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-040).
+   * YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-049).
    */
   effective_from: string;
 }

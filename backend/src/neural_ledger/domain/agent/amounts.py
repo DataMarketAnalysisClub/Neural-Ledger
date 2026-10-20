@@ -75,7 +75,7 @@ def written_amounts(text: str) -> frozenset[int]:
     return frozenset(plain | {int(n.value) for n in extract_numbers(text) if not n.is_percent and n.value == int(n.value)})
 
 
-# ---- a salary said in chat (ADR-047) --------------------------------------------------------------------------
+# ---- a salary said in chat (ADR-048) --------------------------------------------------------------------------
 
 
 _MONTHS = {

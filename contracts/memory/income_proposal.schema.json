@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/memory/income_proposal.schema.json",
   "title": "IncomeProposal",
-  "description": "data of the propose_income_change tool (ADR-047): a salary declaration prepared from the message that started the turn, never from earlier messages, for the user to complete and confirm in the card. Nothing is stored until they confirm (POST /v1/memory/proposals/{proposal_id}/confirm), once. READY: one amount, prefilled. CHOOSE_AMOUNT: several, the user picks; the model never decides which is the old and which the new salary. ASK_AMOUNT: none, the card asks; no amount is invented. The interpreted pay month is always shown. `needs_base` asks for the previous salary and its pay month when the chain has no version yet.",
+  "description": "data of the propose_income_change tool (ADR-048): a salary declaration prepared from the message that started the turn, never from earlier messages, for the user to complete and confirm in the card. Nothing is stored until they confirm (POST /v1/memory/proposals/{proposal_id}/confirm), once. READY: one amount, prefilled. CHOOSE_AMOUNT: several, the user picks; the model never decides which is the old and which the new salary. ASK_AMOUNT: none, the card asks; no amount is invented. The interpreted pay month is always shown. `needs_base` asks for the previous salary and its pay month when the chain has no version yet.",
   "type": "object",
   "required": ["proposal_id", "status", "candidates", "effective_from", "needs_base", "chain_id", "expected_version", "currency"],
   "properties": {

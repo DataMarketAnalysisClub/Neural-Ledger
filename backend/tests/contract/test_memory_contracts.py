@@ -1,4 +1,4 @@
-"""ADR-047: the user-memory contracts hold together before any code implements them.
+"""ADR-048: the user-memory contracts hold together before any code implements them.
 
 The two tool schemas are drafts in contracts/memory/tools/ until their registry entry exists (step 9 of the plan);
 contracts/tools/ is what the registry loads and must match, so they move there with the code.

@@ -1,4 +1,4 @@
-"""A declared salary in the income model: by decomposition, never by difference (ADR-040 §5-9).
+"""A declared salary in the income model: by decomposition, never by difference (ADR-049 §5-9).
 
 The observed income is the estimator's percentiles over everything credited in the window. With a declared salary,
 the salary is taken out of that history and the declaration put in its place:
@@ -166,7 +166,7 @@ def overlay_facts(overlay: IncomeOverlay, currency: str) -> tuple[Fact, ...]:
 
 
 def _level(versions: Sequence[Declaration], version: Declaration, check: SalaryCheck, rules: SalaryRules) -> Fraction | None:
-    """The salary the statements support for a version (s in ADR-040 §6): never above what it declares."""
+    """The salary the statements support for a version (s in ADR-049 §6): never above what it declares."""
     matched = check.matched_amounts(version.version)
     declared = Fraction(version.value.amount)
     if len(matched) >= rules.raise_confirm_cycles:

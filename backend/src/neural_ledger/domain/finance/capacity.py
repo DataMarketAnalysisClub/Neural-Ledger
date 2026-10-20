@@ -86,7 +86,7 @@ def assess_capacity(model: FinancialModel, params: FinanceParams) -> CapacityAss
 
     reserve_cov = Fraction(model.balances.reserve) / essentials
     cv = Fraction(model.income.cv)
-    # the worst month's own ratio (ADR-040 §8): never one month's debt over another month's income
+    # the worst month's own ratio (ADR-049 §8): never one month's debt over another month's income
     debt_ratio = max(_debt_ratio(model.debt_service_due(m), model.income.for_month(Scenario.CONSERVATIVE, m)) for m in months)
     conservative = project(model, params, Scenario.CONSERVATIVE, horizon)
     headroom_ratio = Fraction(conservative.lowest.headroom, params.liquidity_floor)

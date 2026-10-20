@@ -1,4 +1,4 @@
-"""ADR-040: with a constant salary declared as is nothing changes, and a declaration never lifts the conservative
+"""ADR-049: with a constant salary declared as is nothing changes, and a declaration never lifts the conservative
 income above what the statements support."""
 
 from __future__ import annotations

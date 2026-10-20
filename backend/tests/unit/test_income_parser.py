@@ -1,4 +1,4 @@
-"""ADR-047: what a message says about a salary. The parser reads amounts and a pay month; it never decides which
+"""ADR-048: what a message says about a salary. The parser reads amounts and a pay month; it never decides which
 amount is the old salary and which the new one, and it never invents an amount."""
 
 from __future__ import annotations

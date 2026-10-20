@@ -1,4 +1,4 @@
-"""ADR-040 §5-9: a declared salary enters the income by decomposition. The worked examples A-F of the ADR, run on
+"""ADR-049 §5-9: a declared salary enters the income by decomposition. The worked examples A-F of the ADR, run on
 hand-built ledgers through the real estimator and salary check.
 
 Ledger: 12 window cycles; each cycle's salary is credited on the payday that opens it; "others" is 150,000 credited

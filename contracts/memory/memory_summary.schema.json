@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/memory/memory_summary.schema.json",
   "title": "MemorySummary",
-  "description": "data of the copilot's get_user_memory tool (T0, ADR-047): typed values and derived conclusions only. No text, no glosa, no origin and no store payload reaches the model. Without the memory consent, or for a shared persona, `items` is empty.",
+  "description": "data of the copilot's get_user_memory tool (T0, ADR-048): typed values and derived conclusions only. No text, no glosa, no origin and no store payload reaches the model. Without the memory consent, or for a shared persona, `items` is empty.",
   "type": "object",
   "required": ["catalog_version", "consent", "items"],
   "properties": {

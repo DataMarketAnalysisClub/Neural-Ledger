@@ -1,4 +1,4 @@
-"""ADR-047: every way of writing the same salary reads as the same amount, and words around it change nothing."""
+"""ADR-048: every way of writing the same salary reads as the same amount, and words around it change nothing."""
 
 from __future__ import annotations
 

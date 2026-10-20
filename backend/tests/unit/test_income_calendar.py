@@ -1,4 +1,4 @@
-"""ADR-040 §8: income per projected cycle. An empty calendar is the observed income in every cycle."""
+"""ADR-049 §8: income per projected cycle. An empty calendar is the observed income in every cycle."""
 
 from __future__ import annotations
 

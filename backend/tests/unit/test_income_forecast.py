@@ -1,4 +1,4 @@
-"""ADR-040 §8: the projections read each cycle's income from the calendar, and capacity divides each month's debt
+"""ADR-049 §8: the projections read each cycle's income from the calendar, and capacity divides each month's debt
 by that month's conservative income. Ledgers from test_income_memory (as_of 2026-09-29, first cycle 2026-10)."""
 
 from __future__ import annotations

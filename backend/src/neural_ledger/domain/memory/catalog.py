@@ -1,8 +1,8 @@
-"""Typed user memory (ADR-047): the closed catalog mem-0.1 and the declarations the user confirmed.
+"""Typed user memory (ADR-048): the closed catalog mem-0.1 and the declarations the user confirmed.
 
 Only declarations are stored. Whether statements support one (verified, conflict, matched paydays) is derived on read
 by salary_check.py and never kept here. A declaration never becomes a contracted net salary and sets no amount by
-itself: what it changes in the numbers is the domain's decision (ADR-040).
+itself: what it changes in the numbers is the domain's decision (ADR-049).
 
 Versions: editing or re-confirming appends a version to the chain. A version applies to pay months from its
 `effective_from` until the next `effective_from` in the chain; of two versions with the same `effective_from`, the
@@ -136,7 +136,7 @@ def applicable(declarations: Sequence[Declaration], pay_month: Month) -> Declara
 
 
 def previous(declarations: Sequence[Declaration], version: Declaration) -> Declaration | None:
-    """The version that applied just before `version` took effect, for the previous salary level (ADR-040 §6)."""
+    """The version that applied just before `version` took effect, for the previous salary level (ADR-049 §6)."""
     return applicable(declarations, version.effective_from.plus(-1))
 
 

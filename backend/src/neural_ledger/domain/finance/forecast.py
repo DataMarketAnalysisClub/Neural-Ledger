@@ -4,7 +4,7 @@ Liquidity is checked at each pay cycle's TROUGH: the balance just before salary 
     B_m = B_(m-1) + I_m - K_m - V_m - R_m - P_m - S_m        H_m = B_m - Floor
 A month breaches when H_m < 0. Typical: contracted/P50 income, P50 spend. Conservative:
 contracted/P20 income, P80 spend (used for every decision). Stress: conservative + one shock.
-I_m is read per cycle from the income model's calendar (ADR-040 §8), so a declared salary change
+I_m is read per cycle from the income model's calendar (ADR-049 §8), so a declared salary change
 reaches the cycle it funds; without a calendar it is the same every month.
 """
 

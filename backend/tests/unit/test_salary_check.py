@@ -1,4 +1,4 @@
-"""ADR-040 §1-4: whether the statements support a declared salary, derived on read from declarations and credits.
+"""ADR-049 §1-4: whether the statements support a declared salary, derived on read from declarations and credits.
 
 Paydays used here (last weekday of the month): 2026-07-31 Fri, 2026-08-31 Mon, 2026-09-30 Wed, 2026-10-30 Fri,
 2026-11-30 Mon, 2026-12-31 Thu. Payday 2026-10-30 ± 3 business days is 2026-10-27 to 2026-11-04.
@@ -134,7 +134,7 @@ def test_every_account_must_cover_the_window_whole():
     ids=["stops before", "starts after"],
 )
 def test_an_account_that_stops_or_starts_leaves_the_payday_not_eligible(checking):
-    """The salary may be paid into it: nothing tells a closed account from a statement not imported (ADR-040 §2)."""
+    """The salary may be paid into it: nothing tells a closed account from a statement not imported (ADR-049 §2)."""
     savings = AccountSpan("santander:****9999", date(2026, 1, 1), date(2027, 2, 28))
     check = check_salary([declared(1, 1_200_000, "2026-10")], [], (savings, checking), date(2026, 11, 20))
     assert check.evidence[0].outcome is Outcome.NOT_ELIGIBLE

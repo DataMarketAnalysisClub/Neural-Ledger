@@ -57,7 +57,7 @@ class Commitment:
 
 @dataclass(frozen=True, slots=True)
 class IncomeStep:
-    """Income from a projected cycle on, until the next step (ADR-040 §8)."""
+    """Income from a projected cycle on, until the next step (ADR-049 §8)."""
 
     start: Month
     typical: int
@@ -71,7 +71,7 @@ class IncomeModel:
     conservative: int  # contracted net (lower of contract and recent credits) or P20: what was observed
     cv: Fraction  # coefficient of variation of monthly income, always the observed one
     method: str  # "contracted" | "percentile"
-    # Per-cycle income where a declared salary applies (ADR-040), in start order; empty = the observed income in
+    # Per-cycle income where a declared salary applies (ADR-049), in start order; empty = the observed income in
     # every cycle. A step lasts until the next one, so the calendar covers any horizon, a credit's full term included.
     monthly: tuple[IncomeStep, ...] = ()
 

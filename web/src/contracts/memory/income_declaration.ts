@@ -19,7 +19,7 @@ export interface SalaryNet {
   amount: number;
   net: true;
   /**
-   * YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-040).
+   * YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-049).
    */
   effective_from: string;
 }

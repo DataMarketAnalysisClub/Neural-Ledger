@@ -1,4 +1,4 @@
-"""ADR-047: the closed catalog mem-0.1, declarations only the user confirms, and which version applies to a month."""
+"""ADR-048: the closed catalog mem-0.1, declarations only the user confirms, and which version applies to a month."""
 
 from __future__ import annotations
 

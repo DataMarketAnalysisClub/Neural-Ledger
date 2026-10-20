@@ -1,4 +1,4 @@
-"""ADR-040: the salary check depends on what was imported, never on its order, and a missing statement never counts
+"""ADR-049: the salary check depends on what was imported, never on its order, and a missing statement never counts
 against the user."""
 
 from __future__ import annotations

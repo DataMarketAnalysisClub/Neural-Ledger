@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of the propose_income_change tool (ADR-047): a salary declaration prepared from the message that started the turn, never from earlier messages, for the user to complete and confirm in the card. Nothing is stored until they confirm (POST /v1/memory/proposals/{proposal_id}/confirm), once. READY: one amount, prefilled. CHOOSE_AMOUNT: several, the user picks; the model never decides which is the old and which the new salary. ASK_AMOUNT: none, the card asks; no amount is invented. The interpreted pay month is always shown. `needs_base` asks for the previous salary and its pay month when the chain has no version yet.
+ * data of the propose_income_change tool (ADR-048): a salary declaration prepared from the message that started the turn, never from earlier messages, for the user to complete and confirm in the card. Nothing is stored until they confirm (POST /v1/memory/proposals/{proposal_id}/confirm), once. READY: one amount, prefilled. CHOOSE_AMOUNT: several, the user picks; the model never decides which is the old and which the new salary. ASK_AMOUNT: none, the card asks; no amount is invented. The interpreted pay month is always shown. `needs_base` asks for the previous salary and its pay month when the chain has no version yet.
  */
 export interface IncomeProposal {
   proposal_id: string;
@@ -12,7 +12,7 @@ export interface IncomeProposal {
   candidates: number[];
   effective_from: {
     /**
-     * YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-040).
+     * YYYY-MM: the month whose payday (last weekday) first credits the salary. It funds the next pay cycle (ADR-049).
      */
     pay_month: string;
     /**

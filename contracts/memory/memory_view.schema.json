@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/memory/memory_view.schema.json",
   "title": "MemoryView",
-  "description": "data of GET /v1/memory (Perfil, \"Lo que Neural Ledger sabe de ti\") and of the confirmation and Perfil writes (ADR-047): per chain, the version that applies today, the next one if it starts later, and what the statements say about it. Without the memory consent, `items` still lists the declarations so the user can delete them, but `check` is null and nothing is applied. A shared persona has no items.",
+  "description": "data of GET /v1/memory (Perfil, \"Lo que Neural Ledger sabe de ti\") and of the confirmation and Perfil writes (ADR-048): per chain, the version that applies today, the next one if it starts later, and what the statements say about it. Without the memory consent, `items` still lists the declarations so the user can delete them, but `check` is null and nothing is applied. A shared persona has no items.",
   "type": "object",
   "required": ["catalog_version", "consent", "items"],
   "properties": {

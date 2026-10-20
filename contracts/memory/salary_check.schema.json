@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/memory/salary_check.schema.json",
   "title": "SalaryCheck",
-  "description": "What the statements say about a salary_net chain, derived on every read from the declarations, the eligible credits, statement coverage and fc-0.4 (ADR-040). Nothing here is stored. Evidence is tied to the expected payday of each pay month, not to the credit's calendar month. `numeric_effect` says whether the forecast uses the declaration (applied) or only keeps it for checking (saved_only); a declaration is never a credited salary.",
+  "description": "What the statements say about a salary_net chain, derived on every read from the declarations, the eligible credits, statement coverage and fc-0.4 (ADR-049). Nothing here is stored. Evidence is tied to the expected payday of each pay month, not to the credit's calendar month. `numeric_effect` says whether the forecast uses the declaration (applied) or only keeps it for checking (saved_only); a declaration is never a credited salary.",
   "type": "object",
   "required": ["status", "matched", "missed", "evidence", "numeric_effect", "reasons", "params_version"],
   "properties": {

@@ -1,4 +1,4 @@
-"""Is a declared salary in the statements? (ADR-040 §1-4). Pure and derived on every read: nothing here is stored.
+"""Is a declared salary in the statements? (ADR-049 §1-4). Pure and derived on every read: nothing here is stored.
 
 Calendar: the declared pay month `p` has its expected payday `payday(p)` (last weekday, paycycle.py). Evidence is tied
 to that payday, never to the credit's calendar month: a credit within `payday(p)` ± 3 business days (weekdays;
@@ -17,7 +17,7 @@ smallest difference first, then the earliest date, then the lowest txn_id; a tra
 order and re-imports do not change the result. Transactions are never recategorized.
 
 Counts and state: matches of the current version count from its effective_from. A payday without a match counts as
-missed only from the chain's latest confirmation on (ADR-040 §4: a conflict lasts until the user confirms a new
+missed only from the chain's latest confirmation on (ADR-049 §4: a conflict lasts until the user confirms a new
 version; any new version, the same amount re-confirmed included, moves that cut and clears it). Conflict: two
 consecutive eligible paydays without a match. Verified: at least one match of the current version. Declared: neither.
 """
@@ -42,7 +42,7 @@ from .catalog import Declaration, applicable, chain
 
 @dataclass(frozen=True, slots=True)
 class SalaryRules:
-    """The fc-0.4 values ADR-040 proposes. They join FinanceParams (and its lock) once Roles A and E approve them."""
+    """The fc-0.4 values ADR-049 proposes. They join FinanceParams (and its lock) once Roles A and E approve them."""
 
     tolerance: Fraction = Fraction(5, 100)
     window_business_days: int = 3
@@ -101,7 +101,7 @@ class SalaryCheck:
     evidence: tuple[PaydayEvidence, ...]  # every pay month from the chain's first effective_from to today's
 
     def matched_amounts(self, version: int) -> tuple[int, ...]:
-        """The matched credits of one version, in pay-month order: E in ADR-040 §6."""
+        """The matched credits of one version, in pay-month order: E in ADR-049 §6."""
         return tuple(e.credit.amount for e in self.evidence if e.version == version and e.credit is not None)
 
 

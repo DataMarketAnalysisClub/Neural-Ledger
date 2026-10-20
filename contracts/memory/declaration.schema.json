@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/memory/declaration.schema.json",
   "title": "MemoryDeclaration",
-  "description": "One stored version of a memory chain, as GET /v1/memory and the export show it (ADR-047). Only the user confirms a declaration; whether evidence supports it is derived on read (salary_check), never stored. The origin is an opaque reference: memory keeps neither the message nor its hash. The owner comes from authentication and is not part of the view.",
+  "description": "One stored version of a memory chain, as GET /v1/memory and the export show it (ADR-048). Only the user confirms a declaration; whether evidence supports it is derived on read (salary_check), never stored. The origin is an opaque reference: memory keeps neither the message nor its hash. The owner comes from authentication and is not part of the view.",
   "type": "object",
   "required": ["memory_id", "chain_id", "version", "catalog_version", "value", "confirmed_at", "confirmed_by", "source", "origin", "audit_ref"],
   "properties": {
