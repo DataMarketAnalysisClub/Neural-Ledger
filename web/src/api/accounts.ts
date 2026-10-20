@@ -7,6 +7,7 @@ import type { SigninRequest } from "@/contracts/auth/signin_request";
 import type { DemoSessionRequest } from "@/contracts/auth/demo_session_request";
 import type { AccountDeletionRequest } from "@/contracts/auth/account_deletion_request";
 import type { AccountDeletion as AccountDeletionBody } from "@/contracts/auth/account_deletion";
+import type { DataExport as DataExportBody } from "@/contracts/auth/data_export";
 import type { ProfileUpdate as ProfileUpdateBody } from "@/contracts/profile/profile_update";
 import type { Questionnaire } from "@/contracts/profile/questionnaire";
 import type { PermittedProfile } from "@/contracts/outputs/permitted_profile";
@@ -37,6 +38,7 @@ export type SigninInput = Readonly<SigninRequest>;
 export type DemoPersona = DemoSessionRequest["persona"];
 export type AccountDeletionInput = Readonly<AccountDeletionRequest>;
 export type AccountDeletion = Readonly<AccountDeletionBody>;
+export type DataExport = Readonly<DataExportBody>;
 
 /** At least one field: an empty body is rejected with INVALID_INPUT on `body`. */
 export type ProfileUpdate = Readonly<ProfileUpdateBody> & ({ readonly display_name: string } | { readonly language: string });
@@ -49,6 +51,8 @@ export const accountsApi = {
   signout: () => request<null>("/v1/auth/signout", { method: "POST" }),
   /** G03: an account sends its password and DELETE (or its email); a demo persona sends RESET. */
   deleteAccount: (input: AccountDeletionInput) => request<AccountDeletion>("/v1/account", { method: "DELETE", body: input }),
+  /** G02: everything stored about the signed-in user, as one JSON document the page saves as a file. */
+  exportData: () => request<DataExport>("/v1/me/export"),
   profile: () => requestEnvelope<UserProfile>("/v1/profile", {}),
   permitted: (tolerance: Tolerance) => requestEnvelope<PermittedProfile>("/v1/permitted-profile", { method: "POST", body: { tolerance } }),
   questionnaire: () => requestEnvelope<QuestionnaireDefinition>("/v1/profile/questionnaire", {}),

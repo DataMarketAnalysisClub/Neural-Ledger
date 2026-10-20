@@ -71,7 +71,7 @@ Ley 21.719 gives you rights over your data (arts. 5–9). The software supports 
 
 | Right | Article | In the software today | Meanwhile |
 |---|---|---|---|
-| A copy of all your data (access, portability) | arts. 5, 9 | Partly: `GET /v1/statements`, `/v1/transactions` and `/v1/audit` show your statements, transactions and audit events. No full export (`G02`). | The team exports it by hand. |
+| A copy of all your data (access, portability) | arts. 5, 9 | Yes (`G02`): **Profile → Download my data**, also offered before deleting the account. One JSON file with your account, profile and answers, statements, transactions, receipts, connections with their last answers, active savings rules, investments (the link without its access token, the latest snapshot and imported documents) and your audit events. Not in it: conversations with the copilot (kept in memory only), open proposals (they expire in minutes) session times and older investment snapshots (only the latest is in the file). | Write to the team for anything not in the file. |
 | Correction | art. 6 | Partly: you can change the category of any transaction, and the change is recorded (`G04`). Correcting a statement line's amount, date or description is not built yet (ADR-021). | The team corrects a line by hand. |
 | Deletion | art. 7 | Yes (`G03`): **Profile → Delete account**, with your password and the word DELETE (or your email). It deletes your account, profile, questionnaire answers, statements, transactions, proposals, authorizations, savings rules, a linked investment account with its synced goals, the investment documents you imported, and every session at once. To remove only the investment account, unlink it; to remove only the documents, delete them in Investments. Your audit events are erased: the chain keeps only their place and one deletion event with counts, without your id. | If you lost your password, the team deletes the account by hand. |
 | Opposition and blocking | arts. 8, 8 ter | No (`G05`) | Stop uploading statements and ask the team. |
@@ -80,7 +80,7 @@ Ley 21.719 gives you rights over your data (arts. 5–9). The software supports 
 
 ## What is not built yet
 
-Authentication in demo mode (`G01`), export, opposition and blocking (`G02`, `G05`), recorded consent (`G06`), the documented safeguards for transfers abroad (art. 27), the impact assessment (art. 15 ter) and an age check (art. 16 quáter; users are assumed to be adults).
+Authentication in demo mode (`G01`), opposition and blocking (`G05`), recorded consent (`G06`), the documented safeguards for transfers abroad (art. 27), the impact assessment (art. 15 ter) and an age check (art. 16 quáter; users are assumed to be adults).
 
 ## Breaches
 
