@@ -76,16 +76,19 @@ keeps \code{docs/SECURITY.md} and the tests in step.
 \subsection{A copy of the user's data}\label{sec:export}
 
 \code{GET /v1/me/export} (accounts mode, signed in; \code{application/use_cases/data_export.py}, format
-\code{neural-ledger-export-2}) returns one JSON download, \code{neural-ledger-data-<date>.json}, also offered in the
-profile and before an account is deleted. It reads the same stores the erasure empties, so what can be downloaded is what
-a deletion erases: the account (email, creation time, sample-data flag), profile and answers, statements, transactions,
-receipts, connections with their last answers, active savings rules, investments (the link without its access token,
-the latest snapshot and the imported documents), the memory (the consent and its counters, and every confirmed
-version, with or without consent) and the user's audit events. Never in it: the password hash, a session token, a
-connection secret or the investment access token. It is audited as \code{DATA_EXPORTED} before it is built, so the copy
-holds its own event, and the copy is never logged. Left out, and said so in the privacy notice: conversations with the
-copilot (memory only, gone at restart), open proposals (they expire in minutes), session times and older investment
-snapshots. Demo personas have no account, so the route answers 404 outside accounts mode.
+\code{neural-ledger-export-3}) returns one JSON download, \code{neural-ledger-data-<date>.json}, also offered in the
+profile and before an account is deleted. It reads the same stores the erasure empties: the account (email, creation
+time, sample-data flag), profile and answers, statements, transactions, receipts, connections with their last answers,
+savings rules, every savings proposal (open or confirmed) and every authorization confirmed from one (terms, expiry and
+when it was used), investments (the link without its access token, the latest snapshot and the imported documents), the
+memory (the consent and its counters, and every confirmed version, with or without consent) and the user's audit
+events. A test maps every table the erasure empties to its section of the copy, or to the reason it has none. Never in
+it: the password hash, a session token, a connection secret, the investment access token or an authorization's
+\code{action_hash} (it never leaves the server, and the terms it seals are in the copy). It is audited as
+\code{DATA_EXPORTED} before it is built, so the copy holds its own event, and the copy is never logged. Left out, and
+said so in the privacy notice: conversations with the copilot (memory only, gone at restart), a memory proposal the
+user has not confirmed (it expires in 30 minutes), session times and investment snapshots older than the latest. Demo
+personas have no account, so the route answers 404 outside accounts mode.
 
 \subsection{The sandbox posture}
 
