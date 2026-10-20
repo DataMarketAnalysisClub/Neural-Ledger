@@ -112,11 +112,17 @@ _WHY_KEYS = frozenset({"capacity.level", "capacity.binding_factor"})
 
 @dataclass(frozen=True, slots=True)
 class StoredPlan:
-    """What a plan snapshot id points to. Proposals read the amount from here."""
+    """What a plan snapshot id points to. Proposals read the amount from here.
+
+    `origin` names the financial state the plan was sized on (UG02, ESMA GL5): a proposal or a confirmation
+    is refused once the user's current state has another origin (a new statement, a new as-of date, other
+    parameters or another liquidity floor).
+    """
 
     plan: SavingsPlan
     currency: str
     user_id: str
+    origin: str = ""
 
 
 class FinancialUseCases:
@@ -168,6 +174,17 @@ class FinancialUseCases:
         """The parameter register with the user's floor in place of its own, when the user set one (ADR-037)."""
         floor = self._user_floor(model.user_id)
         return self._params if floor is None else replace(self._params, liquidity_floor=floor)
+
+    def _origin(self, model: FinancialModel) -> str:
+        return content_id("origin", model.source_version, model.as_of, self._params.version, self._user_floor(model.user_id))
+
+    def plan_origin(self, user_id: str) -> str | None:
+        """The origin a plan sized now would carry, or None when the state cannot be loaded (callers fail closed)."""
+        try:
+            model = self._source.load(user_id)
+        except (NotFound, InsufficientData, InvalidInput):
+            return None
+        return None if model.missing_fields() else self._origin(model)
 
     def _ok(self, model: FinancialModel, data: T, facts, warnings=(), *, kind: str, parts: tuple = ()) -> Envelope[T]:
         floor = self._user_floor(model.user_id)
@@ -388,7 +405,7 @@ class FinancialUseCases:
             envelope = self._ok(
                 model, plan, (*plan_facts(plan, model.currency), *why), caveats, kind="plan", parts=(effective,)
             )
-            self._snapshots.put(envelope.snapshot_id, user_id, StoredPlan(plan, model.currency, user_id))
+            self._snapshots.put(envelope.snapshot_id, user_id, StoredPlan(plan, model.currency, user_id, self._origin(model)))
             return envelope
 
         return self._run(user_id, body)

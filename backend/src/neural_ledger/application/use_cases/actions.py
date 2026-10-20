@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
@@ -49,6 +49,8 @@ from ..ports import (
     SnapshotStore,
 )
 from .financial import StoredPlan
+
+_SUPERSEDED = "your financial state changed since this plan was computed; compute the savings plan again"
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +121,11 @@ class ActionUseCases:
         clock: Clock,
         ids: IdGenerator,
         policy: PermissionPolicy,
+        plan_origin: Callable[[str], str | None] | None = None,
     ) -> None:
+        """`plan_origin(user_id)` is the origin a plan sized now would carry (FinancialUseCases.plan_origin); with it,
+        a plan from a superseded financial state is refused at proposal and at confirmation (UG02, ESMA GL5)."""
+        self._plan_origin = plan_origin
         self._snapshots = snapshots
         self._repo = repository
         self._bank = bank
@@ -162,6 +168,9 @@ class ActionUseCases:
         )
         return ActionOutcome("BLOCKED", reason=reason.value, detail=detail, **extra)
 
+    def _superseded(self, stored: StoredPlan, user_id: str) -> bool:
+        return self._plan_origin is not None and stored.origin != self._plan_origin(user_id)
+
     # ---- propose (T1, stateful, no money moves) ---------------------------------------------
 
     def propose_savings_rule(self, ctx: ActorContext, plan_snapshot_id: str) -> ActionOutcome:
@@ -169,6 +178,8 @@ class ActionUseCases:
         stored = self._snapshots.get(str(plan_snapshot_id), ctx.user_id)
         if not isinstance(stored, StoredPlan) or stored.user_id != ctx.user_id:
             return ActionOutcome("INSUFFICIENT_DATA", detail="unknown plan snapshot; compute a savings plan first", field="plan_snapshot_id")
+        if self._superseded(stored, ctx.user_id):
+            return self._blocked(ctx, tool, BlockReason.PLAN_SUPERSEDED, _SUPERSEDED, Tier.T1)
         try:
             terms = terms_from_plan(stored.plan, stored.currency)
         except InvalidInput as exc:
@@ -230,6 +241,9 @@ class ActionUseCases:
             return self._blocked(ctx, tool, BlockReason.PROPOSAL_NOT_PENDING, f"proposal is {proposal.status.value}")
         if now >= proposal.expires_at:
             return self._blocked(ctx, tool, BlockReason.PROPOSAL_EXPIRED, "proposal expired")
+        stored = self._snapshots.get(proposal.source_snapshot_id, ctx.user_id)
+        if isinstance(stored, StoredPlan) and self._superseded(stored, ctx.user_id):
+            return self._blocked(ctx, tool, BlockReason.PLAN_SUPERSEDED, _SUPERSEDED)
         try:
             shown = ActionTerms.from_primitive(shown_terms)
         except InvalidInput as exc:

@@ -53,6 +53,7 @@ _BLOCK_SENTENCES = {
     "PROPOSAL_EXPIRED": "That proposal expired; ask me to prepare it again.",
     "PROPOSAL_NOT_PENDING": "That proposal was already handled.",
     "TERMS_CHANGED": "The terms shown don't match the proposal.",
+    "PLAN_SUPERSEDED": "Your financial state changed since that plan was computed, so I need to compute it again before proposing it.",
     "AUDIT_UNAVAILABLE": "The audit log is unavailable, so nothing can be executed.",
 }
 

@@ -43,8 +43,9 @@ from neural_ledger.domain.finance.profile import RiskProfile, lower_profile
 from neural_ledger.domain.finance.purchase import Verdict, simulate_purchase
 from neural_ledger.domain.shared.envelope import Status
 from neural_ledger.domain.shared.month import Month
+from neural_ledger.domain.shared.serialization import to_primitive
 
-from ..security.helpers import SESSION, ScriptedFakeLLM, agent_ctx, call, chat_with, say
+from ..security.helpers import SESSION, ScriptedFakeLLM, agent_ctx, call, chat_with, say, user_ctx
 
 pytestmark = pytest.mark.suitability
 
@@ -306,12 +307,25 @@ def test_ug01_a_plan_states_the_tolerance_capacity_and_binding_factor_behind_it(
     assert facts["plan.profile"] == facts["profile.permitted"]
 
 
-@gap("a proposal from a superseded financial state is accepted. ESMA GL5 (keep client information up to date)")
 def test_ug02_a_proposal_from_a_superseded_financial_state_is_refused(camila, services, adapters, monkeypatch):
+    """ESMA GL5 (keep client information up to date): a plan sized before a new statement cannot be proposed."""
     plan = services.financial.savings_plan("camila")
     serve(adapters, monkeypatch, replace(camila, source_version=camila.source_version + "-new-statement"))
     outcome = services.actions.propose_savings_rule(agent_ctx(), plan.snapshot_id)
-    assert outcome.status in ("INSUFFICIENT_DATA", "BLOCKED", "INVALID_INPUT")
+    assert (outcome.status, outcome.reason) == ("BLOCKED", "PLAN_SUPERSEDED")
+    blocked = [e.draft for e in adapters.audit_log.events() if e.draft.kind.value == "ACTION_BLOCKED"]
+    assert blocked and blocked[-1].blocked_reason == "PLAN_SUPERSEDED"
+    fresh = services.financial.savings_plan("camila")  # recomputed on the new state, it can be proposed
+    assert services.actions.propose_savings_rule(agent_ctx(), fresh.snapshot_id).status == "PROPOSED"
+
+
+def test_ug02_a_proposal_cannot_be_confirmed_after_the_state_changes(camila, services, adapters, monkeypatch):
+    """ESMA GL5: a statement imported between the proposal and the user's confirmation also blocks it."""
+    plan = services.financial.savings_plan("camila")
+    proposal = services.actions.propose_savings_rule(agent_ctx(), plan.snapshot_id).proposal
+    serve(adapters, monkeypatch, replace(camila, source_version=camila.source_version + "-new-statement"))
+    outcome = services.actions.confirm(user_ctx(), proposal.proposal_id, to_primitive(proposal.terms))
+    assert (outcome.status, outcome.reason, outcome.authorization) == ("BLOCKED", "PLAN_SUPERSEDED", None)
 
 
 @gap("an off-track near-term goal is not a warning (H3 is not an emitted rule). ESMA GL8, Ley 19.496 art. 3 b)")

@@ -270,7 +270,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     # Personas keep their fixtures; every other user gets the model of their own statements (ADR-029).
     accounts_source = StatementModelSource(statement_store, transaction_store, FC_0_1)
     financial = FinancialUseCases(FirstFoundModelSource((source, accounts_source)), snapshots, bank, profiles, FC_0_1)
-    actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1)
+    actions = ActionUseCases(snapshots, actions_repo, bank, audit_log, signer, clock, ids, PP_0_1, plan_origin=financial.plan_origin)
     profile_uc = ProfileUseCases(profiles, decisions, conversations, FC_0_1.version)
     audit_uc = AuditUseCases(audit_log)
     unknown = [name for name in s.classifiers if name not in CLASSIFIERS]
