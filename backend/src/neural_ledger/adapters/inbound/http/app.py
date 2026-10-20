@@ -13,7 +13,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import Body, FastAPI, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -40,6 +40,10 @@ from .rate_limit import DEFAULT_LIMITS, Limit, RateLimitMiddleware
 
 _STATUS_CODES = {"OK": 200, "INVALID_INPUT": 422, "INSUFFICIENT_DATA": 409}
 _ACTION_CODES = {"PROPOSED": 201, "CONFIRMED": 201, "EXECUTED": 200, "FAILED": 502, "BLOCKED": 403, "INVALID_INPUT": 422, "INSUFFICIENT_DATA": 409}
+_LINK_CODES = {
+    "LINKED": 201, "SYNCED": 200, "UNLINKED": 200, "NOT_LINKED": 404, "INVALID_INPUT": 422, "ACCESS_REJECTED": 422,
+    "READ_REFUSED": 502, "RELINK_REQUIRED": 409, "CONFLICT": 409, "PROVIDER_UNAVAILABLE": 503,
+}
 MAX_JSON_BYTES = 16 * 1024  # auth and profile-write bodies are parsed by hand, so they are bounded by hand
 MAX_ANSWERS = 32
 
@@ -61,6 +65,13 @@ def _action_response(outcome: Any) -> JSONResponse:
     payload = to_primitive(outcome)
     payload["facts"] = to_primitive(outcome.facts())
     return JSONResponse(payload, status_code=_ACTION_CODES.get(outcome.status, 200))
+
+
+def _link_response(outcome: Any, *, created: bool = True) -> JSONResponse:
+    """contracts/investments/link_outcome: never the token, and the email masked (the use case's LinkView)."""
+    payload = to_primitive(outcome)
+    status_code = _LINK_CODES.get(payload["status"], 200)
+    return JSONResponse(payload, status_code=200 if status_code == 201 and not created else status_code)
 
 
 class SecurityHeadersMiddleware:
@@ -216,6 +227,7 @@ def create_app(
             "decision_chain": list(services.decision_chain),
             "pii_detector": services.pii_detector,
             "classifier": services.classifier,
+            "investments": services.investments.adapter,
             "params_version": services.financial.params.version,
             "audit_chain_ok": check.ok,
             "tools": list(services.registry.names),
@@ -455,6 +467,104 @@ def create_app(
         result = await run_in_threadpool(services.statements.import_statement, owner, bytes(content))
         return _envelope_response(result)
 
+    @app.post("/v1/documents")
+    async def ingest_document(request: Request, session_id: str = Query("documents"), kind: str | None = Query(None)):
+        """A file dropped on the copilot (ADR-039): a statement, a receipt or an investment document (ADR-044, from a
+        signed-in account only), decided by the server, never the Content-Type or the file name. Same size limit and
+        threadpool as a statement import."""
+        too_large = JSONResponse({"detail": "the file is larger than 15 MB"}, status_code=413)
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_STATEMENT_BYTES:
+            return too_large
+        owner = user(request)
+        content = bytearray()
+        async for chunk in request.stream():
+            content += chunk
+            if len(content) > MAX_STATEMENT_BYTES:
+                return too_large
+        private = await run_in_threadpool(linkable, request) is not None  # never a demo persona that visitors share
+        result = await run_in_threadpool(
+            lambda: _documents().ingest(owner, bytes(content), session_id[:120] or "documents", kind, investments=private)
+        )
+        return _envelope_response(result)
+
+    @app.get("/v1/receipts")
+    def receipts(request: Request):
+        return _envelope_response(_documents().list_receipts(user(request)))
+
+    @app.patch("/v1/receipts/{receipt_id}")
+    def correct_receipt(receipt_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        """The user's correction of a receipt's total or date (contracts/receipts/receipt_correction). Only the user
+        corrects: no agent tool reaches this route."""
+        session = str(body.get("session_id") or "documents")[:120]
+        result = _documents().correct_receipt(user(request), session, receipt_id, body.get("total"), body.get("issued_on"))
+        return _found_response(result, "receipt")
+
+    @app.post("/v1/expenses/{proposal_id}/confirm")
+    def confirm_expense(proposal_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        """The user confirms an expense the copilot prepared (contracts/expenses/expense_confirmation). Only the user."""
+        session = str(body.get("session_id") or "documents")[:120]
+        result = _documents().confirm_expense(user(request), session, proposal_id, body.get("payment"), body.get("category"), body.get("spent_on"))
+        return _found_response(result, "expense")
+
+    @app.get("/v1/spending")
+    def spending(request: Request):
+        """The spending check-in the copilot's get_spending_status tool reads (T0)."""
+        return _envelope_response(_documents().spending_status(user(request)))
+
+    # ---- read-only connections (ADR-047): every route is the user's; the agent only reads /data's content ----------
+
+    @app.get("/v1/connections")
+    def connections(request: Request):
+        return _envelope_response(_connections().list(user(request)))
+
+    @app.get("/v1/connections/data")
+    def connected_data(request: Request):
+        """What the copilot's get_connected_data tool reads (T0): the last sync's answers, untrusted."""
+        return _envelope_response(_connections().connected_data(user(request)))
+
+    @app.post("/v1/connections")
+    def add_connection(request: Request, body: dict[str, Any] = Body(...)):
+        """Add an MCP server (contracts/connections/connection_create). The token is never echoed."""
+        session = str(body.get("session_id") or "connections")[:120]
+        result = _connections().add_mcp(user(request), session, body.get("name"), body.get("url"), body.get("token"), body.get("consent"))
+        return _envelope_response(result)
+
+    @app.post("/v1/connections/bank/start")
+    def start_bank(request: Request):
+        """A one-time widget token for the bank aggregator; null in fixture mode."""
+        return _envelope_response(_connections().bank_start(user(request)))
+
+    @app.post("/v1/connections/bank")
+    def connect_bank(request: Request, body: dict[str, Any] = Body(...)):
+        """Connect the user's bank with the widget's exchange token (contracts/connections/bank_exchange)."""
+        session = str(body.get("session_id") or "connections")[:120]
+        return _envelope_response(_connections().connect_bank(user(request), session, body.get("exchange_token"), body.get("consent")))
+
+    @app.put("/v1/connections/{connection_id}/tools")
+    def set_connection_tools(connection_id: str, request: Request, body: dict[str, Any] = Body(...)):
+        session = str(body.get("session_id") or "connections")[:120]
+        return _found_response(_connections().set_tools(user(request), session, connection_id, body.get("enabled")), "connection")
+
+    @app.post("/v1/connections/{connection_id}/sync")
+    def sync_connection(connection_id: str, request: Request, session_id: str = Query("connections")):
+        """Only the user syncs: no agent tool reaches a connected service."""
+        return _found_response(_connections().sync(user(request), session_id[:120], connection_id), "connection")
+
+    @app.delete("/v1/connections/{connection_id}")
+    def remove_connection(connection_id: str, request: Request, session_id: str = Query("connections")):
+        return _found_response(_connections().remove(user(request), session_id[:120], connection_id), "connection")
+
+    def _connections():
+        if services.connections is None:
+            raise HTTPException(status_code=503, detail="connections are not configured")
+        return services.connections
+
+    def _documents():
+        if services.documents is None:
+            raise HTTPException(status_code=503, detail="documents are not configured")
+        return services.documents
+
     @app.get("/v1/statements")
     def statements(request: Request):
         return _envelope_response(services.statements.list_statements(user(request)))
@@ -475,6 +585,67 @@ def create_app(
         category = category if isinstance(category, str) else ""  # not a category: INVALID_INPUT with the allowed ones
         session_id = str(body.get("session_id") or "default")
         return _found_response(services.ledger.set_category(user(request), session_id, txn_id, category), "transaction")
+
+    # ---- investments: an account linked at a provider (ADR-044) ---------------------------------
+    # Reading works in every mode; linking, syncing and unlinking are user-only flows of a real account (never a demo
+    # persona or demo mode), never agent tools, and each commits with its audit event.
+
+    def linkable(request: Request) -> Session | None:
+        """The caller's session when it may link an investment account: an account, never a persona or demo mode."""
+        if accounts is None:
+            return None
+        current = session(request)
+        return current if accounts.data_source(current.user_id) != "persona" else None
+
+    def read_only_link() -> JSONResponse:
+        body = {"status": "READ_ONLY", "link": None, "field": None, "message": "investment accounts are linked from a signed-in account"}
+        return JSONResponse(body, status_code=403)
+
+    @app.get("/v1/investments")
+    def investments(request: Request):
+        return _envelope_response(services.investments.overview(user(request)))
+
+    @app.get("/v1/investments/link")
+    def investment_link(request: Request):
+        return _link_response(services.investments.status(user(request)), created=False)
+
+    @app.post("/v1/investments/link")
+    async def link_investments(request: Request):
+        current = await run_in_threadpool(linkable, request)
+        if current is None:
+            return read_only_link()
+        body = await _json_object(request)
+        _only(body, ("email", "password", "consent"), ("provider",))
+        if body.get("provider", services.investments.provider) != services.investments.provider:
+            raise _BadBody("provider")
+        email, password = _text(body, "email"), _text(body, "password")
+        outcome = await run_in_threadpool(
+            services.investments.link, current.user_id, current.session_ref, email, password, consent=body["consent"] is True
+        )
+        return _link_response(outcome)
+
+    @app.post("/v1/investments/sync")
+    async def sync_investments(request: Request):
+        current = await run_in_threadpool(linkable, request)
+        if current is None:
+            return read_only_link()
+        return _link_response(await run_in_threadpool(services.investments.sync, current.user_id, current.session_ref))
+
+    @app.delete("/v1/investments/link")
+    async def unlink_investments(request: Request):
+        current = await run_in_threadpool(linkable, request)
+        if current is None:
+            return read_only_link()
+        return _link_response(await run_in_threadpool(services.investments.unlink, current.user_id, current.session_ref))
+
+    @app.delete("/v1/investments/documents")
+    async def remove_investment_documents(request: Request):
+        """Forget every imported investment document of the account (they are imported through POST /v1/documents)."""
+        current = await run_in_threadpool(linkable, request)
+        if current is None:
+            return read_only_link()
+        removed = await run_in_threadpool(services.investments.remove_documents, current.user_id, current.session_ref)
+        return JSONResponse({"removed": removed})
 
     # ---- audit --------------------------------------------------------------------------------
 

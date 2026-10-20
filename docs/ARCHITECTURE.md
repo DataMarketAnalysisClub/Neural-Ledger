@@ -35,6 +35,11 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
 | A redaction rule (a kind of personal data the rules miss) | `domain/privacy/redaction.py` | `tests/unit/test_redaction.py`, `tests/property/test_redaction_properties.py` |
 | A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
+| An investment provider (another institution, ADR-044) | an `InvestmentProvider` adapter in `adapters/outbound/investments/` (read-only: sign in and list goals; no credential in any error) + an `INVESTMENT_PROVIDERS` entry in `container.py` | a fake-transport test like `tests/adapters/test_fintual_provider.py`, plus S30 and S31 |
+| A provider's statement format (ADR-044, step 2) | an `InvestmentDocumentReader` adapter in `adapters/outbound/investments/` on `ocr_tabular.read_pages` (rows only, never the holder), its `DocumentKind.INVESTMENT` marks in `domain/receipts/model.py`, and checks in `domain/investments/documents.py` | synthetic PDFs like `tests/investment_samples.py` with figures worked out by hand, plus S32 |
+| A concept card (a term the copilot can explain) | `adapters/outbound/knowledge/corpus/<lang>/<id>.md`, es and en (recipe below) | `tests/unit/test_concept_cards.py`, `tests/rag_eval` |
+| A different way to search the cards | a `KnowledgeBase` adapter in `adapters/outbound/knowledge/` + a `KNOWLEDGE_BASES` entry in `container.py` (recipe below) | `tests/adapters/test_knowledge_base.py`, `tests/rag_eval` |
+| A read-only connection to another app (ADR-047) | an MCP server needs nothing: users add it by URL. Another bank aggregator: a `BankFeed` adapter in `adapters/outbound/connections/` returning `BankAccount` + `BankMovement`, wired in `_connectors` (`container.py`); `domain/connections/bank.py` turns each sync into a statement for the usual import | `tests/adapters/test_fintoc.py` (fake server), `tests/security/test_connectors.py` |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes
@@ -106,6 +111,26 @@ Existing transactions keep their category on re-import; re-categorizing the ledg
 - ADR-024: new category `movement` ("Movimiento") for own transfers, card payments and investments.
 
 Open issues: O-1 (re-read treated as a duplicate) and O-2 (vocabulary, training data, re-categorization).
+
+### Add a concept card
+The copilot explains a term from a card the team wrote (ADR-040). A card is data, so adding one touches no code.
+
+1. Write two files with the same `id`: `adapters/outbound/knowledge/corpus/es/<id>.md` and `.../en/<id>.md`. Follow `corpus/README.md`: JSON header (`id`, `lang`, `title`, `aliases`, `tags`, `related`, `sources`, `numbers`), then 120–280 words in your own words. The Spanish card is written in Chilean Spanish, not translated word for word.
+2. Declare every number in the body in `numbers`, with the same value. Prefer no numbers, and never a value that changes over time (today's UF or rates).
+3. Define, never recommend: no product, institution, security or amount, and never "safe". List each source with the way you used it in `license`. Never copy its sentences: the repository is public.
+4. Run `cd backend && python -m pytest tests/unit/test_concept_cards.py`. It fails on a bad header, ids that differ between languages, an undeclared number, a banned word, a body outside the word count, or a source without a licence.
+5. Add two or three questions for the card (es and en) to `tests/rag_eval`, then run `make rag-eval`. Recall@3 must stay at 0.8 or more on lexical and 0.9 on Chroma. Editing a card changes the corpus hash, so the Chroma index rebuilds by itself on the next start.
+
+### Add a knowledge-base method
+`KnowledgeBase` has a `name` and `search(query, lang, k)` returning `Passage(card, text, score)`; the domain turns the passages into an envelope. `LexicalKnowledgeBase` (offline) and `ChromaKnowledgeBase` (`rag` extra) are the two now.
+
+1. Write `adapters/outbound/knowledge/<method>.py` with a class that takes the cards from `load_cards()` and returns passages best first. Make `name` change when the corpus changes (the corpus hash).
+2. Raise `KnowledgeBaseUnavailable` on any failure: a missing extra, a model that cannot load, a store that cannot be written. The chain falls through to the next method. Never put a key or the user's query in an error message or a log.
+3. Add an entry to `KNOWLEDGE_BASES` in `bootstrap/container.py`. Add its settings to `config.py` and `.env.example`. Import any SDK inside the adapter and add an extra in `pyproject.toml`: nothing else may import it.
+4. Extend the contract test in `tests/adapters/test_knowledge_base.py` so the new adapter passes the same cases, using a fake embedder or server. Skip it without its extra.
+5. Run `make rag-eval` and compare recall@3 with the others before putting it first in `NL_KNOWLEDGE_BASE`.
+
+Select with `NL_KNOWLEDGE_BASE=<method>,lexical`; the answer records the `knowledge_base` name that served it.
 
 ### Add a personal-data detector
 Personal data is removed at import in two layers (ADR-028). The domain rules always run; a detector runs after them, on the raw text of every line, and its spans can only add masking. To add one, for example another service or a local model:

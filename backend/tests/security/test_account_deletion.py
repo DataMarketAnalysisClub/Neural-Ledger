@@ -21,6 +21,7 @@ from neural_ledger.bootstrap.container import build
 from neural_ledger.domain.actions.terms import ActionTerms, ActionType, Frequency, Proposal, ProposalStatus
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, erasure_detail, seal, tombstone, verify_chain
 from tests.conftest import TEST_CIPHER, make_settings
+from tests.receipt_samples import boleta_pdf
 from tests.statement_samples import santander_xlsx
 
 pytestmark = pytest.mark.security
@@ -44,6 +45,7 @@ def _signup(new_client, email: str, name: str):
     response = client.post("/v1/auth/signup", json={"email": email, "password": PASSWORD, "display_name": name, "sandbox_acknowledged": True})
     assert response.status_code == 201, response.text
     assert client.post("/v1/statements", content=santander_xlsx()).json()["status"] == "OK"
+    assert client.post("/v1/documents", content=boleta_pdf()).json()["status"] == "OK"  # a receipt too (ADR-039)
     return client, response.json()["user_id"]
 
 
@@ -93,6 +95,7 @@ def test_deleting_a_leaves_b_intact_and_ends_every_session_of_a(two_accounts, co
     body = response.json()
     assert body["status"] == "DELETED" and body["erased"]["user_accounts"] == 1 and body["erased"]["sessions"] == 2
     assert body["erased"]["statements"] >= 1 and body["erased"]["savings_rules"] == 1 and body["audit_events_erased"] >= 4
+    assert body["erased"]["receipts"] == 1
     assert "Max-Age=0" in response.headers["set-cookie"]
     assert second.get("/v1/me").status_code == 401  # the other session of A ends too
     a.cookies.clear()

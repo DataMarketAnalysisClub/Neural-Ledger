@@ -7,8 +7,9 @@ INVALID_INPUT and touch no engine; missing data returns INSUFFICIENT_DATA (hard 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, TypeVar
@@ -34,7 +35,7 @@ from ...domain.finance.permitted import (
     derive_permitted_profile,
     permitted_facts,
 )
-from ...domain.finance.plan import SavingsPlan, plan_facts, size_plan
+from ...domain.finance.plan import SavingsPlan, plan_caveats, plan_facts, size_plan
 from ...domain.finance.profile import RiskProfile, lower_profile
 from ...domain.finance.purchase import (
     PurchaseSimulation,
@@ -43,6 +44,7 @@ from ...domain.finance.purchase import (
     purchase_facts,
     simulate_purchase,
 )
+from ...domain.finance.spending import LoggedSpend, SpendingCheck, spending_caveats, spending_check, spending_facts
 from ...domain.finance.surplus import SurplusResult, protected_surplus, surplus_facts
 from ...domain.shared.envelope import Caveat, Envelope, Fact
 from ...domain.shared.errors import InsufficientData, InvalidInput
@@ -104,13 +106,23 @@ class CommitmentsView:
     schedule: tuple[MonthTotal, ...]
 
 
+# The capacity facts a plan repeats to say why it suits the user (UG01: Delegated Regulation art. 54(12), ESMA GL1).
+_WHY_KEYS = frozenset({"capacity.level", "capacity.binding_factor"})
+
+
 @dataclass(frozen=True, slots=True)
 class StoredPlan:
-    """What a plan snapshot id points to. Proposals read the amount from here."""
+    """What a plan snapshot id points to. Proposals read the amount from here.
+
+    `origin` names the financial state the plan was sized on (UG02, ESMA GL5): a proposal or a confirmation
+    is refused once the user's current state has another origin (a new statement, a new as-of date, other
+    parameters or another liquidity floor).
+    """
 
     plan: SavingsPlan
     currency: str
     user_id: str
+    origin: str = ""
 
 
 class FinancialUseCases:
@@ -162,6 +174,17 @@ class FinancialUseCases:
         """The parameter register with the user's floor in place of its own, when the user set one (ADR-037)."""
         floor = self._user_floor(model.user_id)
         return self._params if floor is None else replace(self._params, liquidity_floor=floor)
+
+    def _origin(self, model: FinancialModel) -> str:
+        return content_id("origin", model.source_version, model.as_of, self._params.version, self._user_floor(model.user_id))
+
+    def plan_origin(self, user_id: str) -> str | None:
+        """The origin a plan sized now would carry, or None when the state cannot be loaded (callers fail closed)."""
+        try:
+            model = self._source.load(user_id)
+        except (NotFound, InsufficientData, InvalidInput):
+            return None
+        return None if model.missing_fields() else self._origin(model)
 
     def _ok(self, model: FinancialModel, data: T, facts, warnings=(), *, kind: str, parts: tuple = ()) -> Envelope[T]:
         floor = self._user_floor(model.user_id)
@@ -327,6 +350,18 @@ class FinancialUseCases:
 
         return self._run(user_id, body)
 
+    def spending_check(self, user_id: str, logged: Sequence[LoggedSpend], today: date) -> Envelope[SpendingCheck]:
+        """Logged spending against the conservative forecast's assumption for the first cycle (ADR-039)."""
+
+        def body(model: FinancialModel) -> Envelope[SpendingCheck]:
+            surplus = protected_surplus(model, self._params_for(model), 6).protected_surplus
+            result = spending_check(model, logged, today, surplus)
+            facts = (*spending_facts(result, model.currency), self._floor_fact(model))
+            parts = (today.isoformat(), sorted((item.ref, item.amount) for item in logged))
+            return self._ok(model, result, facts, spending_caveats(result), kind="spending", parts=parts)
+
+        return self._run(user_id, body)
+
     def capacity(self, user_id: str) -> Envelope[CapacityAssessment]:
         def body(model: FinancialModel) -> Envelope[CapacityAssessment]:
             result = assess_capacity(model, self._params_for(model))
@@ -350,7 +385,9 @@ class FinancialUseCases:
         """
 
         def body(model: FinancialModel) -> Envelope[SavingsPlan]:
-            permitted = self._permitted(model).permitted
+            capacity = assess_capacity(model, self._params_for(model))
+            suitability = derive_permitted_profile(self._tolerance(model.user_id), capacity, model)
+            permitted = suitability.permitted
             requested = _parse_enum(RiskProfile, requested_profile, "permitted_profile") if requested_profile else permitted
             effective = lower_profile(requested, permitted)
             caveats = []
@@ -363,10 +400,12 @@ class FinancialUseCases:
                     )
                 )
             plan = size_plan(model, self._params_for(model), effective)
+            # UG01: the plan carries why it suits the user (tolerance, capacity and the factor that binds it).
+            why = (*permitted_facts(suitability), *(f for f in capacity_facts(capacity, model.currency) if f.key in _WHY_KEYS))
             envelope = self._ok(
-                model, plan, plan_facts(plan, model.currency), caveats, kind="plan", parts=(effective,)
+                model, plan, (*plan_facts(plan, model.currency), *why), (*caveats, *plan_caveats(plan)), kind="plan", parts=(effective,)
             )
-            self._snapshots.put(envelope.snapshot_id, user_id, StoredPlan(plan, model.currency, user_id))
+            self._snapshots.put(envelope.snapshot_id, user_id, StoredPlan(plan, model.currency, user_id, self._origin(model)))
             return envelope
 
         return self._run(user_id, body)

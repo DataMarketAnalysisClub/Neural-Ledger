@@ -27,7 +27,7 @@ class PostingResult:
 
 def _not_posted(reason: str) -> PostingResult:
     message = f"The statement's movements were not added to the transaction ledger: {reason}."
-    return PostingResult(0, 0, 0, None, (Caveat("NOT_POSTED", message, ("not added", "ledger")),))
+    return PostingResult(0, 0, 0, None, (Caveat("NOT_POSTED", message, ("not added", "ledger", "no se agreg", "no se sum", "registro")),))
 
 
 class LedgerPosting:

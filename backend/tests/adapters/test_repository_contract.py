@@ -343,3 +343,40 @@ def test_has_transactions_is_per_user(transaction_store):
     assert transaction_store.has_transactions("camila") is False
     transaction_store.add(_posted())
     assert transaction_store.has_transactions("camila") is True and transaction_store.has_transactions("diego") is False
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def receipt_store(request, tmp_path):
+    from neural_ledger.adapters.outbound.persistence.memory import InMemoryReceiptStore
+    from neural_ledger.adapters.outbound.persistence.sqlite import SqliteReceiptStore
+
+    if request.param == "memory":
+        return InMemoryReceiptStore()
+    return SqliteReceiptStore(SqliteDatabase(tmp_path / "test.db"), TEST_CIPHER)
+
+
+def _receipt(receipt_id: str = "rcpt_1", user_id: str = "camila", **overrides):
+    from neural_ledger.domain.receipts.model import ReceiptIssue, ReceiptIssueCode, StoredReceipt
+
+    fields = dict(
+        receipt_id=receipt_id, user_id=user_id, imported_at=NOW, issuer="SUPERMERCADO [PERSON]", issued_on=date(2026, 10, 29),
+        total=12_990, currency="CLP", folio="4471", stamped=True, source="ocr", confidence=0.83, category="groceries",
+        classifier="naive_bayes@x", category_confidence=0.54, issues=(ReceiptIssue(ReceiptIssueCode.TAX_MISMATCH, "neto", 12_990, 12_000),),
+    )
+    fields.update(overrides)
+    return StoredReceipt(**fields)
+
+
+def test_receipt_round_trip_and_duplicates(receipt_store):
+    receipt = _receipt()
+    assert receipt_store.add(receipt) and not receipt_store.add(receipt)
+    assert receipt_store.get("camila", "rcpt_1") == receipt
+    unknown = _receipt("rcpt_2", issued_on=None, total=None, folio=None, confidence=None, category_confidence=None, issues=())
+    assert receipt_store.add(unknown) and receipt_store.get("camila", "rcpt_2") == unknown
+
+
+def test_receipts_are_scoped_to_their_user_in_import_order(receipt_store):
+    for rid, user in (("rcpt_b", "camila"), ("rcpt_a", "camila"), ("rcpt_c", "diego")):
+        receipt_store.add(_receipt(rid, user))
+    assert [r.receipt_id for r in receipt_store.for_user("camila")] == ["rcpt_b", "rcpt_a"]
+    assert receipt_store.get("diego", "rcpt_b") is None

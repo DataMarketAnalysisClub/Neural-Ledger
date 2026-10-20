@@ -10,7 +10,9 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/pyproject.toml
 COPY backend/README.md backend/README.md
 COPY backend/src backend/src
-RUN pip install --no-cache-dir "./backend[api,pdf,ml]"
+# Extras to install; `docker compose --profile rag` builds with rag added (NL_API_EXTRAS) to reach the Chroma container.
+ARG EXTRAS=api,pdf,ml
+RUN pip install --no-cache-dir "./backend[${EXTRAS}]"
 
 COPY contracts contracts
 COPY data data

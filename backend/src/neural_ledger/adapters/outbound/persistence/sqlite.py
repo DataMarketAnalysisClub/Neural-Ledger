@@ -27,9 +27,19 @@ from ....domain.actions.terms import (
     SavingsRule,
 )
 from ....domain.audit.events import ERASED_SESSION, ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
+from ....domain.connections.model import Connection, ConnectionKind, ConnectionSnapshot, RemoteTool
 from ....domain.finance.profile import RiskProfile
+from ....domain.investments.documents import (
+    MAX_DOCUMENTS,
+    FundMovement,
+    FundPosition,
+    InvestmentDocumentKind,
+    StoredInvestmentDocument,
+)
+from ....domain.investments.model import MAX_SNAPSHOTS, InvestmentGoal, InvestmentLink, InvestmentSnapshot
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
+from ....domain.receipts.model import ReceiptIssue, ReceiptIssueCode, StoredReceipt
 from ....domain.shared.month import Month
 from ....domain.shared.serialization import to_primitive
 from ....domain.statements.model import (
@@ -90,6 +100,28 @@ CREATE TABLE IF NOT EXISTS transactions (
     payload   TEXT NOT NULL,
     UNIQUE (user_id, txn_id)
 );
+CREATE TABLE IF NOT EXISTS receipts (
+    sequence   INTEGER PRIMARY KEY,
+    receipt_id TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    payload    TEXT NOT NULL,
+    UNIQUE (user_id, receipt_id)
+);
+CREATE TABLE IF NOT EXISTS connections (
+    sequence      INTEGER PRIMARY KEY,
+    connection_id TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    payload       TEXT NOT NULL,
+    UNIQUE (user_id, connection_id)
+);
+CREATE TABLE IF NOT EXISTS connection_results (
+    sequence      INTEGER PRIMARY KEY,
+    connection_id TEXT NOT NULL,
+    user_id       TEXT NOT NULL,
+    tool          TEXT NOT NULL,
+    payload       TEXT NOT NULL,
+    UNIQUE (user_id, connection_id, tool)
+);
 CREATE TABLE IF NOT EXISTS savings_rules (
     sequence INTEGER PRIMARY KEY,
     rule_id  TEXT NOT NULL UNIQUE,
@@ -117,6 +149,24 @@ CREATE TABLE IF NOT EXISTS meta (
     name  TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS investment_links (
+    user_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS investment_snapshots (
+    sequence    INTEGER PRIMARY KEY,
+    snapshot_id TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS investment_snapshots_by_user ON investment_snapshots (user_id, sequence);
+CREATE TABLE IF NOT EXISTS investment_documents (
+    sequence    INTEGER PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    UNIQUE (user_id, document_id)
+);
 """
 _SCHEMA_STATEMENTS = tuple(statement.strip() for statement in _SCHEMA.split(";") if statement.strip())
 
@@ -128,10 +178,16 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "audit_events": ("SELECT COUNT(*) FROM audit_events", "DELETE FROM audit_events"),
     "statements": ("SELECT COUNT(*) FROM statements", "DELETE FROM statements"),
     "transactions": ("SELECT COUNT(*) FROM transactions", "DELETE FROM transactions"),
+    "receipts": ("SELECT COUNT(*) FROM receipts", "DELETE FROM receipts"),
+    "connections": ("SELECT COUNT(*) FROM connections", "DELETE FROM connections"),
+    "connection_results": ("SELECT COUNT(*) FROM connection_results", "DELETE FROM connection_results"),
     "savings_rules": ("SELECT COUNT(*) FROM savings_rules", "DELETE FROM savings_rules"),
     "user_profiles": ("SELECT COUNT(*) FROM user_profiles", "DELETE FROM user_profiles"),
     "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
     "sessions": ("SELECT COUNT(*) FROM sessions", "DELETE FROM sessions"),
+    "investment_links": ("SELECT COUNT(*) FROM investment_links", "DELETE FROM investment_links"),
+    "investment_snapshots": ("SELECT COUNT(*) FROM investment_snapshots", "DELETE FROM investment_snapshots"),
+    "investment_documents": ("SELECT COUNT(*) FROM investment_documents", "DELETE FROM investment_documents"),
 }
 # Bookkeeping, not data: a reset keeps it (the key check stays valid, since a reset does not change the key).
 _KEPT_ON_RESET = frozenset({"meta"})
@@ -580,6 +636,167 @@ def _transaction_aad(user_id: str, txn_id: str) -> str:
     return f"transactions|{user_id}|{txn_id}"
 
 
+def _receipt_aad(user_id: str, receipt_id: str) -> str:
+    return f"receipts|{user_id}|{receipt_id}"
+
+
+class SqliteReceiptStore:
+    """Payloads are sealed with the data key (G11); ids and the owner stay in clear for lookups."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def add(self, receipt: StoredReceipt) -> bool:
+        payload = self._cipher.seal(json.dumps(to_primitive(receipt)), _receipt_aad(receipt.user_id, receipt.receipt_id))
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "INSERT OR IGNORE INTO receipts (receipt_id, user_id, payload) VALUES (?, ?, ?)",
+                (receipt.receipt_id, receipt.user_id, payload),
+            )
+            return cursor.rowcount == 1
+
+    def get(self, user_id: str, receipt_id: str) -> StoredReceipt | None:
+        row = self._db.fetchone("SELECT user_id, receipt_id, payload FROM receipts WHERE user_id = ? AND receipt_id = ?", (user_id, receipt_id))
+        return self._open(row) if row else None
+
+    def for_user(self, user_id: str) -> tuple[StoredReceipt, ...]:
+        rows = self._db.fetchall("SELECT user_id, receipt_id, payload FROM receipts WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(self._open(r) for r in rows)
+
+    def replace(self, receipt: StoredReceipt) -> bool:
+        payload = self._cipher.seal(json.dumps(to_primitive(receipt)), _receipt_aad(receipt.user_id, receipt.receipt_id))
+        with self._db.lock:
+            cursor = self._db.connection.execute(
+                "UPDATE receipts SET payload = ? WHERE user_id = ? AND receipt_id = ?", (payload, receipt.user_id, receipt.receipt_id)
+            )
+            return cursor.rowcount == 1
+
+    def _open(self, row: tuple) -> StoredReceipt:
+        user_id, receipt_id, payload = row
+        return _receipt_from(json.loads(self._cipher.open(payload, _receipt_aad(user_id, receipt_id))))
+
+
+def _receipt_from(payload: dict) -> StoredReceipt:
+    return StoredReceipt(
+        receipt_id=payload["receipt_id"],
+        user_id=payload["user_id"],
+        imported_at=datetime.fromisoformat(payload["imported_at"]),
+        issuer=payload["issuer"],
+        issued_on=date.fromisoformat(payload["issued_on"]) if payload.get("issued_on") else None,
+        total=payload.get("total"),
+        currency=payload["currency"],
+        folio=payload.get("folio"),
+        stamped=bool(payload["stamped"]),
+        source=payload["source"],
+        confidence=payload.get("confidence"),
+        category=payload["category"],
+        classifier=payload["classifier"],
+        category_confidence=payload.get("category_confidence"),
+        issues=tuple(
+            ReceiptIssue(ReceiptIssueCode(i["code"]), i["message"], i.get("expected"), i.get("found")) for i in payload.get("issues", ())
+        ),
+        corrected=bool(payload.get("corrected", False)),  # receipts stored before corrections existed were never corrected
+        payment=payload.get("payment", "unknown"),
+    )
+
+
+class SqliteConnectionStore:
+    """Connections and their latest answers (ADR-047). The payload, which holds the secret (an MCP token or a bank
+    link), is sealed with the data key like every personal column; ids and the owner stay in clear for lookups."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def add(self, connection: Connection, secret: str | None) -> None:
+        payload = self._seal(connection, secret)
+        with self._db.lock:
+            self._db.connection.execute(
+                "INSERT INTO connections (connection_id, user_id, payload) VALUES (?, ?, ?)", (connection.connection_id, connection.user_id, payload)
+            )
+
+    def get(self, user_id: str, connection_id: str) -> Connection | None:
+        found = self._row(user_id, connection_id)
+        return found[0] if found else None
+
+    def for_user(self, user_id: str) -> tuple[Connection, ...]:
+        rows = self._db.fetchall("SELECT connection_id, payload FROM connections WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(self._open(user_id, cid, payload)[0] for cid, payload in rows)
+
+    def update(self, connection: Connection) -> bool:
+        with self._db.lock:
+            row = self._db.connection.execute(
+                "SELECT payload FROM connections WHERE user_id = ? AND connection_id = ?", (connection.user_id, connection.connection_id)
+            ).fetchone()
+            if row is None:
+                return False
+            secret = self._open(connection.user_id, connection.connection_id, row[0])[1]
+            cursor = self._db.connection.execute(
+                "UPDATE connections SET payload = ? WHERE user_id = ? AND connection_id = ?",
+                (self._seal(connection, secret), connection.user_id, connection.connection_id),
+            )
+            return cursor.rowcount == 1
+
+    def secret(self, user_id: str, connection_id: str) -> str | None:
+        found = self._row(user_id, connection_id)
+        return found[1] if found else None
+
+    def put_results(self, user_id: str, connection_id: str, results: Sequence[ConnectionSnapshot]) -> None:
+        with _account_transaction(self._db) as conn:
+            conn.execute("DELETE FROM connection_results WHERE user_id = ? AND connection_id = ?", (user_id, connection_id))
+            for r in results:
+                aad = _aad("connection_results", user_id, f"{connection_id}|{r.tool}")
+                conn.execute(
+                    "INSERT INTO connection_results (connection_id, user_id, tool, payload) VALUES (?, ?, ?, ?)",
+                    (connection_id, user_id, r.tool, self._cipher.seal(json.dumps(to_primitive(r)), aad)),
+                )
+
+    def results(self, user_id: str, connection_id: str) -> tuple[ConnectionSnapshot, ...]:
+        rows = self._db.fetchall(
+            "SELECT tool, payload FROM connection_results WHERE user_id = ? AND connection_id = ? ORDER BY sequence", (user_id, connection_id)
+        )
+        out = []
+        for tool, payload in rows:
+            p = json.loads(self._cipher.open(payload, _aad("connection_results", user_id, f"{connection_id}|{tool}")))
+            out.append(ConnectionSnapshot(p["connection_id"], p["user_id"], p["tool"], datetime.fromisoformat(p["fetched_at"]), p["content"], bool(p["ok"])))
+        return tuple(out)
+
+    def remove(self, user_id: str, connection_id: str) -> bool:
+        with _account_transaction(self._db) as conn:
+            conn.execute("DELETE FROM connection_results WHERE user_id = ? AND connection_id = ?", (user_id, connection_id))
+            return conn.execute("DELETE FROM connections WHERE user_id = ? AND connection_id = ?", (user_id, connection_id)).rowcount == 1
+
+    def _row(self, user_id: str, connection_id: str) -> tuple[Connection, str | None] | None:
+        row = self._db.fetchone("SELECT payload FROM connections WHERE user_id = ? AND connection_id = ?", (user_id, connection_id))
+        return self._open(user_id, connection_id, row[0]) if row else None
+
+    def _seal(self, connection: Connection, secret: str | None) -> str:
+        payload = {"connection": to_primitive(connection), "secret": secret}
+        return self._cipher.seal(json.dumps(payload), _aad("connections", connection.user_id, connection.connection_id))
+
+    def _open(self, user_id: str, connection_id: str, sealed: str) -> tuple[Connection, str | None]:
+        payload = json.loads(self._cipher.open(sealed, _aad("connections", user_id, connection_id)))
+        return _connection_from(payload["connection"]), payload["secret"]
+
+
+def _connection_from(p: dict) -> Connection:
+    return Connection(
+        connection_id=p["connection_id"],
+        user_id=p["user_id"],
+        kind=ConnectionKind(p["kind"]),
+        name=p["name"],
+        endpoint=p["endpoint"],
+        created_at=datetime.fromisoformat(p["created_at"]),
+        tools=tuple(
+            RemoteTool(t["name"], t["description"], t["read_only_hint"], t["destructive_hint"], tuple(t["required_args"])) for t in p["tools"]
+        ),
+        enabled=tuple(p["enabled"]),
+        last_synced_at=datetime.fromisoformat(p["last_synced_at"]) if p.get("last_synced_at") else None,
+        state=p.get("state"),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SealedColumn:
     """One column sealed with the data key: how to read every row, rebuild its associated data and rewrite it.
@@ -601,6 +818,18 @@ SEALED_COLUMNS: tuple[SealedColumn, ...] = (
     SealedColumn(
         "transactions", "SELECT rowid, user_id, txn_id, payload FROM transactions ORDER BY rowid",
         "UPDATE transactions SET payload = ? WHERE rowid = ?", lambda r: _transaction_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "receipts", "SELECT rowid, user_id, receipt_id, payload FROM receipts ORDER BY rowid",
+        "UPDATE receipts SET payload = ? WHERE rowid = ?", lambda r: _receipt_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "connections", "SELECT rowid, user_id, connection_id, payload FROM connections ORDER BY rowid",
+        "UPDATE connections SET payload = ? WHERE rowid = ?", lambda r: _aad("connections", r[1], r[2]),
+    ),
+    SealedColumn(
+        "connection_results", "SELECT rowid, user_id, connection_id, tool, payload FROM connection_results ORDER BY rowid",
+        "UPDATE connection_results SET payload = ? WHERE rowid = ?", lambda r: _aad("connection_results", r[1], f"{r[2]}|{r[3]}"),
     ),
     SealedColumn(
         "user_profiles", "SELECT rowid, user_id, payload FROM user_profiles ORDER BY rowid",
@@ -625,6 +854,18 @@ SEALED_COLUMNS: tuple[SealedColumn, ...] = (
     SealedColumn(
         "audit_events", "SELECT rowid, user_id, event_id, record FROM audit_events ORDER BY rowid",
         "UPDATE audit_events SET record = ? WHERE rowid = ?", lambda r: _aad("audit_events", r[1], r[2]),
+    ),
+    SealedColumn(
+        "investment_links", "SELECT rowid, user_id, payload FROM investment_links ORDER BY rowid",
+        "UPDATE investment_links SET payload = ? WHERE rowid = ?", lambda r: _aad("investment_links", r[1], r[1]),
+    ),
+    SealedColumn(
+        "investment_snapshots", "SELECT rowid, user_id, snapshot_id, payload FROM investment_snapshots ORDER BY rowid",
+        "UPDATE investment_snapshots SET payload = ? WHERE rowid = ?", lambda r: _aad("investment_snapshots", r[1], r[2]),
+    ),
+    SealedColumn(
+        "investment_documents", "SELECT rowid, user_id, document_id, payload FROM investment_documents ORDER BY rowid",
+        "UPDATE investment_documents SET payload = ? WHERE rowid = ?", lambda r: _aad("investment_documents", r[1], r[2]),
     ),
 )
 
@@ -1015,14 +1256,194 @@ class SqliteTransactionWrites:
             return True
 
 
+def _check_investment_write(
+    expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+) -> None:
+    owner = link.user_id
+    if (expected is not None and expected.user_id != owner) or (snapshot is not None and snapshot.user_id != owner) or any(e.user_id != owner for e in events):
+        raise ValueError("investment ownership mismatch")
+
+
+def _link_payload(link: InvestmentLink) -> str:
+    """Field by field: the email and the token are written here and nowhere else, and only sealed."""
+    return json.dumps({
+        "user_id": link.user_id, "provider": link.provider, "adapter": link.adapter, "email": link.email,
+        "token": link.token, "linked_at": link.linked_at.isoformat(), "expired": link.expired,
+    })
+
+
+def _link_from(payload: dict) -> InvestmentLink:
+    return InvestmentLink(
+        payload["user_id"], payload["provider"], payload["adapter"], payload["email"], payload["token"],
+        datetime.fromisoformat(payload["linked_at"]), payload["expired"],
+    )
+
+
+def _snapshot_from(payload: dict) -> InvestmentSnapshot:
+    goals = tuple(InvestmentGoal(g["goal_id"], g["name"], g["value"], g["deposited"]) for g in payload["goals"])
+    return InvestmentSnapshot(
+        payload["user_id"], payload["provider"], payload["currency"], datetime.fromisoformat(payload["fetched_at"]), goals, payload["synthetic"]
+    )
+
+
+def _document_payload(d: StoredInvestmentDocument) -> str:
+    """Shares and values per share as exact decimal text; rows as arrays, so a long certificate stays small."""
+    return json.dumps({
+        "document_id": d.document_id, "user_id": d.user_id, "provider": d.provider, "kind": d.kind.value,
+        "imported_at": d.imported_at.isoformat(), "as_of": d.as_of.isoformat(), "total": d.total,
+        "positions": [[p.fund, p.series, str(p.shares), str(p.share_value), p.balance] for p in d.positions],
+        "movements": [
+            [m.day.isoformat(), m.goal, m.fund, m.series, str(m.shares_in), str(m.shares_out), str(m.share_value),
+             str(m.shares_after), m.pesos_in, m.pesos_out, m.internal, m.pesos_after]
+            for m in d.movements
+        ],
+    })
+
+
+def _document_from(payload: dict) -> StoredInvestmentDocument:
+    return StoredInvestmentDocument(
+        document_id=payload["document_id"],
+        user_id=payload["user_id"],
+        provider=payload["provider"],
+        kind=InvestmentDocumentKind(payload["kind"]),
+        imported_at=datetime.fromisoformat(payload["imported_at"]),
+        as_of=date.fromisoformat(payload["as_of"]),
+        positions=tuple(FundPosition(f, s, Decimal(sh), Decimal(v), b) for f, s, sh, v, b in payload["positions"]),
+        total=payload["total"],
+        movements=tuple(
+            FundMovement(date.fromisoformat(d), g, f, s, Decimal(i), Decimal(o), Decimal(v), Decimal(a), pi, po, internal, pa)
+            for d, g, f, s, i, o, v, a, pi, po, internal, pa in payload["movements"]
+        ),
+    )
+
+
+class SqliteInvestmentStore:
+    """Investment links, synced snapshots and imported documents (ADR-044), sealed with the data key. The owner is a
+    clear column: it binds each sealed payload to its user (associated data) and lets an account deletion find them. A
+    write commits with its audit events in one SQLite transaction; an unlink or a document removal also truncates the
+    WAL, so no old page keeps the token or the rows."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def _open_link(self, user_id: str, payload: str) -> InvestmentLink:
+        return _link_from(json.loads(self._cipher.open(payload, _aad("investment_links", user_id, user_id))))
+
+    def link(self, user_id: str) -> InvestmentLink | None:
+        row = self._db.fetchone("SELECT payload FROM investment_links WHERE user_id = ?", (user_id,))
+        return self._open_link(user_id, row[0]) if row else None
+
+    def latest(self, user_id: str) -> InvestmentSnapshot | None:
+        row = self._db.fetchone(
+            "SELECT snapshot_id, payload FROM investment_snapshots WHERE user_id = ? ORDER BY sequence DESC LIMIT 1", (user_id,)
+        )
+        if row is None:
+            return None
+        return _snapshot_from(json.loads(self._cipher.open(row[1], _aad("investment_snapshots", user_id, row[0]))))
+
+    def save(
+        self, expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+    ) -> bool:
+        _check_investment_write(expected, link, snapshot, events)
+        user_id = link.user_id
+        # Raw connection only: the audit-log methods take db.lock, which this transaction already holds.
+        with _account_transaction(self._db) as conn:
+            row = conn.execute("SELECT payload FROM investment_links WHERE user_id = ?", (user_id,)).fetchone()
+            if (self._open_link(user_id, row[0]) if row else None) != expected:
+                return False
+            SqliteAccountWrites._check_events(conn, events)
+            conn.execute(
+                "INSERT INTO investment_links (user_id, payload) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
+                (user_id, self._cipher.seal(_link_payload(link), _aad("investment_links", user_id, user_id))),
+            )
+            if snapshot is not None:
+                sealed = self._cipher.seal(json.dumps(to_primitive(snapshot)), _aad("investment_snapshots", user_id, snapshot.snapshot_id))
+                conn.execute("INSERT INTO investment_snapshots (snapshot_id, user_id, payload) VALUES (?, ?, ?)", (snapshot.snapshot_id, user_id, sealed))
+                conn.execute(
+                    "DELETE FROM investment_snapshots WHERE user_id = ? AND sequence NOT IN "
+                    "(SELECT sequence FROM investment_snapshots WHERE user_id = ? ORDER BY sequence DESC LIMIT ?)",
+                    (user_id, user_id, MAX_SNAPSHOTS),
+                )
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+            return True
+
+    def remove(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            if conn.execute("SELECT 1 FROM investment_links WHERE user_id = ?", (user_id,)).fetchone() is None:
+                return 0
+            SqliteAccountWrites._check_events(conn, events)
+            removed = conn.execute("DELETE FROM investment_links WHERE user_id = ?", (user_id,)).rowcount
+            removed += conn.execute("DELETE FROM investment_snapshots WHERE user_id = ?", (user_id,)).rowcount
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+        with self._db.lock:
+            self._db.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return removed
+
+    def add_document(self, document: StoredInvestmentDocument, events: Sequence[AuditDraft]) -> bool:
+        user_id = document.user_id
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            if conn.execute(
+                "SELECT 1 FROM investment_documents WHERE user_id = ? AND document_id = ?", (user_id, document.document_id)
+            ).fetchone():
+                return False
+            SqliteAccountWrites._check_events(conn, events)
+            sealed = self._cipher.seal(_document_payload(document), _aad("investment_documents", user_id, document.document_id))
+            conn.execute(
+                "INSERT INTO investment_documents (document_id, user_id, payload) VALUES (?, ?, ?)", (document.document_id, user_id, sealed)
+            )
+            conn.execute(
+                "DELETE FROM investment_documents WHERE user_id = ? AND sequence NOT IN "
+                "(SELECT sequence FROM investment_documents WHERE user_id = ? ORDER BY sequence DESC LIMIT ?)",
+                (user_id, user_id, MAX_DOCUMENTS),
+            )
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+            return True
+
+    def documents(self, user_id: str) -> tuple[StoredInvestmentDocument, ...]:
+        rows = self._db.fetchall("SELECT document_id, payload FROM investment_documents WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(
+            _document_from(json.loads(self._cipher.open(payload, _aad("investment_documents", user_id, document_id))))
+            for document_id, payload in rows
+        )
+
+    def remove_documents(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            removed = conn.execute("SELECT COUNT(*) FROM investment_documents WHERE user_id = ?", (user_id,)).fetchone()[0]
+            if not removed:
+                return 0
+            SqliteAccountWrites._check_events(conn, events)
+            conn.execute("DELETE FROM investment_documents WHERE user_id = ?", (user_id,))
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+        with self._db.lock:
+            self._db.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return removed
+
+
 # Literal statements per table that holds a user's rows (no SQL built from strings, ASVS V1). Whoever adds a table
 # with a user_id must add it here: tests/security/test_account_deletion.py scans every table for the deleted user.
 _ERASE_SQL: dict[str, str] = {
     "statements": "DELETE FROM statements WHERE user_id = ?",
     "transactions": "DELETE FROM transactions WHERE user_id = ?",
+    "receipts": "DELETE FROM receipts WHERE user_id = ?",
+    "connections": "DELETE FROM connections WHERE user_id = ?",
+    "connection_results": "DELETE FROM connection_results WHERE user_id = ?",
     "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
     "proposals": "DELETE FROM proposals WHERE user_id = ?",
     "authorizations": "DELETE FROM authorizations WHERE user_id = ?",
+    "investment_links": "DELETE FROM investment_links WHERE user_id = ?",
+    "investment_snapshots": "DELETE FROM investment_snapshots WHERE user_id = ?",
+    "investment_documents": "DELETE FROM investment_documents WHERE user_id = ?",
 }
 _ERASE_ACCOUNT_SQL: dict[str, str] = {  # not for a demo persona's reset: the persona and its visitors' sessions stay
     "sessions": "DELETE FROM sessions WHERE user_id = ?",

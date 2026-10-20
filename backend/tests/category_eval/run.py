@@ -4,6 +4,7 @@
     PYTHONPATH=src:. python -m tests.category_eval.run --model naive_bayes
     PYTHONPATH=src:. python -m tests.category_eval.run --model jev --out ../evidence/category_eval/jev.json
     PYTHONPATH=src:. python -m tests.category_eval.run --model chain        # jev, then naive_bayes
+    PYTHONPATH=src:. python -m tests.category_eval.run --model jev --examples tests/category_eval/receipts.jsonl
 
 Each line is classified as posting would, then gated by the domain (`accept`: in the vocabulary and
 confidence >= 0.5). Three numbers matter, per slice (`seen`: merchants in the naive Bayes training data,
@@ -82,9 +83,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", choices=("naive_bayes", "jev", "chain"), default="naive_bayes")
     parser.add_argument("--model-id", default="jev-1.14-20261014", help="Jev version (pinned; see ADR-026)")
     parser.add_argument("--out", type=Path, default=None, help="write the full report as JSON")
+    parser.add_argument("--examples", type=Path, default=EXAMPLES, help="the set to score (receipts.jsonl: store names, ADR-039)")
     args = parser.parse_args(argv)
 
-    examples = load_examples()
+    examples = load_examples(args.examples)
     classifier = build(args.model, args.model_id)
     started = time.monotonic()
     guesses = classifier.classify([e["text"] for e in examples])

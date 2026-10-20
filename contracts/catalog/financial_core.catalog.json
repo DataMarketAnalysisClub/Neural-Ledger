@@ -10,7 +10,10 @@
     {"code":"CATEGORY_SPARSE","source":"estimation","trigger":"Sparse spend merged into other","must_mention":false,"reaches_tool_envelope":false},
     {"code":"RATE_ASSUMED","source":"purchase","trigger":"Offer rate omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"FIRST_INSTALLMENT_ASSUMED","source":"financial","trigger":"First installment month omitted","must_mention":true,"reaches_tool_envelope":true},
-    {"code":"PROFILE_CAPPED","source":"financial","trigger":"Requested profile exceeds permitted","must_mention":true,"reaches_tool_envelope":true}
+    {"code":"PROFILE_CAPPED","source":"financial","trigger":"Requested profile exceeds permitted","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"GOAL_OFF_TRACK","source":"plan","trigger":"A goal due within near_term_goal_months is not complete by its deadline at the planned rate (H3, UG03); names the goal, changes no amount","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"SPENDING_ABOVE_FORECAST","source":"spending","trigger":"Logged spending this cycle is past the conservative (P80) assumption; the extra comes out of the protected surplus","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"SPENDING_BREACHES_FLOOR","source":"spending","trigger":"The overspend is larger than the protected surplus: a conservative month drops below the floor","must_mention":true,"reaches_tool_envelope":true}
   ],
   "facts": [
     {"template":"liquidity_floor","pattern":"^liquidity_floor$","domains":{},"unit":"CLP","source":"forecast/financial"},
@@ -78,7 +81,20 @@
     {"template":"estimate.income.conservative","pattern":"^estimate\\.income\\.conservative$","domains":{},"unit":"CLP","source":"estimation"},
     {"template":"estimate.spend.p50_total","pattern":"^estimate\\.spend\\.p50_total$","domains":{},"unit":"CLP","source":"estimation"},
     {"template":"estimate.spend.p80_total","pattern":"^estimate\\.spend\\.p80_total$","domains":{},"unit":"CLP","source":"estimation"},
-    {"template":"estimate.commitments","pattern":"^estimate\\.commitments$","domains":{},"unit":"count","source":"estimation"}
+    {"template":"estimate.commitments","pattern":"^estimate\\.commitments$","domains":{},"unit":"count","source":"estimation"},
+    {"template":"spending.cycle","pattern":"^spending\\.cycle$","domains":{},"unit":"month","source":"spending"},
+    {"template":"spending.window_start","pattern":"^spending\\.window_start$","domains":{},"unit":"date","source":"spending"},
+    {"template":"spending.window_end","pattern":"^spending\\.window_end$","domains":{},"unit":"date","source":"spending"},
+    {"template":"spending.days_left","pattern":"^spending\\.days_left$","domains":{},"unit":"days","source":"spending"},
+    {"template":"spending.assumed","pattern":"^spending\\.assumed$","domains":{},"unit":"CLP","source":"spending"},
+    {"template":"spending.logged","pattern":"^spending\\.logged$","domains":{},"unit":"CLP","source":"spending"},
+    {"template":"spending.logged_items","pattern":"^spending\\.logged_items$","domains":{},"unit":"count","source":"spending"},
+    {"template":"spending.left","pattern":"^spending\\.left$","domains":{},"unit":"CLP","source":"spending"},
+    {"template":"spending.per_day","pattern":"^spending\\.per_day$","domains":{},"unit":"CLP","source":"spending"},
+    {"template":"spending.overspend","pattern":"^spending\\.overspend$","domains":{},"unit":"CLP","source":"spending"},
+    {"template":"spending.surplus_after","pattern":"^spending\\.surplus_after$","domains":{},"unit":"CLP","source":"spending"},
+    {"template":"spending.{c.category}.assumed","pattern":"^spending\\.(groceries|dining|health|shopping|transport|utilities|entertainment|other|uncategorized|movement|savings|income)\\.assumed$","domains":{"c.category":"spending category with logged spending"},"unit":"CLP","source":"spending"},
+    {"template":"spending.{c.category}.logged","pattern":"^spending\\.(groceries|dining|health|shopping|transport|utilities|entertainment|other|uncategorized|movement|savings|income)\\.logged$","domains":{"c.category":"spending category with logged spending"},"unit":"CLP","source":"spending"}
   ],
   "error_fields": [
     {"status":"INVALID_INPUT","template":"ledger","pattern":"^ledger$","source":"ledger_source"},

@@ -15,14 +15,32 @@ import type { PurchaseSimulation } from "@/contracts/outputs/purchase_simulation
 import type { Statements } from "@/contracts/outputs/statements";
 import type { Statement } from "@/contracts/outputs/statement";
 import type { StatementImport } from "@/contracts/outputs/statement_import";
+import type { DocumentIngest } from "@/contracts/outputs/document_ingest";
+import type { SpendingStatus } from "@/contracts/outputs/spending_status";
+import type { Receipts } from "@/contracts/outputs/receipts";
+import type { ReceiptCorrection } from "@/contracts/receipts/receipt_correction";
+import type { ExpenseConfirmation } from "@/contracts/expenses/expense_confirmation";
+import type { ExpenseProposal } from "@/contracts/outputs/expense_proposal";
 import type { Transactions } from "@/contracts/outputs/transactions";
 import type { CategoryUpdate } from "@/contracts/transactions/category_update";
-import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
+import type { InvestmentOverview } from "@/contracts/outputs/investments";
+import type { InvestmentLinkOutcome } from "@/contracts/investments/link_outcome";
+import type { InvestmentLinkRequest } from "@/contracts/investments/link_request";
+import type { InvestmentDocumentsRemoved } from "@/contracts/investments/documents_removed";
+import type { Connections } from "@/contracts/connections/connections";
+import type { Connection } from "@/contracts/connections/connection";
+import type { ConnectionCreate } from "@/contracts/connections/connection_create";
+import type { ConnectionToolsUpdate } from "@/contracts/connections/tools_update";
+import type { ConnectionSync } from "@/contracts/connections/sync_result";
+import type { ConnectedData } from "@/contracts/outputs/connected_data";
+import type { BankStart } from "@/contracts/connections/bank_start";
+import { ApiError, request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type Envelope, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
-export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate };
+export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate, DocumentIngest, SpendingStatus, Receipts };
+export type { InvestmentOverview, InvestmentLinkOutcome, InvestmentLinkRequest };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -92,6 +110,8 @@ export interface Health {
   audit_chain_ok: boolean;
   tools: string[];
   server_time?: string | null;
+  /** Who reads a linked investment account: "fixture" (a synthetic sandbox account) or "fintual" (ADR-044). */
+  investments?: string;
 }
 
 export function useHealth() {
@@ -184,6 +204,17 @@ export function useAudit(sessionId?: string) {
   });
 }
 
+/** The spending check-in for the pay cycle of today (ADR-039): the same figures the copilot's get_spending_status reads. */
+export function useSpending() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "spending"], queryFn: () => requestEnvelope<SpendingStatus>("/v1/spending", { identity }) });
+}
+
+export function useReceipts() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "receipts"], queryFn: () => requestEnvelope<Receipts>("/v1/receipts", { identity }) });
+}
+
 export function useStatements() {
   const { identity } = usePersona();
   return useQuery({ queryKey: [identity.user_id, "statements"], queryFn: () => requestEnvelope<Statements>("/v1/statements", { identity }) });
@@ -201,6 +232,80 @@ export function useStatement(statementId: string | null) {
 export function useTransactions() {
   const { identity } = usePersona();
   return useQuery({ queryKey: [identity.user_id, "transactions"], queryFn: () => requestEnvelope<Transactions>("/v1/transactions", { identity }) });
+}
+
+/** The linked investment account (ADR-044). No link is a state the screen shows, not an error: 404 NOT_LINKED. */
+async function investmentLink(identity: ApiIdentity): Promise<InvestmentLinkOutcome> {
+  try {
+    return await request<InvestmentLinkOutcome>("/v1/investments/link", { identity });
+  } catch (error) {
+    const body = error instanceof ApiError ? (error.body as Partial<InvestmentLinkOutcome> | null) : null;
+    if (error instanceof ApiError && error.httpStatus === 404 && body?.status === "NOT_LINKED") return body as InvestmentLinkOutcome;
+    throw error;
+  }
+}
+
+/** Only asked by an account that may link one: a demo persona or demo mode never can (S31). */
+export function useInvestmentLink(enabled: boolean) {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "investment-link"], queryFn: () => investmentLink(identity), enabled });
+}
+
+/** What the copilot knows of the user's investments: the imported documents, else a linked account. Nothing yet is a
+ * state the screen shows, not an error: the API answers INSUFFICIENT_DATA with missing ["investment_account"]. */
+async function investments(identity: ApiIdentity): Promise<Envelope<InvestmentOverview> | null> {
+  try {
+    return await requestEnvelope<InvestmentOverview>("/v1/investments", { identity });
+  } catch (error) {
+    if (error instanceof ApiError && error.detail.missing?.includes("investment_account")) return null;
+    throw error;
+  }
+}
+
+/** Read without calling any provider: importing and syncing are the user's actions. */
+export function useInvestments(enabled: boolean) {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "investments"], queryFn: () => investments(identity), enabled });
+}
+
+/** The account forgets every investment document it imported (ADR-044). A linked account, if any, stays. */
+export function useRemoveInvestmentDocuments() {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<InvestmentDocumentsRemoved>("/v1/investments/documents", { identity, method: "DELETE" }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: [identity.user_id, "investments"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+    },
+  });
+}
+
+function useInvestmentWrite<T>(send: (identity: ApiIdentity, input: T) => Promise<InvestmentLinkOutcome>) {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: T) => send(identity, input),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: [identity.user_id, "investment-link"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "investments"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+    },
+  });
+}
+
+/** Sends the Fintual email and password once; the API keeps only the token it gets back, sealed. Never stored here. */
+export function useLinkInvestments() {
+  return useInvestmentWrite((identity, body: InvestmentLinkRequest) =>
+    request<InvestmentLinkOutcome>("/v1/investments/link", { identity, method: "POST", body }));
+}
+
+export function useSyncInvestments() {
+  return useInvestmentWrite<void>((identity) => request<InvestmentLinkOutcome>("/v1/investments/sync", { identity, method: "POST" }));
+}
+
+export function useUnlinkInvestments() {
+  return useInvestmentWrite<void>((identity) => request<InvestmentLinkOutcome>("/v1/investments/link", { identity, method: "DELETE" }));
 }
 
 export interface ChainCheck {
@@ -248,6 +353,68 @@ export function useImportStatement() {
       void client.invalidateQueries({ queryKey: [identity.user_id, "transactions"] });
       void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
       void auth?.refreshMe(); // an import can turn an empty account into one with statements (ADR-029)
+    },
+  });
+}
+
+/**
+ * A file dropped on the copilot (ADR-039): the server decides whether it is a statement or a receipt, reads it,
+ * records it once and answers with every workflow step and the spending check-in.
+ */
+export function useIngestDocument() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  const auth = useOptionalAuth();
+  return useMutation({
+    /** `kind` is the user's own answer when the file was not recognized, or where they dropped it ("investment" on the Investments page). */
+    mutationFn: ({ file, kind }: { file: Blob; kind?: "receipt" | "statement" | "investment" }) =>
+      requestEnvelope<DocumentIngest>("/v1/documents", { identity, method: "POST", body: file, query: { session_id: sessionId, kind } }),
+    onSettled: () => {
+      for (const key of ["statements", "transactions", "audit", "spending", "receipts", "investments"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+      void auth?.refreshMe();
+    },
+  });
+}
+
+export type ReceiptView = Receipts[number];
+export type { ExpenseProposal };
+
+/**
+ * The user confirms an expense the copilot prepared from what they said (ADR-039), completing what it could not
+ * tell (cash or card, the category). The amount is the proposal's: this sends no amount. Nothing is stored before.
+ */
+export function useConfirmExpense() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ proposalId, ...choice }: { proposalId: string } & Omit<ExpenseConfirmation, "session_id">) =>
+      requestEnvelope<ReceiptView>(`/v1/expenses/${encodeURIComponent(proposalId)}/confirm`, {
+        identity,
+        method: "POST",
+        body: { ...choice, session_id: sessionId } satisfies ExpenseConfirmation,
+      }),
+    onSettled: () => {
+      for (const key of ["audit", "spending", "receipts"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+    },
+  });
+}
+
+/**
+ * The user's correction of a receipt's total or date (ADR-039). Not optimistic: the receipt, the spending figure and
+ * the receipts list are re-read when the API answers. Only this form corrects a receipt; the copilot only asks.
+ */
+export function useCorrectReceipt() {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ receiptId, ...fix }: { receiptId: string } & Omit<ReceiptCorrection, "session_id">) =>
+      requestEnvelope<ReceiptView>(`/v1/receipts/${encodeURIComponent(receiptId)}`, {
+        identity,
+        method: "PATCH",
+        body: { ...fix, session_id: sessionId } satisfies ReceiptCorrection,
+      }),
+    onSettled: () => {
+      for (const key of ["audit", "spending", "receipts"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
     },
   });
 }
@@ -318,4 +485,67 @@ export function useExecute() {
       void client.invalidateQueries({ queryKey: [identity.user_id, "state"] }); // the rule counter is re-read, never incremented locally
     },
   });
+}
+
+// ---- Read-only connections (ADR-047) --------------------------------------------------------
+
+export type { Connections, Connection, ConnectionSync, ConnectedData, BankStart };
+export type ConnectionTool = Connection["tools"][number];
+
+export function useConnections() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "connections"], queryFn: () => requestEnvelope<Connections>("/v1/connections", { identity }) });
+}
+
+/** What the copilot reads: the last sync's answers. Missing data (nothing connected) is an ApiError (409). */
+export function useConnectedData() {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "connections", "data"], queryFn: () => requestEnvelope<ConnectedData>("/v1/connections/data", { identity }) });
+}
+
+function useConnectionMutation<A, T>(call: (args: A, identity: ApiIdentity, sessionId: string) => Promise<Envelope<T>>, extra: string[] = []) {
+  const { identity, sessionId } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (args: A) => call(args, identity, sessionId),
+    onSettled: () => {
+      for (const key of ["connections", "audit", ...extra]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+    },
+  });
+}
+
+export function useAddConnection() {
+  return useConnectionMutation((body: Omit<ConnectionCreate, "consent">, identity, sessionId) =>
+    requestEnvelope<Connection>("/v1/connections", { identity, method: "POST", body: { ...body, consent: true, session_id: sessionId } }),
+  );
+}
+
+export function useSetConnectionTools() {
+  return useConnectionMutation(({ id, enabled }: { id: string; enabled: string[] }, identity, sessionId) =>
+    requestEnvelope<Connection>(`/v1/connections/${encodeURIComponent(id)}/tools`, { identity, method: "PUT", body: { enabled, session_id: sessionId } satisfies ConnectionToolsUpdate & { session_id: string } }),
+  );
+}
+
+/** A bank sync imports statements, so the ledger screens are re-read too. */
+export function useSyncConnection() {
+  return useConnectionMutation((id: string, identity, sessionId) =>
+    requestEnvelope<ConnectionSync>(`/v1/connections/${encodeURIComponent(id)}/sync`, { identity, method: "POST", query: { session_id: sessionId } }),
+  ["statements", "transactions"]);
+}
+
+export function useRemoveConnection() {
+  return useConnectionMutation((id: string, identity, sessionId) =>
+    requestEnvelope<Connection>(`/v1/connections/${encodeURIComponent(id)}`, { identity, method: "DELETE", query: { session_id: sessionId } }),
+  );
+}
+
+export function useBankStart() {
+  const { identity } = usePersona();
+  return useMutation({ mutationFn: () => requestEnvelope<BankStart>("/v1/connections/bank/start", { identity, method: "POST" }) });
+}
+
+export function useConnectBank() {
+  return useConnectionMutation((exchangeToken: string, identity, sessionId) =>
+    requestEnvelope<Connection>("/v1/connections/bank", { identity, method: "POST", body: { exchange_token: exchangeToken, consent: true, session_id: sessionId } }),
+  );
 }

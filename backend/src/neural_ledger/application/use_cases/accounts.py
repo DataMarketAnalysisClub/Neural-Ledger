@@ -24,6 +24,7 @@ from ..ports import (
     AccountErasure,
     AccountWrites,
     Clock,
+    EmailDomainCheck,
     ErasureReport,
     IdGenerator,
     PasswordHasher,
@@ -103,6 +104,7 @@ class AccountUseCases:
         transactions: TransactionStore | None = None,
         erasure: AccountErasure | None = None,
         forget: Sequence[Forgettable] = (),
+        email_checks: Sequence[EmailDomainCheck] = (),
     ) -> None:
         if not demo_personas <= frozenset(DEMO_PERSONAS):
             raise ValueError("demo sessions open only the allowlisted personas")
@@ -110,6 +112,7 @@ class AccountUseCases:
         self._transactions = transactions  # only to tell an account with imported statements from an empty one
         self._erasure = erasure
         self._forget = tuple(forget)
+        self._email_checks = tuple(email_checks)  # disposable providers, domains that take no mail (adapters/outbound/email)
         self._accounts = accounts
         self._sessions = sessions
         self._writes = writes
@@ -131,6 +134,9 @@ class AccountUseCases:
             draft = UserProfile("", display_name, language)
         except InvalidInput as error:
             return AccountOutcome(AccountStatus.INVALID_INPUT, field=error.field, message=error.message)
+        for check in self._email_checks:
+            if (refusal := check.refusal(normalized)) is not None:
+                return AccountOutcome(AccountStatus.INVALID_INPUT, field="email", message=refusal)
         if self._accounts.by_email(normalized) is not None:
             return EMAIL_TAKEN
         password_hash = self._hasher.hash(password)

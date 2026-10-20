@@ -209,3 +209,39 @@ def test_chat_reply_lists_every_domain_intent():
 
     schema = json.loads((CONTRACTS / "chat/chat_reply.schema.json").read_text())
     assert schema["properties"]["intent"]["enum"] == [i.value for i in Intent]
+
+
+def test_document_outputs_match_contracts(services):
+    """ADR-039: a receipt (stamped, then a duplicate, then one that does not add up) and a statement dropped on the copilot."""
+    pytest.importorskip("pymupdf")
+    pytest.importorskip("pdfplumber")
+    from tests.receipt_samples import Boleta, boleta_pdf
+    from tests.statement_samples import santander_pdf
+
+    for content in (boleta_pdf(), boleta_pdf(), boleta_pdf(Boleta(folio=9, stamp_total=1)), santander_pdf()):
+        result = to_primitive(services.documents.ingest("camila", content, "s-contract"))
+        validate(result, "common/envelope.schema.json")
+        validate(result["data"], "outputs/document_ingest.schema.json")
+    status = to_primitive(services.documents.spending_status("camila"))
+    validate(status, "common/envelope.schema.json")
+    validate(status["data"], "outputs/spending_status.schema.json")
+    assert status["data"]["latest_receipt"]["issues"], "the unverified receipt must be covered too"
+    listed = to_primitive(services.documents.list_receipts("camila"))
+    validate(listed["data"], "outputs/receipts.schema.json")
+    validate(to_primitive(services.documents.ingest("camila", b"not a document", "s-contract")), "common/envelope.schema.json")
+    rid = listed["data"][0]["receipt_id"]
+    validate({"session_id": "s", "issued_on": "2026-10-16"}, "receipts/receipt_correction.schema.json")
+    corrected = to_primitive(services.documents.correct_receipt("camila", "s", rid, issued_on="2026-10-16"))
+    validate(corrected, "common/envelope.schema.json")
+    validate([corrected["data"]], "outputs/receipts.schema.json")
+
+
+def test_expense_outputs_match_contracts(services):
+    reply = to_primitive(services.chat.handle("s-c-exp", "camila", "Hoy gasté 15 lucas en el almuerzo"))
+    validate(reply, "chat/chat_reply.schema.json")
+    validate(reply["pending_expense"], "outputs/expense_proposal.schema.json")
+    body = {"session_id": "s", "payment": "card", "category": "dining"}
+    validate(body, "expenses/expense_confirmation.schema.json")
+    stored = to_primitive(services.documents.confirm_expense("camila", "s", reply["pending_expense"]["proposal_id"], "card", "dining"))
+    validate(stored, "common/envelope.schema.json")
+    validate([stored["data"]], "outputs/receipts.schema.json")

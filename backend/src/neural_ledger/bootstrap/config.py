@@ -58,6 +58,26 @@ class Settings:
     app_origins: tuple[str, ...] = ("http://localhost:3000", "http://localhost:5173")  # may send unsafe requests (accounts)
     cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
+    email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
+    investments: str = "fixture"  # fixture (synthetic account, offline) | fintual (the provider's API); see INVESTMENT_PROVIDERS (ADR-044)
+    fintual_base_url: str = "https://fintual.cl/api"
+    fintual_diagnostics: bool = False  # local diagnosis: log the sign-in's shape and probe other token styles (statuses only)
+    knowledge_bases: tuple[str, ...] = ("lexical",)  # concept cards (ADR-040), tried in order, e.g. ("chroma", "lexical"); see KNOWLEDGE_BASES
+    kb_dir: str = "./var/chroma"  # the Chroma index (embedded mode) and the embedding model's weights
+    kb_url: str | None = None  # a Chroma server, e.g. http://chroma:8000 (docker compose --profile rag); None = embedded in kb_dir
+    kb_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    connectors: str = "fixture"  # fixture (synthetic MCP server and bank) | live (real servers the user adds, Fintoc), ADR-047
+    connectors_live: bool = False  # NL_DEPLOYMENT=deployed turns live connectors off unless this is true
+    mcp_allow_private: bool = False  # local development only: lets an MCP server on http://localhost be added
+    fintoc_secret_key: str | None = None
+    fintoc_public_key: str | None = None
+
+    @property
+    def connectors_mode(self) -> str:
+        """off | fixture | live: what /v1/connections reports. A public deployment never reaches real services by default."""
+        if self.connectors == "live" and self.deployment == "deployed" and not self.connectors_live:
+            return "off"
+        return self.connectors
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -77,12 +97,14 @@ class Settings:
 
     @property
     def mode(self) -> str:
-        """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories) or the Azure detector."""
+        """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories), the Azure detector,
+        or an investment provider (the credentials the user types to link an account)."""
         offline = (
             self.llm == "scripted"
             and all(m == "rules" for m in self.decision_chain)
             and "jev" not in self.classifiers
             and self.pii_detector == "none"
+            and self.investments == "fixture"
         )
         return "offline" if offline else "live"
 
@@ -96,6 +118,8 @@ class Settings:
 
         chain = tuple(part.strip() for part in get("NL_DECISION_CHAIN", "rules").split(",") if part.strip())
         classifiers = tuple(part.strip() for part in get("NL_CLASSIFIER", "naive_bayes").split(",") if part.strip())
+        knowledge_bases = tuple(part.strip() for part in get("NL_KNOWLEDGE_BASE", "lexical").split(",") if part.strip())
+        email_checks = tuple(part.strip() for part in get("NL_EMAIL_CHECKS", "disposable").split(",") if part.strip() not in ("", "none"))
         return cls(
             persona=get("NL_PERSONA", cls.persona),
             model_source=get("NL_MODEL_SOURCE", cls.model_source),
@@ -128,6 +152,19 @@ class Settings:
             app_origins=tuple(o.strip() for o in get("NL_APP_ORIGINS", ",".join(cls.app_origins)).split(",") if o.strip()),
             cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
             demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
+            email_checks=email_checks,
+            investments=get("NL_INVESTMENTS", cls.investments),
+            fintual_base_url=get("NL_FINTUAL_BASE_URL", cls.fintual_base_url),
+            fintual_diagnostics=_flag(get("NL_FINTUAL_DIAGNOSTICS", "false"), "NL_FINTUAL_DIAGNOSTICS"),
+            knowledge_bases=knowledge_bases or cls.knowledge_bases,
+            kb_dir=get("NL_KB_DIR", cls.kb_dir),
+            kb_url=get("NL_KB_URL", "") or None,
+            kb_embedding_model=get("NL_KB_EMBEDDING_MODEL", cls.kb_embedding_model),
+            connectors=get("NL_CONNECTORS", cls.connectors),
+            connectors_live=_flag(get("NL_CONNECTORS_LIVE", "false"), "NL_CONNECTORS_LIVE"),
+            mcp_allow_private=_flag(get("NL_MCP_ALLOW_PRIVATE", "false"), "NL_MCP_ALLOW_PRIVATE"),
+            fintoc_secret_key=e.get("FINTOC_SECRET_KEY") or None,
+            fintoc_public_key=e.get("FINTOC_PUBLIC_KEY") or None,
         )
 
 

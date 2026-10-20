@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/connections/tools_update.schema.json",
+  "title": "ConnectionToolsUpdate",
+  "description": "Body of PUT /v1/connections/{id}/tools: the tools the user enables, replacing the previous choice. A blocked or unknown tool name refuses the whole update.",
+  "type": "object",
+  "required": ["enabled"],
+  "properties": {"enabled": {"type": "array", "maxItems": 50, "uniqueItems": true, "items": {"type": "string", "maxLength": 80}}},
+  "additionalProperties": false
+}

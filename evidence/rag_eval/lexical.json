@@ -1,0 +1,31 @@
+{
+  "kb": "lexical",
+  "knowledge_base": "lexical/b2fc7a53",
+  "cards": 70,
+  "skipped": 0,
+  "seconds": 0.02,
+  "all": {
+    "n": 48,
+    "recall@1": 0.958,
+    "recall@3": 1.0,
+    "mrr": 0.979
+  },
+  "en": {
+    "n": 23,
+    "recall@1": 0.957,
+    "recall@3": 1.0,
+    "mrr": 0.978
+  },
+  "es": {
+    "n": 25,
+    "recall@1": 0.96,
+    "recall@3": 1.0,
+    "mrr": 0.98
+  },
+  "top_score": {
+    "answerable_median": 1.0,
+    "answerable_min": 0.556,
+    "off_topic_max": 0.409
+  },
+  "misses": []
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X } from "@phosphor-icons/react";
 import { Button } from "@/components/ui";
 import { t } from "@/i18n";
@@ -42,7 +43,8 @@ export function GuidePanel({ steps, step, onStep, onClose }: { steps: GuideStep[
     <>
       {/* Room below the page, so the last regions can still scroll above the panel. Render the guide last. */}
       <div aria-hidden className="h-72" />
-      <div role="dialog" aria-labelledby="guide-title" className="fixed inset-x-4 bottom-4 z-50 rounded-object border border-line bg-surface p-5 shadow-object sm:left-auto sm:w-[380px]">
+      {/* Portaled: the page wrapper's fade-in keeps a transform, which would pin `fixed` to the page, not the screen. */}
+      {createPortal(<div role="dialog" aria-labelledby="guide-title" className="fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50 lg:bottom-4 rounded-object border border-line bg-surface p-5 shadow-object sm:left-auto sm:w-[380px]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="num text-xs text-ink-3">{t("guide.progress", { step: step + 1, total: steps.length })}</p>
@@ -63,7 +65,7 @@ export function GuidePanel({ steps, step, onStep, onClose }: { steps: GuideStep[
             {last ? t("guide.done") : t("guide.next")}
           </Button>
         </div>
-      </div>
+      </div>, document.body)}
     </>
   );
 }
