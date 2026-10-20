@@ -304,6 +304,16 @@ def create_app(
             "expires_at": current.expires_at.isoformat(),
         })
 
+    @app.get("/v1/me/export")
+    def export_data(request: Request):
+        """G02 (Ley 21.719 arts. 5 and 9): a copy of everything stored about the signed-in user, as a JSON download."""
+        if accounts is None or services.data_export is None:
+            return not_found()
+        current = session(request)
+        body = services.data_export.export(current.user_id, current.session_ref)
+        name = f"neural-ledger-data-{body['exported_at'][:10]}.json"
+        return JSONResponse(body, headers={"content-disposition": f'attachment; filename="{name}"'})
+
     # ---- financial reads (T0/T1) --------------------------------------------------------------
 
     @app.get("/v1/state")

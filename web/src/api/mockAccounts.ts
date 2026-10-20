@@ -1,5 +1,5 @@
 import { ApiError } from "./client";
-import type { AccountDeletion, AccountDeletionInput, AuthError, AuthSession, Me, ProfileUpdate, QuestionnaireDefinition, QuestionnaireSubmission, SigninInput, SignupInput, Tolerance, UserProfile } from "./accounts";
+import type { AccountDeletion, AccountDeletionInput, AuthError, DataExport, AuthSession, Me, ProfileUpdate, QuestionnaireDefinition, QuestionnaireSubmission, SigninInput, SignupInput, Tolerance, UserProfile } from "./accounts";
 
 type MockUser = { readonly email: string; readonly password: string; readonly profile: UserProfile; readonly data_source: Me["data_source"] };
 type MockSession = { readonly email: string; readonly expires_at: string };
@@ -156,6 +156,15 @@ export async function mockRequest(
     users.delete(user.email);
     currentSession = null;
     return { status: "DELETED", erased: { user_accounts: 1, user_profiles: 1, sessions: 1 }, audit_events_erased: 0 } satisfies AccountDeletion;
+  }
+  if (path === "/v1/me/export" && options.method === "GET") {
+    const persona = user.data_source === "persona";
+    return {
+      format: "neural-ledger-export-1", exported_at: new Date().toISOString(), user_id: user.profile.user_id,
+      account: persona ? null : { email: user.email, created_at: new Date().toISOString(), sample_data: false },
+      profile: { ...user.profile, display_name: user.profile.display_name.untrusted_text },
+      statements: [], transactions: [], receipts: [], connections: [], savings_rules: [], audit_events: [],
+    } satisfies DataExport;
   }
   // Only a read-only demo persona has financial data; a new account stays empty.
   if (path === "/v1/permitted-profile" && options.method === "POST" && user.data_source === "persona") {

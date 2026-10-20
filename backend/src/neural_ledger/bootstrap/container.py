@@ -93,6 +93,7 @@ from ..application.use_cases.actions import ActionUseCases
 from ..application.use_cases.audit import AuditUseCases
 from ..application.use_cases.chat import ChatUseCase
 from ..application.use_cases.connections import ConnectionUseCases
+from ..application.use_cases.data_export import DataExport
 from ..application.use_cases.documents import DocumentUseCases
 from ..application.use_cases.education import EducationUseCases
 from ..application.use_cases.financial import FinancialUseCases
@@ -280,6 +281,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
 
     accounts: AccountUseCases | None = None
     profile_editing: ProfileEditing | None = None
+    data_export: DataExport | None = None
     if auth.accounts:
         # Exactly one writes object over the SAME account, session, profile and audit objects the rest of the app uses,
         # built before any request: InMemoryAccountWrites re-points their locks, and SQLite shares one database.
@@ -302,6 +304,10 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             email_checks=_email_checks(s.email_checks),
         )
         profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
+        # The same stores the erasure empties, so the copy holds what a deletion would erase.
+        data_export = DataExport(
+            account_store, profiles, statement_store, transaction_store, receipt_store, connection_store, bank, audit_log, clock, ids,
+        )
 
     models = []
     for name in s.decision_chain:
@@ -384,6 +390,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         persistence=s.persistence,
         documents=documents,
         connections=connections,
+        data_export=data_export,
     )
     return services, Adapters(clock, bank, actions_repo, audit_log, source, knowledge_base)
 

@@ -160,6 +160,7 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | `C11` | Chat input is cut at 4,000 characters before any model sees it | LLM10; API4:2023 | `test_c11_…` |
 | `C12` | The tests that keep numbers traceable and warnings mentioned (S07, S08) stay in the suite | Ley 19.496 art. 3 b); LLM09 | `test_c12_…` |
 | `C13` | With `NL_CLASSIFIER=jev,…`, Jev receives each charge's text only after redaction (no name, RUT, e-mail, phone or card number) and never a deposit | Ley 21.719 art. 3 c); transfer to a provider abroad (ADR-032) | `test_c13_…` |
+| `G02` | The user downloads a copy of their data: `GET /v1/me/export` (Profile, Download my data, or before deleting) returns one JSON file with what a deletion would erase (account, profile and answers, statements, transactions, receipts, connections with their last answers, active savings rules and their audit events), never the password hash, a session token or a connection secret; audited as `DATA_EXPORTED` | Ley 21.719 arts. 5, 9 | `test_g02_…`, `tests/security/test_data_export.py` |
 | `G03` | The user deletes their account and everything it owns: `DELETE /v1/account` with the password and a typed confirmation; the audit keeps tombstones that a later `ACCOUNT_DELETED` event commits to, so the chain still verifies; demo personas are reset, not deleted (ADR-038) | Ley 21.719 art. 7 | `test_g03_…`, `tests/security/test_account_deletion.py` |
 | `G04` | The user corrects a transaction's category: `PATCH /v1/transactions/{txn_id}` stores it with classifier `user`, it wins over any model and survives re-imports, and the change is audited as `CATEGORY_CHANGED`; the kind and amount never change, and no agent tool reaches it (ADR-023). Line corrections for unreconciled statements (ADR-021) are still to come | Ley 21.719 art. 6 | `test_g04_…`, `tests/application/test_ledger.py` |
 | `G07` | Bursts are rate limited: per caller and per client IP, one-minute windows, stricter on uploads (10), chat (20) and sign-in (10 per IP); over budget is 429 with `Retry-After` and reaches no use case (ADR-033) | API4:2023; LLM10 | `test_g07_…`, `tests/http/test_rate_limit.py` |
@@ -174,11 +175,10 @@ Each row of the final report should also record actual behaviour, pass or fail, 
 | ID | Missing control | Norm | Suggested fix |
 |---|---|---|---|
 | `G01` | Authentication: identity is the `X-User-Id` header | API2:2023; Ley 21.719 art. 14 quinquies | Session or token auth; reject requests without credentials (401) |
-| `G02` | Export of all of a user's data | Ley 21.719 arts. 5, 9 | `GET /v1/me/export`, structured JSON |
 | `G05` | Opposition to and blocking of processing | Ley 21.719 arts. 8, 8 ter | `PUT /v1/me/processing` |
 | `G06` | Recorded, purpose-specific consent before a statement is processed | Ley 21.719 art. 12 | Consent record per user and purpose, revocable; imports refused without it |
 
-The routes in G02 and G05 are proposals; change the test with the API design. G03 is built (`DELETE /v1/account`); its test stays in the gaps block of the test file, without the xfail marker. The plan to close G01–G07 and G11, step by step, is ADR-033.
+The route in G05 is a proposal; change the test with the API design. G02 (`GET /v1/me/export`) and G03 (`DELETE /v1/account`) are built; their tests stay in the gaps block of the test file, without the xfail marker. The plan to close G01–G07 and G11, step by step, is ADR-033.
 
 ### Obligations reviewed but not testable as code
 

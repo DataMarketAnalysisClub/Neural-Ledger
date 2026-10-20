@@ -50,6 +50,7 @@ class AuditKind(str, Enum):
     CONNECTION_REMOVED = "CONNECTION_REMOVED"  # the user disconnected; its stored results and secret are gone
     CATEGORY_CHANGED = "CATEGORY_CHANGED"  # the user set a transaction's category (ADR-023)
     PROFILE_UPDATED = "PROFILE_UPDATED"
+    DATA_EXPORTED = "DATA_EXPORTED"  # the user downloaded a copy of their data (G02); the copy is never logged
     USER_REGISTERED = "USER_REGISTERED"
     SESSION_STARTED = "SESSION_STARTED"
     SESSION_ENDED = "SESSION_ENDED"

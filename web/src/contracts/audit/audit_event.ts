@@ -37,6 +37,7 @@ export interface AuditEvent {
     | "CONNECTION_REMOVED"
     | "CATEGORY_CHANGED"
     | "PROFILE_UPDATED"
+    | "DATA_EXPORTED"
     | "USER_REGISTERED"
     | "SESSION_STARTED"
     | "SESSION_ENDED"

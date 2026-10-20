@@ -67,9 +67,9 @@ Text from statements and merchants is treated as data, never as instructions. Th
 ## 9. Your data and your rights
 
 - What is stored, where, for how long and who receives it: [PRIVACY.md](PRIVACY.md). Personal data is encrypted at rest. With the default settings no data leaves the server, except that at sign-up the domain of your email (the part after `@`) is looked up in DNS. When the team turns on a language model or another external provider, data goes to providers **outside Chile** (Ley 21.719 art. 27); the safeguards for those transfers are not documented yet.
+- **Download your data** at any time: Profile, Download my data. One JSON file with your account, profile and answers, statements, transactions, receipts, connections with their last answers, active savings rules and your audit events. It is offered again before you delete your account.
 - **Delete your account** at any time: Profile, Delete account, with your password and the word DELETE (or your email). It deletes your account, profile, answers, statements, transactions, proposals, authorizations, savings rules and sessions at once. Your audit events are erased; the audit chain keeps only their place.
 - **What the app does not do yet**, and what to do meanwhile (write to `[contact email]`):
-  - export all your data in one file (G02): you can see your statements, transactions and audit events in the app;
   - correct a statement line's amount, date or description (G04): you can change its category;
   - object to or block processing (G05): stop uploading and write to the team;
   - record a separate, per-purpose consent before each import (G06): today the sandbox acknowledgement at sign-up is the only one.
@@ -92,5 +92,5 @@ These terms change in this file through the repository's review, and the date at
 - Publish a Spanish version: a consumer contract in Chile should be in Spanish (Ley 19.496). The app is English-first today.
 - Link it from the sign-up form next to the sandbox checkbox, and decide whether accepting it is part of that checkbox. Changing what users accept means bumping `SANDBOX_NOTICE` (`application/use_cases/accounts.py`); asking existing users to accept a new version is not built.
 - Section 4: an age check is not built; decide whether a checkbox at sign-up is enough.
-- Re-check sections 7 and 9 against the open strict xfails (G01, G02, G04–G06, UG01–UG03, ADR-014) before each release, and remove each item as it closes. G01 (no authentication in demo mode) is not listed: it affects only local runs, never the deployed app.
+- Re-check sections 7 and 9 against the open strict xfails (G01, G04–G06, UG01–UG03, ADR-014) before each release, and remove each item as it closes. G01 (no authentication in demo mode) is not listed: it affects only local runs, never the deployed app.
 - `PRIVACY.md` "Why" says forecasts do not use imported statements (ADR-029 not built), but `bootstrap/container.py` gives an account with statements its own model. Confirm which is true before publishing either document.
