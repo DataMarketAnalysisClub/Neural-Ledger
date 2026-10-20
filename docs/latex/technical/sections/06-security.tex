@@ -23,6 +23,8 @@ evaluates them, rates the remaining risks and lists what is out of scope.
     Third-party text & Instructions in a receipt, a concept card, a Fintual goal name or a connected service's answer steer the model & Wrapped as untrusted text; no tool writes; numbers are facts; the narration never repeats goal names (S24, S30, S32, S36) \\
     Provider credentials & A Fintual password or token, an MCP token or a Fintoc link leaks, or the agent links an account & Password used once and dropped; tokens sealed and bound to user and adapter; never in a response, log, prompt or audit; link and unlink are T3 (S31, S38) \\
     Connected servers & A user-added address reaches the internal network (SSRF), or a ``read-only'' tool writes & HTTPS and public addresses only, no redirects, size and time limits; tools enabled only if read-only, argument-free and without a write verb; only the user's sync calls them (S35, S37) \\
+    Declared memory & The model writes, confirms or reads stale memory, or a revoked consent keeps being used & No tool writes; the user confirms; a revocable consent gates every read; stamped entries never reach a model once a counter moves; a per-user fence orders changes against reply publication (\cref{sec:memory}) \\
+    Copy of one's data & The export leaks a secret, or omits data a deletion would erase & The copy is built from the same stores the erasure empties; never the password hash, a token or a connection secret (\cref{sec:export}) \\
     \bottomrule
   \end{tabularx}
   \caption{Assets, threats and the controls that answer them (\texttt{docs/SECURITY.md}).}\label{tab:threats}
@@ -54,7 +56,9 @@ the profile's display name reaches the model only wrapped as \texttt{\{"untruste
 for the agent, so injected text cannot persist as instructions. The newer sources of third-party text follow the
 same rule. Receipts, concept-card passages (at most 1{,}500 characters), Fintual goal names and connected services'
 answers (at most 4{,}000 characters) reach the model only as untrusted text. No tool lets the agent store,
-correct, link, sync or delete any of them.
+correct, link, sync or delete any of them. Memory is the same: the two memory tools take no arguments and refuse any,
+twelve tool names that would save, confirm, edit, delete or consent are T3 \code{SELF_ESCALATION}, and the amount in a
+proposal comes from the user's own message, read by the server.
 
 \subsection{Accounts, sessions and the sandbox notice}\label{sec:notice}
 
@@ -152,6 +156,14 @@ The transaction makes a failure or a dry run leave the file untouched; running t
 VACUUM rewrites the file, so free pages keep no copy of the old plain text or old ciphertext. It ends by telling the
 operator to delete the old key file, which deployed mode refuses to start next to.
 
+\subsection{No downgrade}
+
+Tables added without touching existing rows, such as the three memory tables (ADR-048), keep schema version~1: a
+current binary creates them empty when it opens an older file. That is additive initialization, not a downgrade
+guarantee. An older binary opens the same file without complaint but does not know the new tables' deletion
+obligations, so its account deletion and persona reset would leave declared memory behind. Never run a binary older than
+the one that last wrote a database containing memory; restore the matching binary, or delete the database.
+
 \subsection{Account deletion}\label{sec:deletion}
 
 \code{DELETE /v1/account} takes the password again and a typed confirmation, \code{DELETE} or the account's email
@@ -172,7 +184,7 @@ at the user any more.
   \KwIn{user $u$, keep\_account (true for a demo persona's reset), erasure draft $d$ with no user id}
   \KwOut{rows deleted per table, number of tombstones}
   \textsc{begin immediate}\;
-  \ForEach{table in statements, transactions, receipts, connections, connection\_results, savings\_rules, proposals, authorizations, investment\_links, investment\_snapshots, investment\_documents}{delete rows of $u$; count}
+  \ForEach{table in statements, transactions, receipts, connections, connection\_results, savings\_rules, proposals, authorizations, investment\_links, investment\_snapshots, investment\_documents, user\_memory, memory\_state, memory\_proposals}{delete rows of $u$; count}
   \lIf{not keep\_account}{delete $u$'s sessions, profile and account; count}
   $E \gets \emptyset$\;
   \ForEach{audit event $e$ of $u$, by sequence}{
@@ -190,11 +202,13 @@ with \code{keep_account} true, recorded as \code{DEMO_DATA_RESET}. The fixture a
 \subsection{Evidence}
 
 \code{make test-security} runs the attack tests S01--S24, S30--S32 and S35--S38; \code{docs/SECURITY.md} lists each
-with its expected behaviour and audit event, except S24 (concept cards), whose row pull request \#58 adds
-(\cref{sec:discrepancies}). The newer ones cover
+with its expected behaviour and audit event, S24 (concept cards) included since pull request \#58. The newer ones cover
 concept-card injection and the \code{EDUCATIONAL_NOT_ADVICE} warning (S24), Fintual goal names, credentials and imported
 statements (S30--S32), and connected servers: false read-only labels, injected answers, SSRF and token leaks
-(S35--S38). Receipts have their own attack tests in \code{tests/security/test_receipts.py}. The suitability suite
+(S35--S38). Memory has its own tests, with no S number yet: \code{tests/security/test_memory_agent.py} (the agent
+cannot write memory; a hostile model fed the salary), \code{tests/security/test_import_after_deletion.py} (an import that
+began before an account deletion stores nothing), \code{tests/security/test_data_export.py} (what the export holds and
+leaves out), plus the store, write-failure, dependency and acceptance tests listed in \code{docs/SECURITY.md}. Receipts have their own attack tests in \code{tests/security/test_receipts.py}. The suitability suite
 (\code{make test-suitability}) now passes 24 checks with no expected failures, UG01--UG03 included. Option B adds \code{tests/adapters/test_data_key.py} (key sources, deployed refusals, wrong key,
 migration), \code{tests/adapters/test_encryption_at_rest.py} (raw database bytes after a full HTTP flow; upgrade of a
 schema~0 file) and \code{tests/security/test_account_deletion.py} (user B intact, no row of any table refers to user A,

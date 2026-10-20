@@ -203,6 +203,80 @@ surplus one to one. If today's cycle comes before the forecast's first one, over
 T0 tool \code{get_spending_status} returns these figures as facts, with \code{SPENDING_ABOVE_FORECAST} or
 \code{SPENDING_BREACHES_FLOOR} when they apply.
 
+\subsection{User memory: a declared salary, saved but not used}\label{sec:memory}
+
+A user can tell the copilot ``mi sueldo líquido es 1.200.000'' or ``desde noviembre gano 1,2 palos''. ADR-048 stores
+such a declaration so that it survives the conversation, without reopening the channel that ADR-009 and ADR-030
+rejected for free-form memory: a persistent prompt-injection surface. In this release memory is \emph{saved only}: the
+project owner approved building it end to end with no numerical effect, so \emph{no projection, limit, verdict or
+golden answer changes}, and financial outputs keep \code{fc-0.3}. Both ADR-048 and ADR-049 stay \emph{Proposed} until
+Roles A, C and E sign them, and the routes should not be exposed outside a sandbox before then.
+
+\paragraph{What is stored.} A closed, versioned catalog \code{mem-0.1} (\code{domain/memory/catalog.py}) has one type,
+\code{salary_net}: an integer amount in CLP from 1 to 100{,}000{,}000 (a boolean is not an amount), \code{net} always
+true, and \code{effective_from}, the pay month (\code{YYYY-MM}) whose payday first credits it. Unknown types, unknown
+fields and out-of-range values are refused. Editing or re-confirming appends a \emph{version} to a chain; a version
+applies from its pay month until the next one, and deleting removes the whole chain. A row records who confirmed it
+(always the user), the source (\code{chat} or \code{profile}) and an \emph{origin} that is a reference, never text: a
+session and message id, a profile reference, or a statement and transaction id. Only declarations are stored. Whether
+the statements support one is derived on every read and never kept.
+
+\paragraph{Who writes.} Only the user. \code{propose_income_change} (T1, stateful) takes no arguments and refuses any
+at run time; the server reads the amounts and the month from the message that started the turn
+(\code{parse_income_statement} in \code{domain/agent/amounts.py}) and prepares a proposal with up to a few candidate
+amounts. It never stores a declaration, and it does not choose between two amounts: the card asks. The user confirms
+in the card or declares in Perfil (\code{PUT /v1/profile/income}). \code{get_user_memory} (T0) returns typed values and
+the derived status, never text. Memory is never added to the system prompt. A memory \emph{consent} is recorded per
+user and is revocable; without it nothing is proposed, confirmed, edited or derived, and export and deletion stay
+available. Shared demo personas keep no memory: writes are 403 \code{PERSONA_READ_ONLY}.
+
+\paragraph{What the statements say.} \code{domain/memory/salary_check.py} (version \code{salary-check-0.1}) answers,
+on every read, whether a declared salary is in the statements. For a declared pay month $p$ the evidence is tied to
+$\mathrm{payday}(p)$, the last weekday of $p$. An eligible credit is a positive CLP income line of the user, on a
+checking or savings account, from a verified, final statement, dated within three business days of that payday. A
+payday is \emph{eligible} only once it has ended and \emph{every} account the user imported covers its whole window, so
+a missing statement is never counted as a missed salary. One credit matches per payday: among those within 5\,\% of the
+declared amount (inclusive, exact fractions), the smallest difference, then the earliest date, then the lowest
+transaction id. The status is then \code{declared} (no match), \code{verified} (at least one match of the current
+version) or \code{conflict} (two consecutive eligible paydays without a match). A conflict lasts until the user confirms
+a new version; later evidence does not clear it. Every check says \code{numeric_effect: saved_only}.
+
+\paragraph{Why a declaration is not added to the forecast yet.} Adding the difference between the declared and the
+observed salary double counts a raise once it reaches the history, and a declaration must never lift the conservative
+scenario on words alone (rule 2). ADR-049 therefore decomposes the income. With $d_m$ the declared amount that applies
+to the pay month funding cycle $m$, $\mathit{others}_{t}$ the P50 and $\mathit{others}_{c}$ the P20 of the income series
+without the salary credits identified in each cycle, and $s_m$ the level the statements support,
+\begin{equation}
+  I_{\mathrm{typ}}(m) = \mathit{others}_t + d_m, \qquad I_{\mathrm{con}}(m) = \mathit{others}_c + s_m, \qquad s_m = \min\bigl(d_m,\ \mathrm{median}(E_{\mathrm{current}})\bigr),
+\end{equation}
+where $E_{\mathrm{current}}$ are the matched credits of the current version, used once there are two of them. The code
+for this exists (\code{domain/finance/income_memory.py}; \code{IncomeModel} has a per-month calendar and
+\code{for_month}; capacity's debt-service factor is the highest monthly ratio of debt to that month's conservative
+income) but \code{overlay_income} and \code{with_income_memory} are \emph{not called}. Wiring them, the parameters
+for \code{fc-0.4} and the four warnings (\code{INCOME_RAISE_ASSUMED}, \code{SALARY_DIFFERS}, \code{SALARY_CONFLICT},
+\code{SALARY_UNIDENTIFIED}) wait for the gate Roles A and E must close by 22 October 2026. The ADR's worked example F
+shows why it is a decision and not a detail: with a varying salary, a first declaration lifts the conservative income
+20{,}000 above the observed P20. If the gate does not close, the conservative scenario stays observed.
+
+\paragraph{Memory in a chat turn.} A turn that reads memory is \emph{stamped} with the consent generation and the memory
+revision, two counters that move on every actual change. Once either moves, the stamped entries never reach a model
+again. Dependency propagates: every model request made after memory-derived data entered the turn, every tool call it
+asked for and every result built on them is treated as dependent. A per-user \emph{fence} (\code{MemoryFence}) orders
+every counter change against the turn's two linearization points: \emph{dispatch}, the check before each dependent model
+request, and \emph{publication}, the check and the history write that publish the reply. The fence is never held
+through a model call. If memory moved, the reply is \code{MEMORY_CHANGED} plus what the independent tools found, and
+nothing dependent is stored or returned; if a change comes after publication, the reply carries
+\code{memory_dependency} and the web hides it whole. The fence orders one API process, which is how the API runs.
+Derived reads are validated against the counters, retried while they move, and after three attempts derive nothing.
+
+\paragraph{Writes and imports.} Confirmation, chain deletion and consent changes are one transaction each, which
+rechecks the account, ownership, consent, single use, expiry and the captured counters; the order in which refusals are
+checked is fixed by \code{contracts/memory/memory_error.schema.json}. A statement import commits its statements,
+transactions, evidence transitions and audit events together, and only for an existing account or an enabled demo
+persona, checked in that transaction: an import that began before its account was deleted stores nothing and ends
+unauthenticated. Changes of derived state are audited at import by computing the status before and after, never on
+read.
+
 \subsection{Importing a statement}\label{sec:import}
 
 \Cref{fig:dataflow} is the import path (\code{application/use_cases/statements.py}). The reader routes a file by its
@@ -231,8 +305,8 @@ confidence of at least 0.5, otherwise the charge is \code{uncategorized}. A cate
 
 \code{verify_explanation} (\code{domain/agent/verification.py}) checks a reply against the facts and warnings of the
 tools called in the same turn (\cref{alg:verify}). A failed reply is replaced by \code{narration}, a deterministic text
-built from the same facts, and the failure is audited as \code{VERIFICATION_FAILED}. The same check covers the
-newer read tools. A concept card declares every number its body states, and the envelope turns each into a fact. Its
+built from the same facts, and the failure is audited as \code{VERIFICATION_FAILED}. The number grammar (\code{domain/agent/amounts.py}) is shared with the checks that an amount is the user's own, and
+it reads ``palos'' (millions) now. The same check covers the newer read tools. A concept card declares every number its body states, and the envelope turns each into a fact. Its
 \code{EDUCATIONAL_NOT_ADVICE} warning must be mentioned (ADR-040). Figures from investments are facts with the warning
 \code{INVESTMENTS_AS_REPORTED}, or \code{INVESTMENTS_FROM_STATEMENT} for imported documents. A connected service's
 numbers are facts in the currency their object names, or else in the unit \code{external}, which the verifier never
@@ -242,7 +316,7 @@ accepts as money. They carry the warning \code{EXTERNAL_DATA}.
   \caption{Reply verification (\texttt{verify\_explanation}).}\label{alg:verify}
   \KwIn{reply text $x$, facts $\Phi$, warnings $\Omega$, verdicts and execution results of the turn}
   \KwOut{pass, or the list of issues}
-  \ForEach{number $v$ in $x$ (currency prefixes, thousands separators, k/mil/M suffixes, percentages)}{
+  \ForEach{number $v$ in $x$ (currency prefixes, thousands separators, k/mil/M/palo suffixes, percentages)}{
     \If{$v$ matches no fact exactly, nor to the nearest 1{,}000 after ``about'', nor a percentage fact}{issue \code{UNSUPPORTED_NUMBER}}}
   \ForEach{warning $w \in \Omega$}{\lIf{no token of $w.\mathit{must\_mention}$ occurs in $x$}{issue \code{MISSING_WARNING}}}
   \lIf{$x$ says ``safe money'', ``safe to spend'' or ``guaranteed'' (English or Spanish)}{issue \code{BANNED_WORDING}}

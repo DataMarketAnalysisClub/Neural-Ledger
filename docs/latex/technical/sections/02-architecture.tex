@@ -41,6 +41,8 @@ offline, so swapping a provider means one adapter file and one registry entry in
     \code{InvestmentDocumentReader}, \code{InvestmentStore} & \code{FintualDocumentReader}; in memory & SQLite, sealed (ADR-044) \\
     \code{McpClient}, \code{BankFeed} & a synthetic investment MCP server and a synthetic bank & any MCP server over HTTPS the user adds; Fintoc (ADR-047) \\
     \code{ConnectionStore} & in memory & SQLite, sealed \\
+    \code{MemoryStore}, \code{MemoryWrites} & in memory, all locks held & SQLite, sealed; one transaction per write (ADR-048) \\
+    \code{StatementImportWrites} & in memory & SQLite: an import commits its statements, transactions, memory transitions and audit events together \\
     \code{EmailDomainCheck} & disposable-inbox blocklist & a DNS check that the domain receives mail \\
     \code{SandboxBank} & \code{SimulatedSandboxBank} & none: no real bank is ever called \\
     \code{Signer}, \code{PasswordHasher}, \code{TokenGenerator} & HMAC-SHA256, scrypt, \code{secrets} & none \\
@@ -61,7 +63,7 @@ two so that a demo never runs in the wrong one.
     \toprule
     Setting & Values & Effect \\
     \midrule
-    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, \code{NL_PII_DETECTOR=azure}, or \code{NL_INVESTMENTS=fintual}. \code{NL_CONNECTORS=live} does not count yet: pull request \#58 adds it (\cref{sec:discrepancies}). Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
+    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, \code{NL_PII_DETECTOR=azure}, \code{NL_INVESTMENTS=fintual}, or \code{NL_CONNECTORS=live} (a deployment that switches connectors off does not count; pull request \#58). \code{GET /health} also reports \code{connectors}: off, fixture or live. Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
     \code{NL_AUTH} & demo, accounts & \emph{demo}: the \code{X-User-Id} header names a persona, profiles are read-only, no auth routes (local runs and tests only). \emph{accounts}: sign-up, sign-in and an HttpOnly session cookie; the header is rejected. \\
     \code{NL_PERSISTENCE} & memory, sqlite & In-process stores, or one SQLite file at \code{NL_SQLITE_PATH}. \\
     \code{NL_DEPLOYMENT} & local, deployed & \emph{deployed} refuses to start without a data key from a secret or the environment, with a key on the data volume, while the old \code{<db>.key} exists, or with the development HMAC secret (\cref{sec:keys}). \\
@@ -118,10 +120,11 @@ adds \code{X-Content-Type-Options: nosniff} and \code{Cache-Control: no-store} t
     account & \code{DELETE /v1/account} & 5 & 10 \\
     investment link & \code{POST /v1/investments/link} & 5 & 10 \\
     investment sync & \code{POST /v1/investments/sync} & 10 & 30 \\
+    connections & \code{POST /v1/connections*} & 10 & 30 \\
     api & any other \code{/v1/*} & 300 & 900 \\
     \bottomrule
   \end{tabular}
-  \caption{Rate limits per minute (\texttt{DEFAULT\_LIMITS} in \texttt{rate\_limit.py}); the first matching budget applies, and over it the answer is 429 with \texttt{Retry-After}. Connection calls fall under \emph{api}; pull request \#58 gives every \texttt{POST /v1/connections*} its own budget of 10 per caller and 30 per IP.}\label{tab:rates}
+  \caption{Rate limits per minute (\texttt{DEFAULT\_LIMITS} in \texttt{rate\_limit.py}); the first matching budget applies, and over it the answer is 429 with \texttt{Retry-After}. Adding a connection, a sync and a bank link each call an outside service, so every \texttt{POST /v1/connections*} has its own budget; reads of connections fall under \emph{api}.}\label{tab:rates}
 \end{table}
 
 \subsection{A chat turn}\label{sec:chat}
@@ -146,7 +149,7 @@ replaced by a deterministic narration built from the facts. Every step is audite
 The tool catalog (\code{application/catalog.py}) is fixed; its tiers must match the \code{x-tier} annotation of each
 contract in \code{contracts/tools}, which a contract test checks (\cref{tab:tools}). Tool names that would grant a
 capability the agent must never have (add a beneficiary, transfer funds, change limits or credentials, override the
-policy, confirm an action, write the profile or the tolerance) are recognized and blocked as tier T3 with a reason
+policy, confirm an action, write the profile or the tolerance, and save, confirm, edit or delete memory or its consent) are recognized and blocked as tier T3 with a reason
 (\code{PROHIBITED_CAPABILITIES} in \code{domain/permissions/policy.py}).
 
 \begin{table}[htbp]
@@ -156,8 +159,8 @@ policy, confirm an action, write the profile or the tolerance) are recognized an
     \toprule
     Tier & Tools \\
     \midrule
-    T0 read & \code{get_financial_state}, \code{get_commitments}, \code{get_user_profile}, \code{get_pending_actions}, \code{get_audit_events}, \code{get_spending_status}, \code{get_latest_document}, \code{search_financial_concepts}, \code{get_investments}, \code{get_connected_data} \\
-    T1 analyze, suggest & \code{forecast_cashflow}, \code{simulate_purchase}, \code{compute_protected_surplus}, \code{assess_financial_capacity}, \code{assess_risk_tolerance}, \code{derive_permitted_profile}, \code{compute_savings_plan}, \code{propose_savings_rule} (stateful), \code{propose_liquidity_floor} (stateful), \code{propose_expense} (stateful) \\
+    T0 read & \code{get_financial_state}, \code{get_commitments}, \code{get_user_profile}, \code{get_pending_actions}, \code{get_audit_events}, \code{get_spending_status}, \code{get_latest_document}, \code{search_financial_concepts}, \code{get_investments}, \code{get_connected_data}, \code{get_user_memory} \\
+    T1 analyze, suggest & \code{forecast_cashflow}, \code{simulate_purchase}, \code{compute_protected_surplus}, \code{assess_financial_capacity}, \code{assess_risk_tolerance}, \code{derive_permitted_profile}, \code{compute_savings_plan}, \code{propose_savings_rule} (stateful), \code{propose_liquidity_floor} (stateful), \code{propose_expense} (stateful), \code{propose_income_change} (stateful, no arguments) \\
     T2 execute & \code{execute_sandbox_action} (only with a user-confirmed authorization) \\
     T3 prohibited & always blocked and audited (\code{ACTION_BLOCKED}) \\
     \bottomrule
@@ -184,7 +187,11 @@ routes, none of them a tool. An expense said in chat is prepared by \code{propos
 user confirms it in a card (\code{POST /v1/expenses/\{id\}/confirm}). A receipt is corrected in a form
 (\code{PATCH /v1/receipts/\{id\}}). An investment account is linked, synced and unlinked under \code{/v1/investments},
 and a connection is added, has its tools enabled, is synced and is removed under \code{/v1/connections}. Tool names
-that would link or unlink an investment account are T3 \code{CREDENTIAL_CHANGE}.
+that would link or unlink an investment account are T3 \code{CREDENTIAL_CHANGE}. The salary a user declares follows the
+same rule: \code{propose_income_change} reads the amounts from the message that started the turn and prepares a card,
+and only the user confirms it (\code{POST /v1/memory/proposals/\{id\}/confirm}) or declares it in the profile
+(\code{PUT /v1/profile/income}); twelve tool names that would write memory are T3 \code{SELF_ESCALATION}
+(\cref{sec:memory}).
 
 \begin{figure}[htbp]
   \centering

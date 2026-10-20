@@ -63,6 +63,21 @@ came from, an expiry and a status; an \code{Authorization} adds the signed \code
     data.
 \end{description}
 
+\subsection{User memory}\label{sec:memory-data}
+
+\begin{description}[style=nextline,leftmargin=1.2em]
+  \item[\code{Declaration}] (\code{domain/memory/catalog.py}, ADR-048): one version of a user's declared net salary: an
+    id, a chain id and version number, the owner, the type, the typed value, the pay month it starts, when and by whom it
+    was confirmed (always the user), the source (\code{chat} or \code{profile}), an origin that is a reference and never
+    text, and the audit reference of its confirmation. Whether statements support it is never stored.
+  \item[\code{MemoryState}] (\code{domain/memory/consent.py}): per user, the consent (missing, granted or revoked), a
+    consent generation that moves on every actual change, and a memory revision that moves on every confirmation or
+    deletion and is never reset.
+  \item[\code{MemoryProposal}] (\code{domain/memory/proposals.py}): a salary prepared from a chat message, waiting for the
+    user: the candidates and pay month read from that message, the chain and version it would extend, and the counters
+    of its moment. It is used once and expires after the proposal time to live (30 minutes).
+\end{description}
+
 \subsection{Users, sessions and the audit trail}
 
 \begin{description}[style=nextline,leftmargin=1.2em]
@@ -113,6 +128,9 @@ the stores search or order by (\cref{tab:schema}). A file at version~0 (before o
     \code{investment_documents} & \code{document_id}, \code{user_id} & \code{payload} \\
     \code{connections} & \code{connection_id}, \code{user_id} & \code{payload} \\
     \code{connection_results} & \code{connection_id}, \code{user_id}, \code{tool} & \code{payload} \\
+    \code{user_memory} & \code{sequence}, \code{memory_id}, \code{chain_id}, \code{version}, \code{user_id}, \code{type} & \code{payload} \\
+    \code{memory_state} & \code{user_id} & \code{payload} \\
+    \code{memory_proposals} & \code{proposal_id}, \code{user_id} & \code{payload} \\
     \code{user_profiles} & \code{user_id} & \code{payload} \\
     \code{user_accounts} & \code{user_id}, \code{email_index} (HMAC), \code{sample_data} & \code{payload} \\
     \code{proposals} & \code{proposal_id}, \code{user_id}, \code{session_id} & \code{payload} \\
@@ -123,7 +141,7 @@ the stores search or order by (\cref{tab:schema}). A file at version~0 (before o
     \code{meta} & \code{name} & \code{value} (the key check) \\
     \bottomrule
   \end{tabularx}
-  \caption{SQLite schema version 1. The associated data of every sealed value is \texttt{<table>|<user\_id>|<row id>}; for \texttt{connection\_results} the row id is \texttt{<connection>|<tool>}. The six tables added after option B are created sealed, so they need no migration.}\label{tab:schema}
+  \caption{SQLite schema version 1. The associated data of every sealed value is \texttt{<table>|<user\_id>|<row id>}; for \texttt{connection\_results} the row id is \texttt{<connection>|<tool>}. The nine tables added after option B are created sealed, so they need no migration. The three memory tables keep version~1 (\cref{sec:security}, no downgrade).}\label{tab:schema}
 \end{table}
 
 Writes that change account, session, profile or transaction state commit together with their audit events or not

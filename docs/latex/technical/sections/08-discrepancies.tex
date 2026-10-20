@@ -23,17 +23,27 @@ follows the code. The differences found while writing it:
     that override, its nginx configuration and its runbook exist only on the unmerged branch
     \code{ops/deploy-neural-ledger}, so what this document says about the edge (TLS, the tunnel, nginx headers) comes from
     that branch, not from the commit described.
-  \item \textbf{Live mode and connectors.} \code{docs/PRIVACY.md} says \code{mode} is \code{live} as soon as any
-    provider sends data out, and lists MCP servers and Fintoc among those providers. In the code
-    (\code{Settings.mode}), \code{NL_CONNECTORS=live} does not make the mode live, and \code{GET /health} has no
-    connectors field; only \code{GET /v1/connections} reports the connector mode. \emph{Pull request \#58, not merged
-    at this commit, counts live connectors as live mode and adds a \code{connectors} field to \code{/health}.}
-  \item \textbf{Attack test S24.} \code{tests/security/test_education_attacks.py} holds eight S24 tests (11 cases:
-    concept-card injection and the \code{EDUCATIONAL_NOT_ADVICE} warning), but the attack table in
-    \code{docs/SECURITY.md} has no S24 row. \emph{Pull request \#58 adds it.}
+  \item \textbf{Live mode and connectors} (fixed). Until pull request \#58, \code{NL_CONNECTORS=live} did not make
+    \code{Settings.mode} live and \code{GET /health} had no connectors field, although \code{docs/PRIVACY.md} lists MCP
+    servers and Fintoc among the providers. Now live connectors make the mode live, a deployment that switches them off
+    does not count, and \code{/health} reports \code{connectors}. Running them locally therefore needs
+    \code{NL_HMAC_SECRET}, and \code{NL_DATA_KEY} with SQLite, like any live provider.
+  \item \textbf{Attack test S24} (fixed). The eight S24 tests (11 cases: concept-card injection and the
+    \code{EDUCATIONAL_NOT_ADVICE} warning) had no row in the attack table of \code{docs/SECURITY.md}; pull request \#58
+    added it. \textbf{Connection rate limit} (fixed): the same pull request gives every \code{POST /v1/connections*} its own
+    budget instead of the general one.
   \item \textbf{Suitability gaps.} The ``Not in this plan'' paragraph of ADR-033 in \code{docs/DECISIONS.md} describes
     UG01--UG03 as later work that needs a \code{params_version} decision. They are closed in the code without one,
     because no amount changed, and \code{docs/SECURITY.md} records them as closed.
+  \item \textbf{Memory is saved only.} ADR-048 and ADR-049 describe a declared salary that enters the forecast. The
+    code builds the storage, consent, confirmation and evidence, and the decomposition (\code{income_memory.py}), but
+    nothing calls the decomposition: no number changes and \code{params_version} stays \code{fc-0.3}. The ADR text keeps its
+    original plan and its status note says so (\cref{sec:memory}).
+  \item \textbf{ADR numbers.} The memory plan was written as ADR-040 and ADR-047, numbers staging had already given to
+    concept cards and connections, so it became ADR-048 and ADR-049. ADR-041 and ADR-046 are reserved and not written.
+  \item \textbf{Export and the privacy notice.} The privacy file once listed export (G02) as missing; it is built and
+    its test sits in the gaps block without the xfail marker. \code{docs/TERMS.md} and \code{docs/PRIVACY.md} were
+    updated with it.
   \item \textbf{Decision statuses.} Several records in \code{docs/DECISIONS.md} are ``Proposed'' although their code is
     built and tested (\cref{sec:decisions}).
 \end{enumerate}

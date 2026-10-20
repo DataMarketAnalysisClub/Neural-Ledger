@@ -1,6 +1,6 @@
 \section{Key design decisions}\label{sec:decisions}
 
-The decision log (\code{docs/DECISIONS.md}) has 39 records. This section restates the fourteen that shape the system most,
+The decision log (\code{docs/DECISIONS.md}) has 41 records. This section restates the sixteen that shape the system most,
 in the log's format: context, decision, consequences. The status is the log's own. Several decisions are still
 ``Proposed'' although their code is built and tested: the team marks a record ``Accepted'' at a sync, and some have
 not been through one yet.
@@ -118,6 +118,32 @@ deployed mode unless explicitly enabled.
 \field{Consequences} A server can still lie about what a tool does, and DNS rebinding is a known gap
 (\cref{sec:security}). Nothing from a connection reaches the forecast.
 
+\adr{ADR-048}{Typed user memory: declarations the user confirms, conclusions derived on read}{Proposed, needs Roles A, C and E; built as saved only}
+\field{Context} A user can state their net salary, but nothing survived the conversation, and ADR-009 and ADR-030 had
+rejected free-form memory because it is a persistent prompt-injection channel.
+\field{Decision} A closed catalog \code{mem-0.1} with one type, \code{salary_net} (an integer CLP amount and the pay
+month it starts). Declarations are stored as versions of a chain; whether the statements support one is derived on every
+read. The origin of a declaration is a reference, never text. Only the user confirms, in a card or in the profile; the
+two tools take no arguments and no tool writes. A revocable consent gates every use. The rows are sealed and are in the
+export, the erasure and the key migration. Confirmations, deletions and the evidence changes found at import are audited.
+\field{Consequences} The project owner approved building it \emph{saved only}: it changes no calculation and keeps
+\code{fc-0.3}. A fence orders memory changes against the two points of a chat turn at which a reply is authorized and
+published (\cref{sec:memory}). The tables were added without a schema version bump, so an older binary must not open a
+database that holds memory. The plan's eleven acceptance scenarios could not be recovered; \code{test_memory_acceptance.py}
+holds a replacement matrix.
+
+\adr{ADR-049}{A declared salary enters the forecast by decomposition, never by difference (fc-0.4)}{Proposed; gate for Roles A and E by 22 October 2026}
+\field{Context} Adding the gap between the declared and the observed salary double counts a raise once the raise reaches
+the history, and a declaration must not lift the conservative scenario on words alone.
+\field{Decision} Take the identified salary out of the history and put the declaration in its place:
+typical income is the P50 of the other credits plus the declared salary, and conservative income is their P20 plus the
+lower of the declared salary and the median of the matched credits, once there are two. With no verified base, or in
+conflict, memory has no effect. Income becomes a per-month calendar, and the debt-service ratio of capacity is taken
+month by month. Four warnings say whether memory is applied or only saved. New parameters give \code{fc-0.4}.
+\field{Consequences} The calculation is written and tested but not wired (\cref{sec:memory}). If the gate does not close,
+the conservative scenario stays observed. A varying salary can lift the conservative income above the observed P20 by
+the ADR's own example, which Roles A and E must accept or change.
+
 \subsection*{Open decisions}\addcontentsline{toc}{subsection}{Open decisions}
 \begin{itemize}
   \item \textbf{ADR-014}: plan sizing is not monotone (\cref{sec:plan}); a fix is proposed, not accepted.
@@ -127,6 +153,9 @@ deployed mode unless explicitly enabled.
     questions go to \code{get_investments}.
   \item \textbf{ADR-021}: statements that do not reconcile should go to the user for correction and be usable either way;
     decided, not built (today they are stored and not posted).
-  \item \textbf{ADR-033}: the plan to close the compliance gaps. Rate limits (G07), encryption at rest (G11) and deletion
-    (G03) are built; export (G02), opposition and blocking (G05) and consent (G06) are not.
+  \item \textbf{ADR-033}: the plan to close the compliance gaps. Rate limits (G07), encryption at rest (G11), deletion
+    (G03) and export (G02) are built; opposition and blocking (G05) and consent (G06) are not.
+  \item \textbf{ADR-048 and ADR-049} are Proposed. Memory is built saved only; whether a declared salary may change the
+    forecast is the gate Roles A and E must close by 22 October 2026. ADR-041 and ADR-046, which belong to the same plan,
+    are reserved and not written.
 \end{itemize}

@@ -24,7 +24,7 @@ Neural Ledger is a cash-flow copilot that reads bank statements, forecasts a use
 rule in a \emph{sandbox} bank. Its core security property is that no language model can move money or set a number:
 amounts are computed by deterministic code, actions need a signed authorization that only the user can create, and every
 reply is checked against the facts the tools returned. That property is covered by attack tests S01--S24,
-S30--S32 and S35--S38, and was not changed by this assessment.
+S30--S32 and S35--S38, and by the memory tests, and was not changed by this assessment.
 
 This assessment was triggered by a review of the public demo. Anyone can sign up there, so a visitor could store a real
 bank statement on a server that is meant for synthetic data. Personal data at rest was only partly encrypted, and the
@@ -42,12 +42,18 @@ The largest residual risks (\cref{sec:residual}) are four. A notice cannot stop 
 R02). Anyone with root on the host can read both the key and the data (R03). Until the server is migrated, the demo
 still runs the old configuration (R24). Finally, data export, consent and opposition are not built (R23).
 
-\textbf{Version 1.1} reviews four features merged since (ADR-039, ADR-040, ADR-044, ADR-047). They bring new
+\textbf{Version 1.1} reviewed four features merged since (ADR-039, ADR-040, ADR-044, ADR-047). They bring new
 third-party text, a provider token with full access, and outbound calls to addresses users choose. The agent stays
-read-only towards all of them, and every new store is sealed and erased with the account. The new risks are R25--R31.
-The largest is that a connected server may lie about a tool being read-only (R25). Pull request \#58 (open)
-fixes two others: it reports \code{NL_CONNECTORS=live} as live mode (R28) and gives connection calls their own rate
-budget (R29).
+read-only towards all of them, and every new store is sealed and erased with the account. The new risks were R25--R31.
+The largest is that a connected server may lie about a tool being read-only (R25).
+
+\textbf{Version 1.2} reviews what \code{main} gained after that: the fixes of pull request \#58, which now count live
+connectors as live mode (R28) and give connection calls their own rate budget (R29); a download of the user's own
+data (G02, closed); and typed user memory, saved only (ADR-048). Memory adds a place where text the user types becomes
+stored state, and the answer is that nothing the model says can write it: the two memory tools take no arguments, the
+user confirms every declaration, and a per-user fence stops a reply from outliving a revoked consent. The new risks are
+R32--R35. None is rated above medium likelihood, and the largest impact belongs to the download, which anyone holding a
+stolen session cookie could use (R35).
 
 % ------------------------------------------------------------------------------------------------
 \section{Scope and method}\label{sec:scope}
@@ -71,10 +77,16 @@ budget (R29).
       \item an account deletion kept the audit chain valid;
       \item a wrong key was refused.
     \end{enumerate}
-  \item[Update 1.1] A code review of receipts, concept cards, Fintual and connections at commit \texttt{\nlCommit},
+  \item[Update 1.1] A code review of receipts, concept cards, Fintual and connections at staging \texttt{d959a04},
     whose CI run passed: 2366 backend tests passed, 9 skipped, 7 expected failures and 1 unexpected pass; \code{ruff}
     clean; 205 web tests passed. The suitability suite has no expected failures left. Both concept-card indexes reach
     recall@3 of 1.0 on 48 questions.
+  \item[Update 1.2] A code review of the data export, user memory and the connector fixes, at commit
+    \texttt{\nlCommit} on \texttt{\nlBranch}, whose CI run passed: 2980 backend tests passed, 9 skipped, 6 expected
+    failures and 1 unexpected pass; \code{ruff} clean; 235 web tests passed. The compliance map has 27 tests: 24 pass
+    and 3 are expected failures (G01, G05, G06). The memory design was read from its ADRs and its code; the
+    calculation that would let a declared salary change the forecast is written but not called, so it was not assessed
+    as a control.
   \item[Limits] No penetration test of the running demo, no dependency vulnerability scan, and no review by counsel.
     Live connectors, Fintoc and a real Fintual link were not exercised against the real services.
 \end{description}
@@ -147,13 +159,15 @@ publishes port 8000 for development, so a deployment must use the override.
   \item \textbf{Passwords}: scrypt with $N = 2^{14}$, $r = 8$, $p = 1$. Sign-in costs the same and answers the same
     whether or not the email exists (S20); sign-up reveals a registered email with 409.
   \item \textbf{Rate limits} (G07): per caller and per IP, one-minute windows. Ten sign-in or sign-up attempts per IP,
-    five account deletions per caller, ten uploads per caller. Counters live in memory, per process.
+    five account deletions per caller, ten uploads per caller, and ten per caller on investment syncs and on each connection call.
+    Counters live in memory, per process.
   \item \textbf{Input}: uploads are typed by their bytes and capped at 15\,MB (C05); hand-parsed JSON bodies are capped at
     16\,KiB; SQL is always parameterized, and a static test checks every SQLite module (C08).
   \item \textbf{Agent}: four permission tiers and a deterministic gate; signed, single-use authorizations only the user
     can create; terms re-read from storage; a verifier that rejects unsupported numbers and missing warnings
     (S01--S14, S19, S22, S23). Receipts, concept cards, Fintual goal names and connected services' answers reach the
-    model only as untrusted text, and no tool stores, links or syncs anything (S24, S30--S32, S36).
+    model only as untrusted text, and no tool stores, links or syncs anything (S24, S30--S32, S36). The memory tools take no arguments and refuse any;
+    twelve tool names that would write memory are T3.
   \item \textbf{Outbound calls}: a connected server's address must be HTTPS and resolve only to public addresses;
     redirects are never followed; answers are capped at 1\,MB after 10\,s. A tool is enabled only if it is read-only,
     not destructive, takes no arguments and has no write verb in its name (S35, S37).
@@ -180,6 +194,7 @@ stored in clear is refused, so a field cannot be downgraded to plain text. \Cref
     Receipts & store, date, total, folio, category, issues & ids, owner \\
     Investment links, snapshots, documents & provider token and email, goals and values, funds, contributions & ids, owner \\
     Connections and their results & server address, access token, enabled tools, redacted answers & ids, owner, tool name \\
+    Memory (consent, declared salary versions, proposals) & the consent and counters, the amounts and pay months, the origin references, the proposals & ids, owner, chain id, version, type \\
     Accounts & email, password hash, creation time & HMAC email index \\
     Profiles & name, language, questionnaire answers, tolerance & owner \\
     Proposals, authorizations, rules & terms, amounts, signatures, status & ids, owner, session id \\
@@ -288,14 +303,18 @@ Demo personas are reset, not deleted, and the reset is recorded as \code{DEMO_DA
     Investments & Goal names untrusted and never narrated; credentials never leak; link and unlink T3; only verified documents kept; personas cannot import & S30--S32 \\
     Connections & False read-only labels, injected answers, SSRF targets and token hunts & S35--S38, \code{test_mcp_http.py} \\
     Suitability report & Plans state the permitted profile and why; superseded plans refused; off-track goals warned & UG01--UG03, \code{tests/suitability} \\
+    Rate limits on outside calls & Each \code{POST /v1/connections*} has its own budget: 10 per caller, 30 per IP & \code{test_every_call_to_an_outside_service_has_its_own_budget} \\
+    Live mode reporting & Live connectors make the mode live and \code{/health} reports \code{connectors} & \code{tests/security/test_connectors.py} \\
+    Data export & One file with what a deletion would erase; never a hash, token or secret; audited & G02, \code{tests/security/test_data_export.py} \\
+    Memory & No tool writes; only the user confirms; consent gates every read; stale entries never reach a model; an import cannot outlive a deleted account & \code{test_memory_agent.py}, \code{test_import_after_deletion.py}, \code{test_memory_dependency.py}, \code{test_memory_acceptance.py} \\
     \bottomrule
   \end{tabularx}
   \caption{Controls and the tests that evidence them (\texttt{docs/SECURITY.md}, \texttt{backend/tests}).}\label{tab:evidence}
 \end{table}
 
-The compliance map in \code{tests/security/test_compliance.py} holds 26 tests. Built controls C01--C13, G03, G04 and
-G07--G12 are plain tests. G01 (demo mode has no authentication), G02 (export), G05 (opposition and blocking) and G06
-(consent) are strict expected failures, so CI stays green and the gaps stay visible.
+The compliance map in \code{tests/security/test_compliance.py} holds 27 tests. Built controls C01--C13, G02--G04 and
+G07--G12 are plain tests. G01 (demo mode has no authentication), G05 (opposition and blocking) and G06 (consent) are
+strict expected failures, so CI stays green and the gaps stay visible.
 
 % ------------------------------------------------------------------------------------------------
 \section{Known-risk register}\label{sec:register}
@@ -342,15 +361,19 @@ server. The register is our own analysis of the code and of the option B change.
   R20 & \code{/health} opens every audit record on each poll; cost grows with the log & M & L & Demo-sized log & Open; C: cache the chain check \\
   R21 & Supply chain: dependency ranges (\code{>=}) and base images not pinned by digest & M & L & CI runs the full suite on each change & Open; C \\
   R22 & A request in flight during a deletion writes rows for the deleted user & L & M & Sessions deleted in the same transaction; the next request is 401 & Open; C \\
-  R23 & Compliance gaps: no export (G02), opposition or blocking (G05), consent (G06), impact assessment & M & M & Gaps tested as strict expected failures and documented & Open; C, E \\
+  R23 & Compliance gaps: no opposition or blocking (G05), consent (G06), impact assessment & M & M & Gaps tested as strict expected failures and documented & Open; C, E \\
   R24 & The demo still runs the pre-option-B setup (key on the volume, plain fields) until the server is migrated; the deployment files are on an unmerged branch & H & H & Redeploy steps written and rehearsed & Pending redeploy; Ops \\
   R25 & A connected MCP server lies: a tool labelled read-only and argument-free moves money or changes the user's account there & M & H & Only the user's sync calls tools, with empty arguments; write verbs refused; labels re-checked each sync; off in deployed mode & Accepted with a warning to users; C \\
   R26 & DNS rebinding: an address that resolves to a public IP when checked and to a private one when the client connects & L & M & Public-address check, no redirects, 10\,s, 1\,MB; marked \code{shortcut:} in the adapter & Open; C: pin the checked address in the connection \\
   R27 & A stolen Fintual token reads the whole account: the API has no read-only scope and no revocation & L & H & Sealed and bound to user and adapter; never returned, logged or prompted; deployed mode refuses \code{fintual} & Open; C \\
-  R28 & \code{NL_CONNECTORS=live} sends tokens to user-chosen servers and to Fintoc, but \code{/health} still reports \code{offline} & M & M & Deployed mode keeps connectors off unless \code{NL_CONNECTORS_LIVE} is set & Fix in PR \#58 (open); C \\
-  R29 & Connection syncs are limited only by the general 300 per minute budget, and each one calls an outside server & M & L & 10\,s timeout and 1\,MB cap per call & Fix in PR \#58 (open): 10 per caller, 30 per IP; C \\
+  R28 & \code{NL_CONNECTORS=live} sends tokens to user-chosen servers and to Fintoc, but \code{/health} still reports \code{offline} & M & M & Deployed mode keeps connectors off unless \code{NL_CONNECTORS_LIVE} is set & Fixed in PR \#58 (merged): live connectors make the mode live, \code{/health} reports them; C \\
+  R29 & Connection syncs are limited only by the general 300 per minute budget, and each one calls an outside server & M & L & 10\,s timeout and 1\,MB cap per call & Fixed in PR \#58 (merged): 10 per caller, 30 per IP; C \\
   R30 & A concept card states a wrong definition; the verifier checks numbers, not meaning & L & M & Team-written cards with cited sources; card tests; eval gate; \code{EDUCATIONAL_NOT_ADVICE} warning & Open; B: review cards \\
   R31 & The first Fintoc sync has no previous balance, so it cannot be reconciled & H & L & Stored unverified (\code{NO_SUMMARY}) and not posted; later syncs reconcile & Accepted; A \\
+  R32 & The memory fence orders one API process only, and a dependent action proposal created before a memory change was seen stays pending until its 30 minutes end & L & L & Counters are compared on every read, so a change from another process is still caught; a proposal's terms never come from memory; one process is how the API runs & Accepted; C \\
+  R33 & Memory routes are live in any accounts-mode deployment while ADR-048 and ADR-049 are still Proposed and unsigned by Roles A, C and E & M & L & Saved only: no number, limit or verdict changes; consent is off until the user grants it; shared personas keep none & Open; A, C, E: sign or switch off before real users \\
+  R34 & An older binary opens a database that holds memory and its deletion or persona reset leaves the memory behind (no schema version bump) & L & M & Documented as ``no downgrade'' in \code{docs/SECURITY.md}; the tables are additive & Open; C: bump the version with the next table \\
+  R35 & A stolen session cookie downloads the whole copy of the user's data in one request & L & H & HttpOnly, SameSite=Strict, Secure, 12 hours; \code{no-store}; audited as \code{DATA_EXPORTED}; never the password hash or a secret & Open; C: ask for the password again, as deletion does \\
 \end{longtable}
 }
 
@@ -377,11 +400,14 @@ their data. And the sandbox rule is explicit and recorded. What remains, in orde
     database backups.
   \item \textbf{Authentication depth} (R09, R10, R12). Add a per-account lockout or a delay, email verification, and an
     abuse budget for sign-up.
-  \item \textbf{Compliance} (R23, R16). Build export, consent and opposition, write the impact assessment, and document
-    transfer safeguards before any use with real users.
-  \item \textbf{Connections} (R25, R26, R28, R29). Merge pull request \#58, which counts live connectors in
-    \code{/health} and gives connection calls their own rate budget; pin the address that was checked; and keep live
-    connectors off the public demo.
+  \item \textbf{Compliance} (R23, R16). Export is built (G02). Build consent and opposition, write the impact
+    assessment, and document transfer safeguards before any use with real users.
+  \item \textbf{Connections} (R25, R26). Pull request \#58 closed R28 and R29. Pin the address that was checked, and
+    keep live connectors off the public demo.
+  \item \textbf{Memory and the export} (R33, R34, R35). Roles A, C and E sign ADR-048 and ADR-049 or switch the routes
+    off before real users; bump the schema version when the next table is added; and ask for the password before the
+    copy is downloaded. If the gate on 22 October 2026 lets a declared salary change the forecast, the assessment of
+    memory must be redone, because that is the point at which words become numbers.
 \end{enumerate}
 
 \section{Conclusion}

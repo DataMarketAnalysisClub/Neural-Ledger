@@ -20,6 +20,7 @@ legal advice; article numbers follow the Library of Congress summary that \code{
     Investment documents & Each fund's shares, price and balance; each contribution and withdrawal with its goal name (redacted); never the holder's name or RUT & sealed \\
     Investment link & The Fintual email and token, and up to 400 syncs of goal names and values; never the password & sealed \\
     Connections & Server address, enabled tools, access token, and the latest redacted answer per tool & sealed \\
+    Memory, if the user turns it on & Whether memory is on, with two counters; every confirmed version of the net salary (amount, pay month, when and where confirmed, as a reference and never the message); a salary prepared from a message until confirmed or 30 minutes; it changes no projection & sealed \\
     Account & Email (found by an HMAC index), scrypt hash, creation time & sealed \\
     Profile & Display name, language, questionnaire answers, declared tolerance & sealed \\
     Proposals, authorizations, rules & Terms, amounts, signature, status, expiry & sealed \\
@@ -35,7 +36,7 @@ There is no automatic retention period: data stays until the user deletes the ac
 database. With the default settings nothing leaves the server. A provider receives data only when its setting is on
 (live mode): the language model receives the conversation and tool results; Jev receives chat messages and, for
 categories, redacted charge text, never a deposit; Azure AI Language receives raw line text before redaction. All of them
-are outside Chile. Four more recipients came with the newer features. Fintual (in Chile) receives the email and password
+are outside Chile. Four more recipients came with the newer features; memory adds none. Fintual (in Chile) receives the email and password
 once when a user links an account, then the token on each sync. A user-added MCP server receives only its own token
 and the names of the tools to call. Fintoc receives the link the user created in its widget. The DNS resolver receives
 an email's domain at sign-up. The concept cards and their index stay on the server, and the Chroma container only
@@ -51,9 +52,9 @@ stores vectors.
     Duty or right & Article & In the software \\
     \midrule
     Proportionality, minimization & 3 c) & Redaction at import (C01, C02); card numbers kept as four digits \\
-    Access and portability & 5, 9 & Partly: statements, transactions and audit events are readable by their owner; no full export (gap G02) \\
+    Access and portability & 5, 9 & Built (G02): \code{GET /v1/me/export}, one JSON file (\cref{sec:export}) \\
     Correction & 6 & Partly: a transaction's category (G04); line corrections are ADR-021, not built \\
-    Deletion & 7 & Built (G03): \code{DELETE /v1/account}, audit tombstones (\cref{sec:deletion}); it also removes receipts, investment data and connections, which can each be removed on their own \\
+    Deletion & 7 & Built (G03): \code{DELETE /v1/account}, audit tombstones (\cref{sec:deletion}); it also removes receipts, investment data, connections and memory, which can each be removed on their own \\
     Opposition, blocking & 8, 8 ter & Not built (G05) \\
     Consent & 12 & Not recorded per purpose for statements (G06); sign-up records the sandbox notice, linking an investment account records \code{inv-consent-1}, and a connection needs \code{consent: true} \\
     Information & 14 ter & \code{docs/PRIVACY.md} (G12) \\
@@ -72,6 +73,20 @@ failure marked \code{GAP}: CI stays green, the gap stays visible, and the day a 
 unexpectedly and the run fails until the marker is removed. \code{test_every_compliance_test_is_in_the_security_map}
 keeps \code{docs/SECURITY.md} and the tests in step.
 
+\subsection{A copy of the user's data}\label{sec:export}
+
+\code{GET /v1/me/export} (accounts mode, signed in; \code{application/use_cases/data_export.py}, format
+\code{neural-ledger-export-2}) returns one JSON download, \code{neural-ledger-data-<date>.json}, also offered in the
+profile and before an account is deleted. It reads the same stores the erasure empties, so what can be downloaded is what
+a deletion erases: the account (email, creation time, sample-data flag), profile and answers, statements, transactions,
+receipts, connections with their last answers, active savings rules, investments (the link without its access token,
+the latest snapshot and the imported documents), the memory (the consent and its counters, and every confirmed
+version, with or without consent) and the user's audit events. Never in it: the password hash, a session token, a
+connection secret or the investment access token. It is audited as \code{DATA_EXPORTED} before it is built, so the copy
+holds its own event, and the copy is never logged. Left out, and said so in the privacy notice: conversations with the
+copilot (memory only, gone at restart), open proposals (they expire in minutes), session times and older investment
+snapshots. Demo personas have no account, so the route answers 404 outside accounts mode.
+
 \subsection{The sandbox posture}
 
 The public demo is a sandbox with open sign-up. Its privacy position rests on four things: the notice asks visitors not
@@ -79,4 +94,4 @@ to store real data and records that they agreed; whatever is stored anyway is re
 its owner can delete it; and the operator has an incident runbook for real data found on the server
 (\code{docs/runbooks/INCIDENT_RESPONSE.md}). None of this prevents a visitor from uploading a real statement, and data
 uploaded under a shared persona is visible to every other visitor of that persona until someone resets it. Before any
-use with real users, the open gaps (G02, G05, G06), the impact assessment and the transfer safeguards must be closed.
+use with real users, the open gaps (G05, G06), the impact assessment and the transfer safeguards must be closed.
