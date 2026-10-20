@@ -12,7 +12,7 @@
   \draw[msg] (34,-22) -- node[label,above]{\code{delete_account}} (68,-22);
   \node[note,anchor=north west,text width=29mm] at (69,-25) {confirm is DELETE or the email; scrypt check of the password};
   \draw[msg] (68,-44) -- node[label,above]{\code{erase(keep_account=False)}} (102,-44);
-  \node[note,anchor=north west,text width=29mm] at (103,-47) {BEGIN IMMEDIATE; delete the user's rows in 8 tables (\code{secure_delete})};
+  \node[note,anchor=north west,text width=29mm] at (103,-47) {BEGIN IMMEDIATE; delete the user's rows in 14 tables, 17 with the account (\code{secure_delete})};
   \draw[msg] (102,-66) -- node[label,above]{tombstone A's events} (136,-66);
   \draw[msg] (102,-75) -- node[label,above]{append \code{ACCOUNT_DELETED}} (136,-75);
   \node[note,anchor=north west,text width=29mm] at (103,-78) {detail: count and SHA-256 of the erased sequences, row counts; no user id};
