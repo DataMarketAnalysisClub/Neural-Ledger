@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from neural_ledger.domain.agent.verification import extract_numbers, verify_explanation
+from neural_ledger.domain.agent.amounts import extract_numbers
+from neural_ledger.domain.agent.verification import verify_explanation
 from neural_ledger.domain.shared.envelope import Caveat, Fact
 
 FACTS = (
@@ -16,6 +17,16 @@ RATE = (Caveat("RATE_ASSUMED", "Monthly rate assumed at 2.5%", ("2.5%", "assum")
 def test_numbers_are_parsed_in_common_formats():
     values = [int(n.value) for n in extract_numbers("CLP 400k, 1.8M, 38.995 and 1,800,000; 12 cuotas in 2026-12, year 2027")]
     assert values == [400_000, 1_800_000, 38_995, 1_800_000]
+
+
+def test_palos_are_millions():
+    values = [int(n.value) for n in extract_numbers("gano 1,2 palos, antes 1 palo; un palo de golf")]
+    assert values == [1_200_000, 1_000_000]
+
+
+def test_a_figure_in_palos_needs_a_fact():
+    result = verify_explanation("Te sobran 2 palos al mes.", FACTS, ())
+    assert [i.kind for i in result.issues] == ["UNSUPPORTED_NUMBER"]
 
 
 def test_matching_facts_pass():

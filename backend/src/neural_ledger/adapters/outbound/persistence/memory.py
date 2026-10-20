@@ -2,20 +2,37 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import threading
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 
 from ....application.conversation import Entry
-from ....application.ports import ErasureReport, IdCollision, UserProfileStore
+from ....application.ports import ErasureReport, IdCollision, ImportCommit, MemoryWriteResult, UserProfileStore
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
 from ....domain.connections.model import Connection, ConnectionSnapshot
 from ....domain.investments.documents import MAX_DOCUMENTS, StoredInvestmentDocument
 from ....domain.investments.model import MAX_SNAPSHOTS, InvestmentLink, InvestmentSnapshot
 from ....domain.ledger.categorization import PostedTransaction
+from ....domain.memory.catalog import Declaration, MemoryType, check_appended
+from ....domain.memory.consent import Consent, MemoryState, with_consent, with_memory_change
+from ....domain.memory.proposals import (
+    MemoryProposal,
+    ProposalState,
+    WriteOutcome,
+    check_confirmation,
+    confirmation_event,
+    consent_detail,
+    decide_confirmation,
+    decide_preparation,
+    deletion_detail,
+)
+from ....domain.memory.transitions import check_import_batch
 from ....domain.receipts.model import StoredReceipt
 from ....domain.statements.model import StoredStatement
 from ....domain.user.account import Session, UserAccount
@@ -269,6 +286,182 @@ class InMemoryUserProfileStore:
             self._profiles[profile.user_id] = profile
 
 
+class InMemoryMemoryStore:
+    """Declared memory (ADR-048), held as immutable versions; one lock makes every append and delete all or none.
+
+    It also holds what InMemoryMemoryWrites decides on: each user's consent and counters and their proposals. Only
+    the writes object changes those, under the same lock.
+    """
+
+    def __init__(self) -> None:
+        self._declarations: dict[str, Declaration] = {}  # by memory_id, in append order
+        self._states: dict[str, MemoryState] = {}  # by user_id
+        self._proposals: dict[str, MemoryProposal] = {}  # by proposal_id
+        self._lock = threading.Lock()
+
+    def for_user(self, user_id: str) -> tuple[Declaration, ...]:
+        with self._lock:
+            mine = [d for d in self._declarations.values() if d.user_id == user_id]
+        order = {chain_id: index for index, chain_id in enumerate(dict.fromkeys(d.chain_id for d in mine))}
+        return tuple(sorted(mine, key=lambda d: (order[d.chain_id], d.version)))
+
+    def chain(self, user_id: str, chain_id: str) -> tuple[Declaration, ...]:
+        with self._lock:
+            return self._chain(user_id, chain_id)
+
+    def chain_of_type(self, user_id: str, type: MemoryType) -> tuple[Declaration, ...]:
+        with self._lock:
+            first = next((d for d in self._declarations.values() if d.user_id == user_id and d.type is type), None)
+            return self._chain(user_id, first.chain_id) if first else ()
+
+    def append(self, declarations: Sequence[Declaration], expected_version: int) -> bool:
+        check_appended(declarations, expected_version)
+        first = declarations[0]
+        with self._lock:
+            if any(d.memory_id in self._declarations for d in declarations):
+                raise IdCollision("generated identifier collision")
+            if any(d.chain_id == first.chain_id and d.user_id != first.user_id for d in self._declarations.values()):
+                raise IdCollision("generated identifier collision")
+            current = self._chain(first.user_id, first.chain_id)
+            if (current[-1].version if current else 0) != expected_version:
+                return False
+            if not current and any(d.user_id == first.user_id and d.type is first.type for d in self._declarations.values()):
+                return False  # the user already has a chain of this type
+            self._declarations.update((d.memory_id, d) for d in declarations)
+            return True
+
+    def delete_chain(self, user_id: str, chain_id: str) -> int:
+        with self._lock:
+            return _drop(self._declarations, lambda _, d: d.user_id == user_id and d.chain_id == chain_id)
+
+    def _chain(self, user_id: str, chain_id: str) -> tuple[Declaration, ...]:
+        return tuple(sorted((d for d in self._declarations.values() if d.user_id == user_id and d.chain_id == chain_id), key=lambda d: d.version))
+
+
+class InMemoryMemoryWrites:
+    """MemoryWrites over the in-memory stores. Locks are taken accounts, audit, memory: the order account erasure
+    uses (accounts and audit share one lock once InMemoryAccountWrites exists), so the two never deadlock. Every map
+    a write touches is copied first and restored on any exception, and readers wait on the same locks, so none sees
+    half of a write. Without an account store (demo mode) nobody is writable: personas take no memory."""
+
+    def __init__(self, memory: InMemoryMemoryStore, audit: InMemoryAuditLog, accounts: InMemoryUserAccountStore | None) -> None:
+        self._memory = memory
+        self._audit = audit
+        self._accounts = accounts
+
+    def state(self, user_id: str) -> MemoryState:
+        with self._memory._lock:
+            return self._memory._states.get(user_id) or MemoryState(user_id)
+
+    def proposal(self, user_id: str, proposal_id: str) -> MemoryProposal | None:
+        with self._memory._lock:
+            found = self._memory._proposals.get(proposal_id)
+        return found if found is not None and found.user_id == user_id else None
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        accounts = self._accounts._lock if self._accounts is not None else contextlib.nullcontext()
+        with accounts, self._audit._lock, self._memory._lock:
+            memory = self._memory
+            saved = (memory._declarations.copy(), memory._states.copy(), memory._proposals.copy())
+            events = self._audit._events.copy()
+            try:
+                yield
+            except BaseException:
+                memory._declarations, memory._states, memory._proposals = saved
+                self._audit._events = events
+                raise
+
+    def _writable(self, user_id: str) -> bool:
+        return self._accounts is not None and user_id in self._accounts._accounts
+
+    def _append_events(self, events: Sequence[AuditDraft], owner: str) -> None:
+        if any(event.user_id != owner for event in events):
+            raise ValueError("memory event ownership mismatch")
+        existing = {event.draft.event_id for event in self._audit._events}
+        ids = [event.event_id for event in events]
+        if len(set(ids)) != len(ids) or existing.intersection(ids):
+            raise IdCollision("generated identifier collision")
+        self._audit.append_all(events)
+
+    def _invalidate(self, user_id: str) -> int:
+        pending = [p for p in self._memory._proposals.values() if p.user_id == user_id and p.state is ProposalState.PENDING]
+        for p in pending:
+            self._memory._proposals[p.proposal_id] = replace(p, state=ProposalState.INVALIDATED)
+        return len(pending)
+
+    def set_consent(self, user_id: str, requested: Consent, event: AuditDraft) -> MemoryWriteResult:
+        with self._transaction():
+            before = self._memory._states.get(user_id) or MemoryState(user_id)
+            if not self._writable(user_id):
+                return MemoryWriteResult(WriteOutcome.NOT_WRITABLE, before)
+            after = with_consent(before, requested)
+            if after == before:
+                return MemoryWriteResult(WriteOutcome.DONE, before, changed=False)
+            invalidated = 0
+            if after.consent is Consent.REVOKED:
+                invalidated = self._invalidate(user_id)
+            self._memory._states[user_id] = after
+            self._append_events((replace(event, detail=consent_detail(before, after)),), user_id)
+            return MemoryWriteResult(WriteOutcome.DONE, after, changed=True, invalidated_proposals=invalidated)
+
+    def prepare(self, proposal: MemoryProposal) -> MemoryWriteResult:
+        with self._transaction():
+            state = self._memory._states.get(proposal.user_id) or MemoryState(proposal.user_id)
+            outcome = decide_preparation(writable=self._writable(proposal.user_id), state=state, proposal=proposal)
+            if outcome is WriteOutcome.DONE:
+                if proposal.proposal_id in self._memory._proposals or proposal.state is not ProposalState.PENDING:
+                    raise IdCollision("generated identifier collision")
+                self._memory._proposals[proposal.proposal_id] = proposal
+            return MemoryWriteResult(outcome, state)
+
+    def confirm(
+        self, user_id: str, proposal_id: str | None, declarations: Sequence[Declaration], expected_version: int,
+        now: datetime, event: AuditDraft,
+    ) -> MemoryWriteResult:
+        check_confirmation(user_id, declarations, expected_version, event)
+        with self._transaction():
+            memory = self._memory
+            state = memory._states.get(user_id) or MemoryState(user_id)
+            proposal = memory._proposals.get(proposal_id) if proposal_id is not None else None
+            first = next((d for d in memory._declarations.values() if d.user_id == user_id and d.type is declarations[0].type), None)
+            head = memory._chain(user_id, first.chain_id)[-1].version if first else 0
+            outcome = decide_confirmation(
+                user_id=user_id, writable=self._writable(user_id), state=state, proposal_id=proposal_id, proposal=proposal,
+                chain_id=first.chain_id if first else None, head_version=head, batch_chain_id=declarations[0].chain_id,
+                expected_version=expected_version, now=now,
+            )
+            if outcome is not WriteOutcome.DONE:
+                return MemoryWriteResult(outcome, state)
+            if proposal is not None:
+                memory._proposals[proposal.proposal_id] = replace(proposal, state=ProposalState.CONSUMED)
+            if any(d.memory_id in memory._declarations for d in declarations) or any(
+                d.chain_id == declarations[0].chain_id and d.user_id != user_id for d in memory._declarations.values()
+            ):
+                raise IdCollision("generated identifier collision")
+            memory._declarations.update((d.memory_id, d) for d in declarations)
+            after = with_memory_change(state)
+            memory._states[user_id] = after
+            self._append_events((confirmation_event(event, proposal_id, declarations, expected_version, after),), user_id)
+            return MemoryWriteResult(WriteOutcome.DONE, after)
+
+    def delete_chain(self, user_id: str, chain_id: str, event: AuditDraft) -> MemoryWriteResult:
+        with self._transaction():
+            memory = self._memory
+            state = memory._states.get(user_id) or MemoryState(user_id)
+            if not self._writable(user_id):
+                return MemoryWriteResult(WriteOutcome.NOT_WRITABLE, state)
+            deleted = _drop(memory._declarations, lambda _, d: d.user_id == user_id and d.chain_id == chain_id)
+            if not deleted:
+                return MemoryWriteResult(WriteOutcome.NOT_FOUND, state)
+            invalidated = self._invalidate(user_id)
+            after = with_memory_change(state)
+            memory._states[user_id] = after
+            detail = deletion_detail(chain_id=chain_id, deleted_versions=deleted, invalidated_proposals=invalidated, revision=after.memory_revision)
+            self._append_events((replace(event, detail=detail),), user_id)
+            return MemoryWriteResult(WriteOutcome.DONE, after, deleted_versions=deleted, invalidated_proposals=invalidated)
+
+
 class InMemoryConversationStore:
     def __init__(self) -> None:
         self._sessions: dict[tuple[str, str], list[Entry]] = defaultdict(list)
@@ -475,6 +668,69 @@ class InMemoryInvestmentStore:
             raise IdCollision("generated identifier collision")
         self._audit.append_all(events)
 
+class InMemoryStatementImportWrites:
+    """StatementImportWrites over the in-memory stores. Locks are taken accounts, audit, statements, transactions,
+    memory: the order account erasure uses (accounts and audit share one lock once InMemoryAccountWrites exists), so
+    the owner check, the token and the writes see an erasure either whole or not at all. Every map is restored on
+    any exception. Without an account store (demo mode) owners are not checked."""
+
+    def __init__(
+        self, statements: InMemoryStatementStore, transactions: InMemoryTransactionStore, audit: InMemoryAuditLog,
+        memory: InMemoryMemoryStore, accounts: InMemoryUserAccountStore | None = None, personas: frozenset[str] = frozenset(),
+    ) -> None:
+        self._statements, self._transactions, self._audit, self._memory = statements, transactions, audit, memory
+        self._accounts = accounts
+        self._personas = personas  # the shared demo personas this server enables: they import without an account
+
+    def _locks(self) -> contextlib.ExitStack:
+        stack = contextlib.ExitStack()
+        if self._accounts is not None:
+            stack.enter_context(self._accounts._lock)
+        for lock in (self._audit._lock, self._statements._lock, self._transactions._lock, self._memory._lock):
+            stack.enter_context(lock)
+        return stack
+
+    def _writable(self, user_id: str) -> bool:
+        return self._accounts is None or user_id in self._accounts._accounts or user_id in self._personas
+
+    def _token(self, user_id: str) -> str:
+        parts = (
+            sorted((key[1], repr(s)) for key, s in self._statements._statements.items() if key[0] == user_id),
+            sorted((key[1], repr(p)) for key, p in self._transactions._transactions.items() if key[0] == user_id),
+            sorted((d.memory_id, repr(d)) for d in self._memory._declarations.values() if d.user_id == user_id),
+            repr(self._memory._states.get(user_id)),
+        )
+        return hashlib.sha256(repr(parts).encode()).hexdigest()
+
+    def token(self, user_id: str) -> str:
+        with self._locks():
+            return self._token(user_id)
+
+    def commit(
+        self, user_id: str, token: str, statements: Sequence[StoredStatement], transactions: Sequence[PostedTransaction],
+        events: Sequence[AuditDraft],
+    ) -> ImportCommit:
+        check_import_batch(user_id, statements, transactions, events)
+        with self._locks():
+            if not self._writable(user_id):
+                return ImportCommit.OWNER_GONE
+            if self._token(user_id) != token:
+                return ImportCommit.CHANGED
+            saved = (self._statements._statements.copy(), self._transactions._transactions.copy(), self._audit._events.copy())
+            try:
+                existing = {event.draft.event_id for event in self._audit._events}
+                if any((user_id, s.statement_id) in self._statements._statements for s in statements) or any(
+                    (user_id, p.transaction.txn_id) in self._transactions._transactions for p in transactions
+                ) or existing.intersection(e.event_id for e in events):
+                    raise IdCollision("generated identifier collision")
+                self._statements._statements.update(((user_id, s.statement_id), s) for s in statements)
+                self._transactions._transactions.update(((user_id, p.transaction.txn_id), p) for p in transactions)
+                self._audit.append_all(events)
+            except BaseException:
+                self._statements._statements, self._transactions._transactions, self._audit._events = saved
+                raise
+            return ImportCommit.COMMITTED
+
 
 class InMemoryAccountWrites:
     def __init__(
@@ -593,6 +849,7 @@ class InMemoryAccountErasure:
         rules: InMemorySavingsRuleStore, actions: InMemoryActionRepository, receipts: InMemoryReceiptStore | None = None,
         investments: InMemoryInvestmentStore | None = None,
         connections: InMemoryConnectionStore | None = None,
+        memory: InMemoryMemoryStore | None = None,
     ) -> None:
         self._accounts, self._sessions, self._audit = accounts, sessions, audit
         self._profiles = profiles._inner if isinstance(profiles, PersonaOverlayProfileStore) else profiles
@@ -600,11 +857,12 @@ class InMemoryAccountErasure:
         self._receipts = receipts or InMemoryReceiptStore()
         self._investments = investments or InMemoryInvestmentStore(audit)
         self._connections = connections or InMemoryConnectionStore()
+        self._memory = memory or InMemoryMemoryStore()
 
     def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
         with (
             self._audit._lock, self._statements._lock, self._transactions._lock, self._receipts._lock, self._connections._lock,
-            self._rules._lock, self._actions._lock, self._investments._lock,
+            self._rules._lock, self._actions._lock, self._investments._lock, self._memory._lock,
         ):
             if event.event_id in {e.draft.event_id for e in self._audit._events}:
                 raise IdCollision("generated identifier collision")
@@ -614,6 +872,9 @@ class InMemoryAccountErasure:
                 "receipts": _drop(self._receipts._receipts, lambda key, _: key[0] == user_id),
                 "connections": _drop(self._connections._connections, lambda key, _: key[0] == user_id),
                 "connection_results": _drop(self._connections._results, lambda key, _: key[0] == user_id),
+                "user_memory": _drop(self._memory._declarations, lambda _, d: d.user_id == user_id),
+                "memory_state": _drop(self._memory._states, lambda key, _: key == user_id),
+                "memory_proposals": _drop(self._memory._proposals, lambda _, p: p.user_id == user_id),
                 "proposals": _drop(self._actions._proposals, lambda _, p: p.user_id == user_id),
                 "authorizations": _drop(self._actions._authorizations, lambda _, a: a.user_id == user_id),
                 **self._investments.drop(user_id),

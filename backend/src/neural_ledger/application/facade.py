@@ -16,6 +16,7 @@ from .use_cases.documents import DocumentUseCases
 from .use_cases.financial import FinancialUseCases
 from .use_cases.investments import InvestmentUseCases
 from .use_cases.ledger import LedgerUseCases
+from .use_cases.memory import MemoryUseCases
 from .use_cases.profile import ProfileEditing, ProfileUseCases
 from .use_cases.statements import StatementUseCases
 
@@ -63,3 +64,4 @@ class ApplicationServices:
     documents: DocumentUseCases | None = None  # files dropped on the copilot: statements and receipts (ADR-039)
     connections: ConnectionUseCases | None = None  # read-only MCP servers and the bank, added by the user (ADR-047)
     data_export: DataExport | None = None  # accounts mode only: the user's copy of their data (G02), HTTP only
+    memory: MemoryUseCases | None = None  # declared memory (ADR-048): saved only, writes need an account

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_consent_update.schema.json",
+  "title": "MemoryConsentUpdate",
+  "description": "Body of PUT /v1/memory/consent: grant or revoke the memory consent. User-only HTTP flow; the owner comes from authentication, never from the body. Repeating the current value changes nothing (changed: false) and writes no audit event. Revoking keeps the declarations, stops their use and invalidates pending proposals; revoking a consent never granted leaves it missing. The answer is memory_consent.",
+  "type": "object",
+  "required": ["consent"],
+  "properties": {
+    "consent": {"enum": ["granted", "revoked"]}
+  },
+  "additionalProperties": false,
+  "examples": [{"consent": "granted"}, {"consent": "revoked"}]
+}

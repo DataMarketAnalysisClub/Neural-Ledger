@@ -7,7 +7,13 @@ from importlib.util import find_spec
 
 import pytest
 
-from neural_ledger.adapters.outbound.persistence.memory import InMemoryAuditLog, InMemoryStatementStore, InMemoryTransactionStore
+from neural_ledger.adapters.outbound.persistence.memory import (
+    InMemoryAuditLog,
+    InMemoryMemoryStore,
+    InMemoryStatementImportWrites,
+    InMemoryStatementStore,
+    InMemoryTransactionStore,
+)
 from neural_ledger.adapters.outbound.privacy.null import NullDetector
 from neural_ledger.adapters.outbound.system.clock import FixedClock
 from neural_ledger.adapters.outbound.system.ids import SequentialIds
@@ -125,13 +131,16 @@ class _KeywordClassifier:
 
 
 def _use_case(reader, classifier=None, transactions=None, detector=None, store=None, audit=None) -> StatementUseCases:
-    posting = LedgerPosting(classifier or _KeywordClassifier(), transactions if transactions is not None else InMemoryTransactionStore())
+    transactions = transactions if transactions is not None else InMemoryTransactionStore()
+    store = store if store is not None else InMemoryStatementStore()
+    audit = audit if audit is not None else InMemoryAuditLog()
     return StatementUseCases(
         reader,
         StatementRedactor(detector or NullDetector()),
-        store if store is not None else InMemoryStatementStore(),
-        posting,
-        audit if audit is not None else InMemoryAuditLog(),
+        store,
+        transactions,
+        LedgerPosting(classifier or _KeywordClassifier()),
+        InMemoryStatementImportWrites(store, transactions, audit, InMemoryMemoryStore()),
         FixedClock(datetime(2026, 10, 29, tzinfo=UTC)),
         SequentialIds(),
     )

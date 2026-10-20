@@ -133,6 +133,7 @@ def santander_xlsx(
     opening: int = 100_000,
     closing_override: int | None = None,
     daily_override: dict[str, int] | None = None,
+    period: tuple[str, str] = ("31/08/2026", "30/09/2026"),
 ) -> bytes:
     def money(v: int) -> str:
         return f"${_fmt(v)}"
@@ -143,8 +144,8 @@ def santander_xlsx(
     rows: list[list[Cell]] = [
         ["Banco Santander", None, "", "", "Cartola de cuenta Corriente - Septiembre 2026"],
         ["Sr(a)", "PEREZ ANA", "", "", "Cartola N°", "12", ""],
-        ["Rut", "11.111.111-1", "", "", "Desde", "31/08/2026", ""],
-        ["E-mail", "ana.perez@example.com", "", "", "Hasta", "30/09/2026", ""],
+        ["Rut", "11.111.111-1", "", "", "Desde", period[0], ""],
+        ["E-mail", "ana.perez@example.com", "", "", "Hasta", period[1], ""],
         ["INFORMACIÓN CUENTA CORRIENTE"],
         ["Tipo de Cuenta:", "CTA CTE", "", "", "N° Cuenta:", "0-000-00-12345-6", ""],
         ["Saldo inicial:", money(opening), "", "", "Impuestos:", "$0", ""],

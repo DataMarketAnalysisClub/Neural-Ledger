@@ -7,6 +7,7 @@ import { usePersona } from "@/api/hooks";
 import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, StatusBadge, describeError } from "@/components/ui";
 import { t, tDynamic } from "@/i18n";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { MemorySection } from "@/features/memory/MemorySection";
 
 function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
   const { identity } = usePersona();
@@ -209,6 +210,7 @@ export function ProfilePage() {
       )}
 
       {auth.mode === "accounts" && auth.me && <DownloadData key={`download-${record.user_id}`} />}
+      {auth.mode === "accounts" && auth.me && <MemorySection key={`memory-${record.user_id}`} persona={readOnly} />}
       {auth.mode === "accounts" && auth.me && <DeleteAccount key={record.user_id} persona={readOnly} />}
     </>
   );

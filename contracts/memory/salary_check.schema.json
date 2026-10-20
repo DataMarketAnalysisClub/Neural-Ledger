@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/salary_check.schema.json",
+  "title": "SalaryCheck",
+  "description": "What the statements say about a salary_net chain, derived on every read from the declarations, the eligible credits, statement coverage and the verification rules named by params_version (ADR-049). Nothing here is stored. Evidence is tied to the expected payday of each pay month, not to the credit's calendar month. `numeric_effect` says whether the forecast uses the declaration (applied) or only keeps it for checking (saved_only); a declaration is never a credited salary. In this release memory is saved only: numeric_effect is always saved_only, reasons is empty (no income is applied, so none of its warnings applies), and the financial results keep their own params_version (fc-0.3).",
+  "type": "object",
+  "required": ["status", "matched", "missed", "evidence", "numeric_effect", "reasons", "params_version"],
+  "properties": {
+    "status": {"enum": ["declared", "verified", "conflict"], "description": "declared: no match and no conflict. verified: at least one match. conflict: two consecutive eligible paydays without a match; it lasts until the user confirms a new version."},
+    "matched": {"type": "integer", "minimum": 0, "description": "Matches of the current version, counted from its effective_from."},
+    "missed": {"type": "integer", "minimum": 0, "description": "Eligible paydays without a match, counted from max(payday(effective_from), confirmed_at)."},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/payday"}},
+    "numeric_effect": {"enum": ["applied", "saved_only"]},
+    "reasons": {"type": "array", "items": {"$ref": "warnings.schema.json"}, "description": "Why the effect is what it is; each code is also a warning of the financial tools that use memory."},
+    "params_version": {"type": "string", "description": "The version of the verification rules that produced this check (salary-check-0.1: tolerance 5%, window ±3 business days, conflict after 2 consecutive misses), not the financial parameters."}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "payday": {
+      "type": "object",
+      "required": ["pay_month", "expected_payday", "outcome", "version"],
+      "properties": {
+        "pay_month": {"$ref": "memory_value.schema.json#/$defs/pay_month"},
+        "expected_payday": {"type": "string", "format": "date"},
+        "version": {"type": "integer", "minimum": 1, "description": "The chain version that applies to this pay month."},
+        "outcome": {"enum": ["matched", "missed", "not_eligible", "before_confirmation"], "description": "not_eligible: the window payday ± 3 business days is not fully covered by verified, final statements, or has not ended; never a non-compliance, and it breaks consecutiveness. before_confirmation: no match, but the payday is before the version was confirmed, so it is not counted as missed."},
+        "credit": {"$ref": "#/$defs/credit"}
+      },
+      "if": {"properties": {"outcome": {"const": "matched"}}},
+      "then": {"required": ["credit"]},
+      "else": {"not": {"required": ["credit"]}},
+      "additionalProperties": false
+    },
+    "credit": {
+      "type": "object",
+      "required": ["statement_id", "txn_id", "amount", "posted_on"],
+      "properties": {
+        "statement_id": {"type": "string", "minLength": 1},
+        "txn_id": {"type": "string", "minLength": 1},
+        "amount": {"type": "integer", "minimum": 1},
+        "posted_on": {"type": "string", "format": "date"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {"status": "verified", "matched": 1, "missed": 0, "numeric_effect": "saved_only", "reasons": [], "params_version": "salary-check-0.1", "evidence": [
+      {"pay_month": "2026-10", "expected_payday": "2026-10-30", "version": 2, "outcome": "matched", "credit": {"statement_id": "st_9", "txn_id": "tx_311", "amount": 1200000, "posted_on": "2026-10-30"}},
+      {"pay_month": "2026-11", "expected_payday": "2026-11-30", "version": 2, "outcome": "not_eligible"}
+    ]}
+  ]
+}

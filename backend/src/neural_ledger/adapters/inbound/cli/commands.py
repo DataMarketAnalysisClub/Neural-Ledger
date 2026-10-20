@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Protocol
 
 from ....application.facade import ApplicationServices
+from ....application.ports import AccountGone
 from ....application.use_cases.actions import ActorContext
 from ....domain.audit.events import Actor
 from ....domain.shared.serialization import to_primitive
@@ -64,7 +65,11 @@ def import_statement(services: ApplicationServices, path: Path, user_id: str, as
     except OSError as exc:
         print(f"cannot read {path}: {exc.strerror}")
         return 2
-    result = services.statements.import_statement(user_id, content)
+    try:
+        result = services.statements.import_statement(user_id, content)
+    except AccountGone:
+        print("there is no account with that id any more (or it was deleted during the import): nothing was stored")
+        return 2
     if as_json:
         print(json.dumps(to_primitive(result), ensure_ascii=False, indent=2))
         return 0 if result.ok else 2
@@ -205,7 +210,11 @@ def seed_database(services: ApplicationServices, samples: StatementSamples, args
     new = 0
     for f in files:
         # The real import path: read, redact, reconcile, store, post to the ledger and audit, like an upload.
-        result = services.statements.import_statement(user_id, f.content)
+        try:
+            result = services.statements.import_statement(user_id, f.content)
+        except AccountGone:
+            print("there is no account with that id any more (or it was deleted during the import): nothing was stored")
+            return 2
         if not result.ok:
             print(f"{f.name}: {result.status.value}: {result.message}")
             return 2

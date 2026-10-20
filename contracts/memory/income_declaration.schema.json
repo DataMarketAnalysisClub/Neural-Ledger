@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/income_declaration.schema.json",
+  "title": "IncomeDeclaration",
+  "description": "Body of POST /v1/memory/proposals/{proposal_id}/confirm (from the copilot's card) and of PUT /v1/profile/income (from Perfil): the salary the user confirms, as they selected or typed it. User-only HTTP flows; the owner comes from authentication, never from the body. `base`, the previous salary and its pay month, is stored with the change in one atomic write when the chain has no version yet; it must start before the change. Neither is born verified. `expected_version` is compare-and-swap on the chain (409 VERSION_CONFLICT). The answer is memory_view.",
+  "type": "object",
+  "required": ["salary_net", "expected_version"],
+  "properties": {
+    "salary_net": {"$ref": "memory_value.schema.json#/$defs/salary_net"},
+    "base": {"$ref": "memory_value.schema.json#/$defs/salary_net"},
+    "expected_version": {"type": "integer", "minimum": 0},
+    "session_id": {"type": "string", "maxLength": 120, "description": "Card confirmations only: the chat session, for the origin reference."}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"salary_net": {"amount": 1200000, "net": true, "effective_from": "2026-11"}, "base": {"amount": 1000000, "net": true, "effective_from": "2025-10"}, "expected_version": 0, "session_id": "s_1"},
+    {"salary_net": {"amount": 1250000, "net": true, "effective_from": "2026-11"}, "expected_version": 2}
+  ]
+}

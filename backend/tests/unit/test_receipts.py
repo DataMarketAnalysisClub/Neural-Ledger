@@ -171,10 +171,10 @@ def test_corrections_outside_sense_are_refused(total, on, message):
 
 @pytest.mark.parametrize(
     ("text", "amount"),
-    [("hoy gasté 15 lucas en el almuerzo", 15_000), ("pagué $12.990 con tarjeta", 12_990), ("gasté 800 en el metro", 800), ("spent 25k on dinner", 25_000), ("gasté 1.234.567", 1_234_567)],
+    [("hoy gasté 15 lucas en el almuerzo", 15_000), ("pagué $12.990 con tarjeta", 12_990), ("gasté 800 en el metro", 800), ("spent 25k on dinner", 25_000), ("gasté 1.234.567", 1_234_567), ("me pagan 1,2 palos", 1_200_000)],
 )
 def test_the_amounts_a_user_wrote(text, amount):
-    from neural_ledger.domain.receipts.model import written_amounts
+    from neural_ledger.domain.agent.amounts import written_amounts
 
     assert amount in written_amounts(text)
 

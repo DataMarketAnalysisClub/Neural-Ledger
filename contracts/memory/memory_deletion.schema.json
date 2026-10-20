@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_deletion.schema.json",
+  "title": "MemoryDeletion",
+  "description": "data of DELETE /v1/memory/{chain_id}: every version of the chain is deleted in one transaction, pending proposals that would extend it are revoked (an old proposal cannot restore it), and one MEMORY_DELETED audit event with counts remains. Another user's chain is 404.",
+  "type": "object",
+  "required": ["chain_id", "deleted_versions", "revoked_proposals"],
+  "properties": {
+    "chain_id": {"type": "string", "minLength": 1},
+    "deleted_versions": {"type": "integer", "minimum": 1},
+    "revoked_proposals": {"type": "integer", "minimum": 0}
+  },
+  "additionalProperties": false,
+  "examples": [{"chain_id": "chn_01", "deleted_versions": 2, "revoked_proposals": 0}]
+}

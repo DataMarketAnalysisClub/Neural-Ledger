@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/auth/data_export.schema.json",
   "title": "DataExport",
-  "description": "200 body of GET /v1/me/export (G02, Ley 21.719 arts. 5 and 9), sent as a JSON file download (Content-Disposition: attachment). Everything stored about the signed-in user, from the same stores DELETE /v1/account erases: the account (null for a demo persona), the profile with its questionnaire answers, imported statements, ledger transactions, receipts, connections with their last answers, active savings rules, investments (the link without its access token, the latest snapshot and imported documents) and the user's own audit events, the DATA_EXPORTED event of this export included. Never included: the password hash, session tokens, connection secrets or the investment access token. Sections hold the stored records as they are kept (ids, ISO 8601 times, money as integers in minor units); merchant, issuer and connection text is untrusted data. The format string changes whenever a section is added, renamed or changes shape. HTTP only: no agent tool reads it.",
+  "description": "200 body of GET /v1/me/export (G02, Ley 21.719 arts. 5 and 9), sent as a JSON file download (Content-Disposition: attachment). Everything stored about the signed-in user, from the same stores DELETE /v1/account erases: the account (null for a demo persona), the profile with its questionnaire answers, imported statements, ledger transactions, receipts, connections with their last answers, active savings rules, investments (the link without its access token, the latest snapshot and imported documents), memory (ADR-048: the consent with its counters and every declaration version, superseded ones included; null when the server has no memory) and the user's own audit events, the DATA_EXPORTED event of this export included. Never included: the password hash, session tokens, connection secrets or the investment access token. Sections hold the stored records as they are kept (ids, ISO 8601 times, money as integers in minor units); merchant, issuer and connection text is untrusted data. The format string changes whenever a section is added, renamed or changes shape. HTTP only: no agent tool reads it.",
   "type": "object",
-  "required": ["format", "exported_at", "user_id", "account", "profile", "statements", "transactions", "receipts", "connections", "savings_rules", "investments", "audit_events"],
+  "required": ["format", "exported_at", "user_id", "account", "profile", "statements", "transactions", "receipts", "connections", "savings_rules", "investments", "memory", "audit_events"],
   "properties": {
-    "format": {"const": "neural-ledger-export-1"},
+    "format": {"const": "neural-ledger-export-2"},
     "exported_at": {"type": "string", "format": "date-time"},
     "user_id": {"type": "string", "minLength": 1},
     "account": {
@@ -43,12 +43,35 @@
       },
       "additionalProperties": false
     },
+    "memory": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["consent", "declarations"],
+          "properties": {
+            "consent": {
+              "type": "object",
+              "required": ["consent", "consent_generation", "memory_revision"],
+              "properties": {
+                "consent": {"enum": ["missing", "granted", "revoked"]},
+                "consent_generation": {"type": "integer", "minimum": 0},
+                "memory_revision": {"type": "integer", "minimum": 0}
+              },
+              "additionalProperties": false
+            },
+            "declarations": {"$ref": "../memory/memory_export.schema.json"}
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "audit_events": {"type": "array", "items": {"type": "object"}}
   },
   "additionalProperties": false,
   "examples": [
     {
-      "format": "neural-ledger-export-1",
+      "format": "neural-ledger-export-2",
       "exported_at": "2026-10-20T12:00:00+00:00",
       "user_id": "usr_1",
       "account": {"email": "ana@accounts.invalid", "created_at": "2026-10-01T09:00:00+00:00", "sample_data": false},
@@ -59,10 +82,11 @@
       "connections": [],
       "savings_rules": [],
       "investments": {"link": null, "latest_snapshot": null, "documents": []},
+      "memory": {"consent": {"consent": "missing", "consent_generation": 0, "memory_revision": 0}, "declarations": {"catalog_version": "mem-0.1", "declarations": []}},
       "audit_events": [{"sequence": 4, "kind": "DATA_EXPORTED", "user_id": "usr_1"}]
     },
     {
-      "format": "neural-ledger-export-1",
+      "format": "neural-ledger-export-2",
       "exported_at": "2026-10-20T12:00:00+00:00",
       "user_id": "camila",
       "account": null,
@@ -73,6 +97,7 @@
       "connections": [],
       "savings_rules": [],
       "investments": {"link": null, "latest_snapshot": null, "documents": []},
+      "memory": {"consent": {"consent": "missing", "consent_generation": 0, "memory_revision": 0}, "declarations": {"catalog_version": "mem-0.1", "declarations": []}},
       "audit_events": []
     }
   ]
