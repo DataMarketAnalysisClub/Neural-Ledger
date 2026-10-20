@@ -35,6 +35,7 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
 | A redaction rule (a kind of personal data the rules miss) | `domain/privacy/redaction.py` | `tests/unit/test_redaction.py`, `tests/property/test_redaction_properties.py` |
 | A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
+| A read-only connection to another app (ADR-047) | an MCP server needs nothing: users add it by URL. Another bank aggregator: a `BankFeed` adapter in `adapters/outbound/connections/` returning `BankAccount` + `BankMovement`, wired in `_connectors` (`container.py`); `domain/connections/bank.py` turns each sync into a statement for the usual import | `tests/adapters/test_fintoc.py` (fake server), `tests/security/test_connectors.py` |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes

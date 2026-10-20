@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Protocol, runtime_checkable
+from datetime import date, datetime
+from typing import Any, Protocol, runtime_checkable
 
 from ..domain.actions.terms import (
     ActionTerms,
@@ -21,6 +21,8 @@ from ..domain.actions.terms import (
 )
 from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
+from ..domain.connections.bank import BankAccount, BankMovement
+from ..domain.connections.model import Connection, ConnectionSnapshot
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.privacy.redaction import Span
@@ -53,6 +55,14 @@ class ClassifierUnavailable(PortUnavailable):
 
 class DetectorUnavailable(PortUnavailable):
     """The personal-data detector could not answer. The domain rules still redact; the import is flagged as degraded."""
+
+
+class ConnectorUnavailable(PortUnavailable):
+    """A connected service did not answer usably (ADR-047). The message is a short code, never the service's text."""
+
+
+class TargetRefused(Exception):
+    """A connected service's address was refused before anything was sent (ADR-047). args[0] is a TargetBlock."""
 
 
 class NotFound(Exception):
@@ -404,4 +414,71 @@ class ProfileWrites(Protocol):
         Personas are never writable. Raises ValueError on an owner mismatch and IdCollision on a reused event id;
         any exception also leaves no writes.
         """
+        ...
+
+
+@runtime_checkable
+class McpClient(Protocol):
+    """Talks to an MCP server the user added (ADR-047). Only the user's sync uses it; no agent tool reaches it.
+
+    Checks the address before every request (domain/connections/model.py:check_target) and raises TargetRefused,
+    and raises ConnectorUnavailable on any network, protocol or size error. The token goes to that server only.
+    """
+
+    def list_tools(self, url: str, token: str | None) -> Sequence[Any]:
+        """The `tools` array of tools/list, as the server sent it (untrusted)."""
+        ...
+
+    def call_tool(self, url: str, token: str | None, name: str) -> Any:
+        """tools/call with empty arguments; the structured content, or the text content parsed as JSON if it is."""
+        ...
+
+
+@runtime_checkable
+class BankFeed(Protocol):
+    """A bank aggregator (Fintoc, ADR-047): read-only accounts and movements behind a link the user created."""
+
+    name: str  # the aggregator, shown as the connection's host and used as the statements' bank code
+    public_key: str | None  # for the widget; None when no widget is needed (fixture)
+
+    def start(self) -> str | None:
+        """A one-time widget token for a new link (Fintoc's link intent); None when no widget is needed (fixture).
+        Raises ConnectorUnavailable."""
+        ...
+
+    def exchange(self, exchange_token: str) -> str:
+        """Trade the widget's exchange token for the link token. Raises ConnectorUnavailable."""
+        ...
+
+    def fetch(self, link_token: str, since: date | None) -> Sequence[tuple[BankAccount, Sequence[BankMovement]]]:
+        """Each account with its movements posted on or after `since` (all available if None). Raises ConnectorUnavailable."""
+        ...
+
+
+@runtime_checkable
+class ConnectionStore(Protocol):
+    """A user's connections, each with its sealed secret and the latest answer per tool."""
+
+    def add(self, connection: Connection, secret: str | None) -> None: ...
+
+    def get(self, user_id: str, connection_id: str) -> Connection | None: ...
+
+    def for_user(self, user_id: str) -> tuple[Connection, ...]:
+        """Oldest first."""
+        ...
+
+    def update(self, connection: Connection) -> bool:
+        """Replace this user's connection with the same id, keeping its secret. False if it is not stored."""
+        ...
+
+    def secret(self, user_id: str, connection_id: str) -> str | None: ...
+
+    def put_results(self, user_id: str, connection_id: str, results: Sequence[ConnectionSnapshot]) -> None:
+        """Replace every stored answer of this connection with these."""
+        ...
+
+    def results(self, user_id: str, connection_id: str) -> tuple[ConnectionSnapshot, ...]: ...
+
+    def remove(self, user_id: str, connection_id: str) -> bool:
+        """Delete the connection, its secret and its answers. False if it was not stored."""
         ...

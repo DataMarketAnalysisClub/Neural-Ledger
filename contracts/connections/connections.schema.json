@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/connections/connections.schema.json",
+  "title": "Connections",
+  "description": "data of GET /v1/connections: the user's connections and what this server allows (ADR-047). mode is off when connectors are disabled (a public deployment without NL_CONNECTORS_LIVE), fixture when synthetic servers answer, live when real ones do.",
+  "type": "object",
+  "required": ["connections", "mode", "bank"],
+  "properties": {
+    "connections": {"type": "array", "items": {"$ref": "connection.schema.json"}},
+    "mode": {"enum": ["off", "fixture", "live"]},
+    "bank": {
+      "type": "object",
+      "required": ["aggregator", "public_key"],
+      "properties": {
+        "aggregator": {"type": "string"},
+        "public_key": {"type": ["string", "null"], "description": "The aggregator's public widget key; null in fixture mode, where no widget is needed."}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

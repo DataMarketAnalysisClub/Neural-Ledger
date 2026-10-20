@@ -12,6 +12,7 @@ from ....application.conversation import Entry
 from ....application.ports import ErasureReport, IdCollision, UserProfileStore
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
+from ....domain.connections.model import Connection, ConnectionSnapshot
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.receipts.model import StoredReceipt
 from ....domain.statements.model import StoredStatement
@@ -61,6 +62,50 @@ class InMemoryStatementStore:
 
     def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
         return tuple(s for (owner, _), s in self._statements.items() if owner == user_id)
+
+
+class InMemoryConnectionStore:
+    """Connections with their secret and latest answers (ADR-047). Not sealed: memory never outlives the process."""
+
+    def __init__(self) -> None:
+        self._connections: dict[tuple[str, str], tuple[Connection, str | None]] = {}
+        self._results: dict[tuple[str, str], tuple[ConnectionSnapshot, ...]] = {}
+        self._lock = threading.Lock()
+
+    def add(self, connection: Connection, secret: str | None) -> None:
+        with self._lock:
+            self._connections[(connection.user_id, connection.connection_id)] = (connection, secret)
+
+    def get(self, user_id: str, connection_id: str) -> Connection | None:
+        found = self._connections.get((user_id, connection_id))
+        return found[0] if found else None
+
+    def for_user(self, user_id: str) -> tuple[Connection, ...]:
+        return tuple(c for (owner, _), (c, _s) in list(self._connections.items()) if owner == user_id)
+
+    def update(self, connection: Connection) -> bool:
+        key = (connection.user_id, connection.connection_id)
+        with self._lock:
+            if key not in self._connections:
+                return False
+            self._connections[key] = (connection, self._connections[key][1])
+            return True
+
+    def secret(self, user_id: str, connection_id: str) -> str | None:
+        found = self._connections.get((user_id, connection_id))
+        return found[1] if found else None
+
+    def put_results(self, user_id: str, connection_id: str, results: Sequence[ConnectionSnapshot]) -> None:
+        with self._lock:
+            self._results[(user_id, connection_id)] = tuple(results)
+
+    def results(self, user_id: str, connection_id: str) -> tuple[ConnectionSnapshot, ...]:
+        return self._results.get((user_id, connection_id), ())
+
+    def remove(self, user_id: str, connection_id: str) -> bool:
+        with self._lock:
+            self._results.pop((user_id, connection_id), None)
+            return self._connections.pop((user_id, connection_id), None) is not None
 
 
 class InMemoryReceiptStore:
@@ -452,20 +497,24 @@ class InMemoryAccountErasure:
         self, accounts: InMemoryUserAccountStore | None, sessions: InMemorySessionStore | None, profiles: UserProfileStore,
         audit: InMemoryAuditLog, statements: InMemoryStatementStore, transactions: InMemoryTransactionStore,
         rules: InMemorySavingsRuleStore, actions: InMemoryActionRepository, receipts: InMemoryReceiptStore | None = None,
+        connections: InMemoryConnectionStore | None = None,
     ) -> None:
         self._accounts, self._sessions, self._audit = accounts, sessions, audit
         self._profiles = profiles._inner if isinstance(profiles, PersonaOverlayProfileStore) else profiles
         self._statements, self._transactions, self._rules, self._actions = statements, transactions, rules, actions
         self._receipts = receipts or InMemoryReceiptStore()
+        self._connections = connections or InMemoryConnectionStore()
 
     def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
-        with self._audit._lock, self._statements._lock, self._transactions._lock, self._receipts._lock, self._rules._lock, self._actions._lock:
+        with self._audit._lock, self._statements._lock, self._transactions._lock, self._receipts._lock, self._connections._lock, self._rules._lock, self._actions._lock:
             if event.event_id in {e.draft.event_id for e in self._audit._events}:
                 raise IdCollision("generated identifier collision")
             counts = {
                 "statements": _drop(self._statements._statements, lambda key, _: key[0] == user_id),
                 "transactions": _drop(self._transactions._transactions, lambda key, _: key[0] == user_id),
                 "receipts": _drop(self._receipts._receipts, lambda key, _: key[0] == user_id),
+                "connections": _drop(self._connections._connections, lambda key, _: key[0] == user_id),
+                "connection_results": _drop(self._connections._results, lambda key, _: key[0] == user_id),
                 "proposals": _drop(self._actions._proposals, lambda _, p: p.user_id == user_id),
                 "authorizations": _drop(self._actions._authorizations, lambda _, a: a.user_id == user_id),
             }

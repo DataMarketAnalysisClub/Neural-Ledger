@@ -59,6 +59,18 @@ class Settings:
     cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
     email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
+    connectors: str = "fixture"  # fixture (synthetic MCP server and bank) | live (real servers the user adds, Fintoc), ADR-047
+    connectors_live: bool = False  # NL_DEPLOYMENT=deployed turns live connectors off unless this is true
+    mcp_allow_private: bool = False  # local development only: lets an MCP server on http://localhost be added
+    fintoc_secret_key: str | None = None
+    fintoc_public_key: str | None = None
+
+    @property
+    def connectors_mode(self) -> str:
+        """off | fixture | live: what /v1/connections reports. A public deployment never reaches real services by default."""
+        if self.connectors == "live" and self.deployment == "deployed" and not self.connectors_live:
+            return "off"
+        return self.connectors
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -131,6 +143,11 @@ class Settings:
             cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
             demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
             email_checks=email_checks,
+            connectors=get("NL_CONNECTORS", cls.connectors),
+            connectors_live=_flag(get("NL_CONNECTORS_LIVE", "false"), "NL_CONNECTORS_LIVE"),
+            mcp_allow_private=_flag(get("NL_MCP_ALLOW_PRIVATE", "false"), "NL_MCP_ALLOW_PRIVATE"),
+            fintoc_secret_key=e.get("FINTOC_SECRET_KEY") or None,
+            fintoc_public_key=e.get("FINTOC_PUBLIC_KEY") or None,
         )
 
 

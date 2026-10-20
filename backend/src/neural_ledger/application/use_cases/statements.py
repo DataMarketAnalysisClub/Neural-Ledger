@@ -15,6 +15,7 @@ still to bill. Descriptions leave this layer wrapped as untrusted text.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...domain.agent.untrusted import wrap_untrusted
@@ -214,7 +215,10 @@ class StatementUseCases:
             return Envelope.insufficient(("statement_reader",), params_version=STATEMENTS_VERSION, message=str(exc))
         if not statements:
             return Envelope.invalid("file", ALLOWED_FILES, params_version=STATEMENTS_VERSION, message="the file holds no statement")
+        return self.import_read(user_id, statements, session_id)
 
+    def import_read(self, user_id: str, statements: Sequence[BankStatement], session_id: str = "statements") -> Envelope[StatementImport]:
+        """The import after reading: a file's statements, or a bank aggregator's (ADR-047). At least one statement."""
         # Redact every new statement before storing any, so a failure leaves nothing half-imported (ADR-028).
         prepared: list[tuple[str, BankStatement | None, RedactionReport | None]] = []
         for read in statements:
