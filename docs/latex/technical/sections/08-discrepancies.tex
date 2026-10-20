@@ -13,11 +13,11 @@ follows the code. The differences found while writing it:
     own verified statements (\code{StatementModelSource}, ADR-029 step 2); personas keep their fixtures.
   \item \textbf{Plain-text payloads.} ADR-033 step 2 says payloads written before encryption ``are still read''. Since
     option B a value in clear is refused; an older file is upgraded and sealed at startup or by \code{migrate-data}.
-  \item \textbf{Status of the security suite.} The README's status list and document table mention S01--S12 and S01--S15;
-    \code{docs/SECURITY.md} and the tests cover S01--S24, S30--S32 and S35--S38, plus the option B tests.
-  \item \textbf{``No accounts or personal data.''} The README ends with ``no real money, accounts or personal data''.
-    Accounts exist in accounts mode, and with open sign-up the software cannot guarantee that no personal data is stored;
-    \code{docs/SECURITY.md} now says so.
+  \item \textbf{Status of the security suite} (fixed). The README's status list and document table once mentioned S01--S12
+    and S01--S15; they now give S01--S24, S30--S32 and S35--S38, as \code{docs/SECURITY.md} and the tests do.
+  \item \textbf{``No accounts or personal data.''} (fixed). The README once ended with ``no real money, accounts or personal
+    data''. It now says the data is synthetic and that users should not enter real personal data; accounts exist in
+    accounts mode, and with open sign-up the software cannot guarantee that no personal data is stored.
   \item \textbf{Runtime modes.} The table in \code{docs/ARCHITECTURE.md} does not list \code{NL_DEPLOYMENT} (\cref{tab:modes}).
   \item \textbf{Deployment files.} \code{docs/SECURITY.md} refers to the public demo's server and its deployment override;
     that override, its nginx configuration and its runbook exist only on the unmerged branch
