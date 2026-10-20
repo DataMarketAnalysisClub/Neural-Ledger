@@ -42,8 +42,8 @@ class AuditKind(str, Enum):
     STATEMENT_IMPORTED = "STATEMENT_IMPORTED"
     DOCUMENT_ROUTED = "DOCUMENT_ROUTED"  # a file dropped on the copilot was routed: statement, receipt or unknown (ADR-039)
     RECEIPT_IMPORTED = "RECEIPT_IMPORTED"
-    EXPENSE_LOGGED = "EXPENSE_LOGGED"  # the user confirmed an expense they told the copilot about (ADR-038)
-    RECEIPT_CORRECTED = "RECEIPT_CORRECTED"  # the user typed a receipt's total or date the reader could not read (ADR-038)
+    EXPENSE_LOGGED = "EXPENSE_LOGGED"  # the user confirmed an expense they told the copilot about (ADR-039)
+    RECEIPT_CORRECTED = "RECEIPT_CORRECTED"  # the user typed a receipt's total or date the reader could not read (ADR-039)
     CONNECTION_ADDED = "CONNECTION_ADDED"  # the user connected an MCP server or their bank, with consent (ADR-047)
     CONNECTION_UPDATED = "CONNECTION_UPDATED"  # the user changed which read-only tools a connection may call
     CONNECTION_SYNCED = "CONNECTION_SYNCED"  # the user's sync read the connection; detail has counts and codes, never content
