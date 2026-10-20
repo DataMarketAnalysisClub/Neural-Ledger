@@ -35,6 +35,8 @@ bootstrap ────────────┘  (wires concrete adapters into
 | A different spending classifier (model or method) | a `TransactionClassifier` adapter + a `CLASSIFIERS` entry in `container.py` (recipe below) | `tests/adapters/test_classifier.py` |
 | A redaction rule (a kind of personal data the rules miss) | `domain/privacy/redaction.py` | `tests/unit/test_redaction.py`, `tests/property/test_redaction_properties.py` |
 | A personal-data detector (a second layer after the rules) | a `PersonalDataDetector` adapter in `adapters/outbound/privacy/` + a `DETECTORS` entry in `container.py` (recipe below) | a fake-server test in `tests/adapters`, plus S15 |
+| An investment provider (another institution, ADR-044) | an `InvestmentProvider` adapter in `adapters/outbound/investments/` (read-only: sign in and list goals; no credential in any error) + an `INVESTMENT_PROVIDERS` entry in `container.py` | a fake-transport test like `tests/adapters/test_fintual_provider.py`, plus S30 and S31 |
+| A provider's statement format (ADR-044, step 2) | an `InvestmentDocumentReader` adapter in `adapters/outbound/investments/` on `ocr_tabular.read_pages` (rows only, never the holder), its `DocumentKind.INVESTMENT` marks in `domain/receipts/model.py`, and checks in `domain/investments/documents.py` | synthetic PDFs like `tests/investment_samples.py` with figures worked out by hand, plus S32 |
 | A frontend screen | `web/`, consuming `contracts/` | — |
 
 ## Recipes

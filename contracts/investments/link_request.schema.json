@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/investments/link_request.schema.json",
+  "title": "InvestmentLinkRequest",
+  "description": "User-only POST /v1/investments/link (ADR-044), accounts mode and real accounts only (a demo persona or demo mode is 403 READ_ONLY). The email and password are the user's Fintual credentials: the backend sends them once to the provider for an access token and keeps only that token, sealed, with the email. The password is never stored, logged, audited or echoed, and no error repeats a supplied value. consent must be true: the user accepted the text that says what is read and kept (recorded as consent=inv-consent-1 on the INVESTMENTS_LINKED audit event). Linking again replaces the previous link. Not an agent tool: an agent attempt is T3 CREDENTIAL_CHANGE. Rate limited like sign-in.",
+  "type": "object",
+  "required": ["email", "password", "consent"],
+  "properties": {
+    "provider": {"enum": ["fintual"], "default": "fintual"},
+    "email": {"type": "string", "minLength": 3, "maxLength": 254},
+    "password": {"type": "string", "minLength": 1, "maxLength": 256},
+    "consent": {"const": true}
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"email": "persona@example.invalid", "password": "synthetic-password", "consent": true}
+  ]
+}

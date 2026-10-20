@@ -59,6 +59,9 @@ class Settings:
     cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
     email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
+    investments: str = "fixture"  # fixture (synthetic account, offline) | fintual (the provider's API); see INVESTMENT_PROVIDERS (ADR-044)
+    fintual_base_url: str = "https://fintual.cl/api"
+    fintual_diagnostics: bool = False  # local diagnosis: log the sign-in's shape and probe other token styles (statuses only)
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -78,12 +81,14 @@ class Settings:
 
     @property
     def mode(self) -> str:
-        """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories) or the Azure detector."""
+        """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories), the Azure detector,
+        or an investment provider (the credentials the user types to link an account)."""
         offline = (
             self.llm == "scripted"
             and all(m == "rules" for m in self.decision_chain)
             and "jev" not in self.classifiers
             and self.pii_detector == "none"
+            and self.investments == "fixture"
         )
         return "offline" if offline else "live"
 
@@ -131,6 +136,9 @@ class Settings:
             cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
             demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
             email_checks=email_checks,
+            investments=get("NL_INVESTMENTS", cls.investments),
+            fintual_base_url=get("NL_FINTUAL_BASE_URL", cls.fintual_base_url),
+            fintual_diagnostics=_flag(get("NL_FINTUAL_DIAGNOSTICS", "false"), "NL_FINTUAL_DIAGNOSTICS"),
         )
 
 

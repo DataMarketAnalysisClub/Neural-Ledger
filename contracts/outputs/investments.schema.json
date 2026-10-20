@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/investments.schema.json",
+  "title": "InvestmentOverview",
+  "description": "data of get_investments and GET /v1/investments (ADR-044): the user's investments at a provider. source statement: the newest verified investment statement (balances per fund and series on as_of) and transactions certificate (contributions and withdrawals) the user imported, read by the backend and checked to add up; each goal's value is its part of the printed balances by its shares, and only when both documents describe the same shares (documents_agree); the gain only when the certificate also starts when the account opened (contributions.complete). source sync: the last snapshot of a linked account (in development), as the provider reported it at synced_at. Amounts are integers in pesos; totals, contributions, averages and gains are computed by the backend; shares and values per share are exact decimal text. Goal names are the user's labels at the provider, wrapped as untrusted text. stale: a sync over 24 hours old or a statement over a month old; synthetic: the offline sandbox fixture. Facts (unit = currency unless noted): investments.total_value, investments.funds (count), investments.fund.<fund_id>.value, investments.contributed, investments.withdrawn, investments.total_deposited (net), investments.contributions and investments.withdrawals (count), investments.monthly_contribution, investments.history_months and investments.contribution_months (count), investments.total_gain, investments.gain_pct (%), investments.goals (count), investments.goal.<goal_id>.value|deposited|gain. Warnings: INVESTMENTS_FROM_STATEMENT or INVESTMENTS_AS_REPORTED always, and INVESTMENTS_STATEMENT_OLD, INVESTMENTS_NO_BALANCE, INVESTMENTS_NO_HISTORY, INVESTMENTS_PARTIAL_HISTORY, INVESTMENTS_DOCUMENTS_DISAGREE, INVESTMENTS_SYNTHETIC and INVESTMENTS_STALE when they apply. With nothing imported or linked the envelope is INSUFFICIENT_DATA with missing [\"investment_account\"].",
+  "type": "object",
+  "required": [
+    "provider", "currency", "source", "as_of", "synced_at", "synthetic", "stale", "total_value", "total_deposited", "total_gain",
+    "gain_pct", "goals", "funds", "contributions", "documents", "documents_agree"
+  ],
+  "properties": {
+    "provider": {"enum": ["fintual"]},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "source": {"enum": ["statement", "sync"]},
+    "as_of": {"type": "string", "format": "date", "description": "The day the values describe: the statement's day (else the certificate's last movement), or the sync's day."},
+    "synced_at": {"type": ["string", "null"], "format": "date-time"},
+    "synthetic": {"type": "boolean"},
+    "stale": {"type": "boolean"},
+    "total_value": {"type": ["integer", "null"], "minimum": 0, "description": "Null when only the transactions certificate was imported."},
+    "total_deposited": {"type": ["integer", "null"], "description": "Net contributions: contributions less withdrawals."},
+    "total_gain": {"type": ["integer", "null"], "description": "total_value - total_deposited; negative is a loss."},
+    "gain_pct": {"type": ["number", "null"], "description": "total_gain / total_deposited x 100, one decimal, rounded half up."},
+    "goals": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/goal"}},
+    "funds": {"type": "array", "maxItems": 60, "items": {"$ref": "#/$defs/fund"}},
+    "contributions": {"oneOf": [{"$ref": "#/$defs/contributions"}, {"type": "null"}]},
+    "documents": {"type": "array", "maxItems": 2, "items": {"$ref": "investment_document.schema.json"}, "description": "The documents these figures come from (statement source)."},
+    "documents_agree": {"type": ["boolean", "null"], "description": "The statement and the certificate describe the same shares per fund and series; null unless both are imported."}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "goal": {
+      "type": "object",
+      "required": ["goal_id", "name", "value", "deposited", "gain"],
+      "properties": {
+        "goal_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "name": {"type": "object", "required": ["untrusted_text"], "properties": {"untrusted_text": {"type": "string", "maxLength": 120}}, "additionalProperties": false},
+        "value": {"type": ["integer", "null"], "minimum": 0, "description": "Null when the imported documents do not describe the same shares."},
+        "deposited": {"type": ["integer", "null"], "description": "Net contributions (contributions less withdrawals, moves between the user's goals included), when known."},
+        "gain": {"type": ["integer", "null"], "description": "value - deposited."}
+      },
+      "additionalProperties": false
+    },
+    "fund": {
+      "type": "object",
+      "required": ["fund_id", "fund", "series", "shares", "share_value", "value"],
+      "properties": {
+        "fund_id": {"type": "string", "pattern": "^[a-z0-9_]{1,80}$"},
+        "fund": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9 .\\-]{0,59}$", "description": "The provider's fund name, e.g. Risky Norris."},
+        "series": {"type": "string", "pattern": "^[A-Z0-9]{1,6}$"},
+        "shares": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+        "share_value": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$", "description": "Pesos per share on as_of."},
+        "value": {"type": "integer", "minimum": 0, "description": "The printed balance."}
+      },
+      "additionalProperties": false
+    },
+    "contributions": {
+      "type": "object",
+      "description": "Money from and to the bank in the transactions certificate; moves between the user's own goals are not contributions.",
+      "required": ["first_day", "last_day", "contributions", "withdrawals", "contributed", "withdrawn", "net_contributed", "months", "active_months", "monthly_average", "last_contribution", "complete"],
+      "properties": {
+        "first_day": {"type": "string", "format": "date"},
+        "last_day": {"type": "string", "format": "date"},
+        "contributions": {"type": "integer", "minimum": 0},
+        "withdrawals": {"type": "integer", "minimum": 0},
+        "contributed": {"type": "integer", "minimum": 0},
+        "withdrawn": {"type": "integer", "minimum": 0},
+        "net_contributed": {"type": "integer"},
+        "months": {"type": "integer", "minimum": 1, "description": "Calendar months from first_day to last_day, both included."},
+        "active_months": {"type": "integer", "minimum": 0},
+        "monthly_average": {"type": "integer", "minimum": 0, "description": "contributed / months, rounded half up."},
+        "last_contribution": {"type": ["string", "null"], "format": "date"},
+        "complete": {"type": "boolean", "description": "Every goal, fund and series starts from zero shares: the certificate holds the whole history."}
+      },
+      "additionalProperties": false
+    }
+  }
+}

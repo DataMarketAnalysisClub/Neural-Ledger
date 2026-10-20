@@ -11,8 +11,26 @@ from ....domain.agent.questions import Intent
 from ....domain.agent.verification import extract_numbers
 from ....domain.shared.month import Month
 
+# Not a bare "fondo": "fondo de emergencia" and "fondo de reserva" are the user's own savings, not an instrument.
+_INSTRUMENTS = (
+    r"(invert\w*|invier\w*|inversi[oó]n\w*|invest\w*|fondos? mutuos?|mutual funds?|acciones|stocks?|shares|cripto\w*|"
+    r"crypto\w*|bitcoin|etfs?)"
+)
+_ADVICE = r"(recomi[eé]nd\w*|recommend\w*|aconsej\w*|advice|advise\w*|sugi[eé]r\w*|suger\w*|suggest\w*|should i|deber[ií]a|conviene|vale la pena|worth|good idea|buena idea)"
+
 # Order = precedence when several intents match.
 INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
+    # Advice on what to invest in stays out of scope even when it names the user's own account (ADR-044).
+    (Intent.OUT_OF_SCOPE, re.compile(
+        rf"\b{_ADVICE}\b.{{0,60}}\b{_INSTRUMENTS}\b|\b{_INSTRUMENTS}\b.{{0,60}}\b{_ADVICE}\b|"
+        r"\b(en qu[eé]|which|what)\s+(fondo|fund|acciones|stocks?|invierto|invertir|invest)\b", re.I)),
+    # The user's own investments at a provider: read-only, through get_investments.
+    (Intent.INVESTMENTS, re.compile(
+        r"\b(fintual|mis inversiones|mi inversi[oó]n|mi portafolio|mi cartera|tengo invertido|he invertido|llevo invertido|"
+        r"invertido en|my investments?|my portfolio|i(?:'ve| have) invested|invested in|"
+        # The statements the user imports, and the contributions they show (statement import).
+        r"(?:cartola|estado de cuenta|certificado) de (?:mis )?(?:inversiones|transacciones|fondos)|investment statement|"
+        r"mis aportes|he aportado|aporto|my contributions)\b", re.I)),
     (Intent.OUT_OF_SCOPE, re.compile(
         r"\b(stocks?|shares|acciones|crypto\w*|bitcoin|btc|ethereum|cripto\w*|forex|trading|invest(?:ing|ment|ments)?|"
         r"invert\w*|inversi[oó]n\w*|tax(?:es)?|impuestos?)\b", re.I)),

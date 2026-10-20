@@ -28,6 +28,14 @@ from ....domain.actions.terms import (
 )
 from ....domain.audit.events import ERASED_SESSION, ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
 from ....domain.finance.profile import RiskProfile
+from ....domain.investments.documents import (
+    MAX_DOCUMENTS,
+    FundMovement,
+    FundPosition,
+    InvestmentDocumentKind,
+    StoredInvestmentDocument,
+)
+from ....domain.investments.model import MAX_SNAPSHOTS, InvestmentGoal, InvestmentLink, InvestmentSnapshot
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
 from ....domain.receipts.model import ReceiptIssue, ReceiptIssueCode, StoredReceipt
@@ -125,6 +133,24 @@ CREATE TABLE IF NOT EXISTS meta (
     name  TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS investment_links (
+    user_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS investment_snapshots (
+    sequence    INTEGER PRIMARY KEY,
+    snapshot_id TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS investment_snapshots_by_user ON investment_snapshots (user_id, sequence);
+CREATE TABLE IF NOT EXISTS investment_documents (
+    sequence    INTEGER PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    UNIQUE (user_id, document_id)
+);
 """
 _SCHEMA_STATEMENTS = tuple(statement.strip() for statement in _SCHEMA.split(";") if statement.strip())
 
@@ -141,6 +167,9 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "user_profiles": ("SELECT COUNT(*) FROM user_profiles", "DELETE FROM user_profiles"),
     "user_accounts": ("SELECT COUNT(*) FROM user_accounts", "DELETE FROM user_accounts"),
     "sessions": ("SELECT COUNT(*) FROM sessions", "DELETE FROM sessions"),
+    "investment_links": ("SELECT COUNT(*) FROM investment_links", "DELETE FROM investment_links"),
+    "investment_snapshots": ("SELECT COUNT(*) FROM investment_snapshots", "DELETE FROM investment_snapshots"),
+    "investment_documents": ("SELECT COUNT(*) FROM investment_documents", "DELETE FROM investment_documents"),
 }
 # Bookkeeping, not data: a reset keeps it (the key check stays valid, since a reset does not change the key).
 _KEPT_ON_RESET = frozenset({"meta"})
@@ -704,6 +733,18 @@ SEALED_COLUMNS: tuple[SealedColumn, ...] = (
         "audit_events", "SELECT rowid, user_id, event_id, record FROM audit_events ORDER BY rowid",
         "UPDATE audit_events SET record = ? WHERE rowid = ?", lambda r: _aad("audit_events", r[1], r[2]),
     ),
+    SealedColumn(
+        "investment_links", "SELECT rowid, user_id, payload FROM investment_links ORDER BY rowid",
+        "UPDATE investment_links SET payload = ? WHERE rowid = ?", lambda r: _aad("investment_links", r[1], r[1]),
+    ),
+    SealedColumn(
+        "investment_snapshots", "SELECT rowid, user_id, snapshot_id, payload FROM investment_snapshots ORDER BY rowid",
+        "UPDATE investment_snapshots SET payload = ? WHERE rowid = ?", lambda r: _aad("investment_snapshots", r[1], r[2]),
+    ),
+    SealedColumn(
+        "investment_documents", "SELECT rowid, user_id, document_id, payload FROM investment_documents ORDER BY rowid",
+        "UPDATE investment_documents SET payload = ? WHERE rowid = ?", lambda r: _aad("investment_documents", r[1], r[2]),
+    ),
 )
 
 KEY_CHECK_AAD = "meta|key_check|key_check"
@@ -1093,6 +1134,180 @@ class SqliteTransactionWrites:
             return True
 
 
+def _check_investment_write(
+    expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+) -> None:
+    owner = link.user_id
+    if (expected is not None and expected.user_id != owner) or (snapshot is not None and snapshot.user_id != owner) or any(e.user_id != owner for e in events):
+        raise ValueError("investment ownership mismatch")
+
+
+def _link_payload(link: InvestmentLink) -> str:
+    """Field by field: the email and the token are written here and nowhere else, and only sealed."""
+    return json.dumps({
+        "user_id": link.user_id, "provider": link.provider, "adapter": link.adapter, "email": link.email,
+        "token": link.token, "linked_at": link.linked_at.isoformat(), "expired": link.expired,
+    })
+
+
+def _link_from(payload: dict) -> InvestmentLink:
+    return InvestmentLink(
+        payload["user_id"], payload["provider"], payload["adapter"], payload["email"], payload["token"],
+        datetime.fromisoformat(payload["linked_at"]), payload["expired"],
+    )
+
+
+def _snapshot_from(payload: dict) -> InvestmentSnapshot:
+    goals = tuple(InvestmentGoal(g["goal_id"], g["name"], g["value"], g["deposited"]) for g in payload["goals"])
+    return InvestmentSnapshot(
+        payload["user_id"], payload["provider"], payload["currency"], datetime.fromisoformat(payload["fetched_at"]), goals, payload["synthetic"]
+    )
+
+
+def _document_payload(d: StoredInvestmentDocument) -> str:
+    """Shares and values per share as exact decimal text; rows as arrays, so a long certificate stays small."""
+    return json.dumps({
+        "document_id": d.document_id, "user_id": d.user_id, "provider": d.provider, "kind": d.kind.value,
+        "imported_at": d.imported_at.isoformat(), "as_of": d.as_of.isoformat(), "total": d.total,
+        "positions": [[p.fund, p.series, str(p.shares), str(p.share_value), p.balance] for p in d.positions],
+        "movements": [
+            [m.day.isoformat(), m.goal, m.fund, m.series, str(m.shares_in), str(m.shares_out), str(m.share_value),
+             str(m.shares_after), m.pesos_in, m.pesos_out, m.internal, m.pesos_after]
+            for m in d.movements
+        ],
+    })
+
+
+def _document_from(payload: dict) -> StoredInvestmentDocument:
+    return StoredInvestmentDocument(
+        document_id=payload["document_id"],
+        user_id=payload["user_id"],
+        provider=payload["provider"],
+        kind=InvestmentDocumentKind(payload["kind"]),
+        imported_at=datetime.fromisoformat(payload["imported_at"]),
+        as_of=date.fromisoformat(payload["as_of"]),
+        positions=tuple(FundPosition(f, s, Decimal(sh), Decimal(v), b) for f, s, sh, v, b in payload["positions"]),
+        total=payload["total"],
+        movements=tuple(
+            FundMovement(date.fromisoformat(d), g, f, s, Decimal(i), Decimal(o), Decimal(v), Decimal(a), pi, po, internal, pa)
+            for d, g, f, s, i, o, v, a, pi, po, internal, pa in payload["movements"]
+        ),
+    )
+
+
+class SqliteInvestmentStore:
+    """Investment links, synced snapshots and imported documents (ADR-044), sealed with the data key. The owner is a
+    clear column: it binds each sealed payload to its user (associated data) and lets an account deletion find them. A
+    write commits with its audit events in one SQLite transaction; an unlink or a document removal also truncates the
+    WAL, so no old page keeps the token or the rows."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def _open_link(self, user_id: str, payload: str) -> InvestmentLink:
+        return _link_from(json.loads(self._cipher.open(payload, _aad("investment_links", user_id, user_id))))
+
+    def link(self, user_id: str) -> InvestmentLink | None:
+        row = self._db.fetchone("SELECT payload FROM investment_links WHERE user_id = ?", (user_id,))
+        return self._open_link(user_id, row[0]) if row else None
+
+    def latest(self, user_id: str) -> InvestmentSnapshot | None:
+        row = self._db.fetchone(
+            "SELECT snapshot_id, payload FROM investment_snapshots WHERE user_id = ? ORDER BY sequence DESC LIMIT 1", (user_id,)
+        )
+        if row is None:
+            return None
+        return _snapshot_from(json.loads(self._cipher.open(row[1], _aad("investment_snapshots", user_id, row[0]))))
+
+    def save(
+        self, expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+    ) -> bool:
+        _check_investment_write(expected, link, snapshot, events)
+        user_id = link.user_id
+        # Raw connection only: the audit-log methods take db.lock, which this transaction already holds.
+        with _account_transaction(self._db) as conn:
+            row = conn.execute("SELECT payload FROM investment_links WHERE user_id = ?", (user_id,)).fetchone()
+            if (self._open_link(user_id, row[0]) if row else None) != expected:
+                return False
+            SqliteAccountWrites._check_events(conn, events)
+            conn.execute(
+                "INSERT INTO investment_links (user_id, payload) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload",
+                (user_id, self._cipher.seal(_link_payload(link), _aad("investment_links", user_id, user_id))),
+            )
+            if snapshot is not None:
+                sealed = self._cipher.seal(json.dumps(to_primitive(snapshot)), _aad("investment_snapshots", user_id, snapshot.snapshot_id))
+                conn.execute("INSERT INTO investment_snapshots (snapshot_id, user_id, payload) VALUES (?, ?, ?)", (snapshot.snapshot_id, user_id, sealed))
+                conn.execute(
+                    "DELETE FROM investment_snapshots WHERE user_id = ? AND sequence NOT IN "
+                    "(SELECT sequence FROM investment_snapshots WHERE user_id = ? ORDER BY sequence DESC LIMIT ?)",
+                    (user_id, user_id, MAX_SNAPSHOTS),
+                )
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+            return True
+
+    def remove(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            if conn.execute("SELECT 1 FROM investment_links WHERE user_id = ?", (user_id,)).fetchone() is None:
+                return 0
+            SqliteAccountWrites._check_events(conn, events)
+            removed = conn.execute("DELETE FROM investment_links WHERE user_id = ?", (user_id,)).rowcount
+            removed += conn.execute("DELETE FROM investment_snapshots WHERE user_id = ?", (user_id,)).rowcount
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+        with self._db.lock:
+            self._db.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return removed
+
+    def add_document(self, document: StoredInvestmentDocument, events: Sequence[AuditDraft]) -> bool:
+        user_id = document.user_id
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            if conn.execute(
+                "SELECT 1 FROM investment_documents WHERE user_id = ? AND document_id = ?", (user_id, document.document_id)
+            ).fetchone():
+                return False
+            SqliteAccountWrites._check_events(conn, events)
+            sealed = self._cipher.seal(_document_payload(document), _aad("investment_documents", user_id, document.document_id))
+            conn.execute(
+                "INSERT INTO investment_documents (document_id, user_id, payload) VALUES (?, ?, ?)", (document.document_id, user_id, sealed)
+            )
+            conn.execute(
+                "DELETE FROM investment_documents WHERE user_id = ? AND sequence NOT IN "
+                "(SELECT sequence FROM investment_documents WHERE user_id = ? ORDER BY sequence DESC LIMIT ?)",
+                (user_id, user_id, MAX_DOCUMENTS),
+            )
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+            return True
+
+    def documents(self, user_id: str) -> tuple[StoredInvestmentDocument, ...]:
+        rows = self._db.fetchall("SELECT document_id, payload FROM investment_documents WHERE user_id = ? ORDER BY sequence", (user_id,))
+        return tuple(
+            _document_from(json.loads(self._cipher.open(payload, _aad("investment_documents", user_id, document_id))))
+            for document_id, payload in rows
+        )
+
+    def remove_documents(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with _account_transaction(self._db) as conn:
+            removed = conn.execute("SELECT COUNT(*) FROM investment_documents WHERE user_id = ?", (user_id,)).fetchone()[0]
+            if not removed:
+                return 0
+            SqliteAccountWrites._check_events(conn, events)
+            conn.execute("DELETE FROM investment_documents WHERE user_id = ?", (user_id,))
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+        with self._db.lock:
+            self._db.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        return removed
+
+
 # Literal statements per table that holds a user's rows (no SQL built from strings, ASVS V1). Whoever adds a table
 # with a user_id must add it here: tests/security/test_account_deletion.py scans every table for the deleted user.
 _ERASE_SQL: dict[str, str] = {
@@ -1102,6 +1317,9 @@ _ERASE_SQL: dict[str, str] = {
     "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
     "proposals": "DELETE FROM proposals WHERE user_id = ?",
     "authorizations": "DELETE FROM authorizations WHERE user_id = ?",
+    "investment_links": "DELETE FROM investment_links WHERE user_id = ?",
+    "investment_snapshots": "DELETE FROM investment_snapshots WHERE user_id = ?",
+    "investment_documents": "DELETE FROM investment_documents WHERE user_id = ?",
 }
 _ERASE_ACCOUNT_SQL: dict[str, str] = {  # not for a demo persona's reset: the persona and its visitors' sessions stay
     "sessions": "DELETE FROM sessions WHERE user_id = ?",

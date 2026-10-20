@@ -71,6 +71,8 @@ class ScriptedLanguageModel:
                 return call("get_spending_status")
         if intent == "forecast" and "forecast_cashflow" not in done:
             return call("forecast_cashflow", horizon_months=6, scenario="conservative")
+        if intent == "investments" and "get_investments" not in done:
+            return call("get_investments")
         if intent == "protected_surplus":
             if "compute_protected_surplus" not in done:
                 return call("compute_protected_surplus", horizon_months=6, include_plan="none")

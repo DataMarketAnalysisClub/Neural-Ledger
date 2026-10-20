@@ -66,6 +66,10 @@ PROHIBITED_CAPABILITIES: dict[str, BlockReason] = {
     "set_risk_tolerance": BlockReason.SELF_ESCALATION,
     "submit_questionnaire": BlockReason.SELF_ESCALATION,
     "update_profile": BlockReason.SELF_ESCALATION,
+    # Linking an investment account handles the user's password and an access token: user-only HTTP flows (ADR-044, S31).
+    "link_investment_account": BlockReason.CREDENTIAL_CHANGE,
+    "connect_fintual": BlockReason.CREDENTIAL_CHANGE,
+    "unlink_investment_account": BlockReason.CREDENTIAL_CHANGE,
 }
 
 

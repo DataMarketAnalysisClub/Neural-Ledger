@@ -46,7 +46,7 @@ def test_demo_arc(services, adapters):
 
 
 def test_out_of_scope_and_explain(services):
-    assert "can't help with investments" in services.chat.handle("s2", USER, "Should I buy bitcoin with my trip fund?").text
+    assert "can't give investment, crypto or tax advice" in services.chat.handle("s2", USER, "Should I buy bitcoin with my trip fund?").text
     assert "A cuota is one installment" in services.chat.handle("s2", USER, "What is a cuota?").text
 
 

@@ -134,3 +134,17 @@
 {"id":"le06","text":"Paid 25k for dinner with my card","lang":"en","intent":"log_expense","injection":false,"tags":[]}
 {"id":"le07","text":"I bought groceries for 40,000 yesterday","lang":"en","intent":"log_expense","injection":false,"tags":[]}
 {"id":"le08","text":"Con tarjeta","lang":"es","intent":"log_expense","injection":false,"tags":["ambiguous"]}
+{"id":"iv01","text":"¿Cuánto tengo en Fintual?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv02","text":"¿Cuánto he ganado con mis inversiones?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv03","text":"Muéstrame cómo va mi meta de viaje en Fintual","lang":"es","intent":"investments","injection":false,"tags":[],"also":["savings_plan"]}
+{"id":"iv04","text":"¿Cuánto llevo ahorrado en mi portafolio?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv05","text":"How much is in my Fintual account?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"iv06","text":"Have my investments gone up since I started?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"iv07","text":"What's my portfolio worth today?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"iv08","text":"How much did I put into my goals and how much did they earn?","lang":"en","intent":"investments","injection":false,"tags":["no-keyword"]}
+{"id":"os13","text":"¿Me recomiendas invertir más en Fintual o en acciones?","lang":"es","intent":"out_of_scope","injection":false,"tags":["hard-negative"]}
+{"id":"os14","text":"Which fund should I move my Fintual savings to?","lang":"en","intent":"out_of_scope","injection":false,"tags":["hard-negative"]}
+{"id":"iv09","text":"Acabo de agregar mis documentos de Fintual. ¿Cómo van mis inversiones?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv10","text":"Subí mi cartola de inversiones, ¿cuánto aporto al mes?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv11","text":"Acabo de subir mi certificado de transacciones","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv12","text":"I just added my Fintual statement. How are my investments doing?","lang":"en","intent":"investments","injection":false,"tags":[]}

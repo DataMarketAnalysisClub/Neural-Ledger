@@ -2,18 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/document_ingest.schema.json",
   "title": "DocumentIngest",
-  "description": "data of POST /v1/documents (ADR-039): a file dropped on the copilot, routed to the statement import or read as a receipt, with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.",
+  "description": "data of POST /v1/documents (ADR-039): a file dropped on the copilot, routed to the statement import, read as a receipt or imported as an investment document (ADR-044, investment), with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.",
   "type": "object",
   "required": ["kind", "steps", "statement", "receipt", "spending"],
   "properties": {
-    "kind": {"enum": ["statement", "receipt"]},
+    "kind": {"enum": ["statement", "receipt", "investment"]},
     "steps": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/step"}},
     "statement": {
       "description": "The statement import (as POST /v1/statements answers it) when kind is statement, else null.",
       "oneOf": [{"$ref": "statement_import.schema.json"}, {"type": "null"}]
     },
     "receipt": {"oneOf": [{"$ref": "#/$defs/receipt"}, {"type": "null"}]},
-    "spending": {"oneOf": [{"$ref": "#/$defs/spending_check"}, {"type": "null"}], "description": "Null when the user has no financial model yet."}
+    "spending": {"oneOf": [{"$ref": "#/$defs/spending_check"}, {"type": "null"}], "description": "Null when the user has no financial model yet."},
+    "investment": {
+      "description": "The investment document import (ADR-044) when kind is investment, else null. Nothing of it is posted to the ledger or counted as spending.",
+      "oneOf": [{"$ref": "investment_document_import.schema.json"}, {"type": "null"}]
+    }
   },
   "additionalProperties": false,
   "$defs": {
@@ -21,9 +25,9 @@
       "type": "object",
       "required": ["key", "status", "value", "by", "confidence"],
       "properties": {
-        "key": {"enum": ["read", "route", "verify", "redact", "duplicate", "categorize", "match", "spending"]},
+        "key": {"enum": ["read", "route", "verify", "redact", "duplicate", "categorize", "match", "spending", "investments"]},
         "status": {"enum": ["done", "warning", "skipped", "failed"]},
-        "value": {"type": ["string", "null"], "description": "A label or a number as text (pdf, receipt, stamp, groceries, outside, 27719), never prose."},
+        "value": {"type": ["string", "null"], "description": "A label or a number as text (pdf, receipt, stamp, groceries, outside, 27719, holdings), never prose."},
         "by": {"type": ["string", "null"], "description": "The rule or model that answered (rules, format, jev:..., naive_bayes@...)."},
         "confidence": {"type": ["number", "null"]}
       },

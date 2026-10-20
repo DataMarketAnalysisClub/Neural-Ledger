@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/investment_document_import.schema.json",
+  "title": "InvestmentDocumentImport",
+  "description": "The investment part of POST /v1/documents (ADR-044): a statement or transactions certificate the provider issued, read by the backend (never by a model), checked to add up and kept only when it does. The holder's name and RUT are never read. overview is what get_investments reads from now on (null while nothing usable is imported). Warnings add INVESTMENT_DOCUMENT_UNVERIFIED or INVESTMENT_DOCUMENT_DUPLICATE to the overview's.",
+  "type": "object",
+  "required": ["document", "duplicate", "overview"],
+  "properties": {
+    "document": {"$ref": "investment_document.schema.json"},
+    "duplicate": {"type": "boolean", "description": "The same document was already imported; nothing changed."},
+    "overview": {"oneOf": [{"$ref": "investments.schema.json"}, {"type": "null"}]}
+  },
+  "additionalProperties": false
+}
