@@ -6,9 +6,10 @@ language model) get their own, stricter budgets. A request over either budget ge
 and never reaches a use case. Rejected requests count too, so hammering does not reopen the window early.
 
 The caller is the session cookie when there is one (accounts mode, a digest of it is kept, never the
-token), else the X-User-Id header (demo mode). The header is the client's to choose, so in demo mode the
-per-IP budget is the one that holds. The client IP is what uvicorn reports: behind a proxy, start it with
---proxy-headers and trust only that proxy (FORWARDED_ALLOW_IPS), or every caller shares the proxy's IP.
+token), else the X-User-Id header (demo mode), else the client IP: callers with neither never share one
+bucket across the service. The header is the client's to choose, so in demo mode the per-IP budget is the
+one that holds. The client IP is what uvicorn reports: behind a proxy, start it with --proxy-headers and
+trust only that proxy (FORWARDED_ALLOW_IPS), or every caller shares the proxy's IP.
 
 Counters live in this process's memory: a restart resets them, and several workers each keep their own.
 """
@@ -41,7 +42,8 @@ class Limit:
 
 
 # Uploads run OCR (seconds to minutes) and chat calls a paid model: both get small budgets. Sign-in has no
-# caller yet, so its budget is per IP. Everything else under /v1 gets a budget no person using the UI reaches.
+# caller yet, so it is counted by IP: one IP using its budget up never locks out another. Everything else
+# under /v1 gets a budget no person using the UI reaches.
 DEFAULT_LIMITS: tuple[Limit, ...] = (
     Limit("statements", "/v1/statements", per_caller=10, per_ip=30, method="POST"),
     Limit("documents", "/v1/documents", per_caller=10, per_ip=30, method="POST"),
@@ -95,7 +97,7 @@ class RateLimitMiddleware:
         if limit is not None:
             ip = scope["client"][0] if scope.get("client") else "unknown"
             retry_after = max(
-                self.counter.hit(f"{limit.name}|caller|{_caller(scope)}", limit.per_caller, limit.window_seconds),
+                self.counter.hit(f"{limit.name}|caller|{_caller(scope) or 'ip:' + ip}", limit.per_caller, limit.window_seconds),
                 self.counter.hit(f"{limit.name}|ip|{ip}", limit.per_ip, limit.window_seconds),
             )
             if retry_after:
@@ -105,11 +107,12 @@ class RateLimitMiddleware:
         await self.app(scope, receive, send)
 
 
-def _caller(scope: Scope) -> str:
+def _caller(scope: Scope) -> str | None:
+    """The session or the identity header, or None when the request names neither."""
     headers = dict(scope.get("headers") or ())
     for part in headers.get(b"cookie", b"").decode("latin-1").split(";"):
         name, _, value = part.strip().partition("=")
         if name == SESSION_COOKIE and value:
             return "session:" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
     user = headers.get(b"x-user-id", b"").decode("latin-1")
-    return "user:" + user if user else "anonymous"
+    return "user:" + user if user else None
