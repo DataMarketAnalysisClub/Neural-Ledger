@@ -1,8 +1,13 @@
 """Import bank statements (cartolas) and read them back.
 
 Import = read (adapter, may misread) → redact personal data (domain rules + optional detector) →
-reconcile (domain, deterministic) → store → post to the transaction ledger (classified charges) → audit,
-once per statement in the file (a card statement PDF holds a national and an international one).
+reconcile (domain, deterministic) → classify the charges for the transaction ledger → store the new statements,
+their postings and the audit events in one transaction (StatementImportWrites), once per file (a card statement PDF
+holds a national and an international one). The audit events include, with the memory consent, a
+MEMORY_EVIDENCE_CHANGED for each declaration whose status the import changes, derived before and after with the same
+rules and date (ADR-048 §8): an identical re-import changes nothing, and a crash commits nothing, so none is lost.
+With accounts, the commit also checks that the owner still has an account (or is an enabled demo persona): an
+import that started before its account was deleted stores nothing and raises AccountGone, never retried.
 The statements as read live only in memory during the import: from redaction on, everything works on
 the clean copies (ADR-028). If redacting any of them fails, the import is rejected and nothing is stored.
 A statement that does not add up is still stored, marked unverified, with a warning that names
@@ -17,10 +22,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from ...domain.agent.untrusted import wrap_untrusted
 from ...domain.audit.events import Actor, AuditDraft, AuditKind
+from ...domain.ledger.categorization import PostedTransaction
 from ...domain.ledger.entities import AccountType
+from ...domain.memory.salary_check import CHECKER_VERSION
+from ...domain.memory.transitions import evidence_transitions
 from ...domain.shared.envelope import Caveat, Envelope, Fact
 from ...domain.shared.hashing import content_id
 from ...domain.statements.model import (
@@ -34,16 +43,20 @@ from ...domain.statements.model import (
     reconcile,
 )
 from ..ports import (
-    AuditLog,
+    AccountGone,
     Clock,
     IdGenerator,
+    ImportCommit,
+    StatementImportWrites,
     StatementReader,
     StatementReaderUnavailable,
     StatementStore,
     StatementUnreadable,
+    TransactionStore,
 )
-from ..services.posting import LedgerPosting, PostingResult
+from ..services.posting import LedgerPosting, PostingResult, PreparedPosting
 from ..services.redaction import RedactionReport, StatementRedactor
+from .memory import MemoryUseCases
 
 logger = logging.getLogger(__name__)
 
@@ -183,24 +196,41 @@ class StatementDetail:
     daily_balances: tuple[DailyBalanceView, ...]
 
 
+# How many times an import prepares again when the user's data changed between its reads and its commit (another
+# import, a category change, a memory confirmation). Each attempt reuses the redaction and the classification.
+MAX_IMPORT_ATTEMPTS = 3
+
+
+@dataclass(frozen=True, slots=True)
+class _Planned:
+    stored: StoredStatement
+    duplicate: bool
+    redaction: RedactionReport | None
+    posting: PostingResult
+
+
 class StatementUseCases:
     def __init__(
         self,
         reader: StatementReader,
         redactor: StatementRedactor,
         store: StatementStore,
+        transactions: TransactionStore,
         posting: LedgerPosting,
-        audit: AuditLog,
+        writes: StatementImportWrites,
         clock: Clock,
         ids: IdGenerator,
+        memory: MemoryUseCases | None = None,
     ) -> None:
         self._reader = reader
         self._redactor = redactor
         self._store = store
+        self._transactions = transactions
         self._posting = posting
-        self._audit = audit
+        self._writes = writes
         self._clock = clock
         self._ids = ids
+        self._memory = memory  # declared memory, for the evidence transitions an import audits (ADR-048 §8)
 
     def import_statement(self, user_id: str, content: bytes, session_id: str = "statements") -> Envelope[StatementImport]:
         if not content:
@@ -236,9 +266,25 @@ class StatementUseCases:
                 return Envelope.insufficient(("redaction",), params_version=STATEMENTS_VERSION, message=message)
             prepared.append((statement_id, clean, redaction))
 
+        now = self._clock.now()
+        built = {sid: StoredStatement(sid, user_id, now, clean, reconcile(clean).issues) for sid, clean, _ in prepared if clean is not None}
+        postings: dict[str, PreparedPosting] = {}  # classified once, whatever the number of attempts
+        for _ in range(MAX_IMPORT_ATTEMPTS):
+            planned = self._commit(user_id, session_id, prepared, built, postings, now)
+            if planned is ImportCommit.OWNER_GONE:
+                raise AccountGone()  # terminal: an erased account is never retried, and nothing was written for it
+            if planned is not None:
+                break
+        else:
+            message = "your statements or memory changed while this file was being imported; nothing was stored, import it again"
+            return Envelope.insufficient(("import",), params_version=STATEMENTS_VERSION, message=message)
+        if planned is False:
+            message = "a statement of this file was removed while it was being imported; nothing was stored, import it again"
+            return Envelope.insufficient(("import",), params_version=STATEMENTS_VERSION, message=message)
+
         imports, facts, warnings = [], [], []
-        for statement_id, clean, redaction in prepared:
-            imported, own_facts, own_warnings = self._import_one(user_id, statement_id, clean, redaction, session_id)
+        for plan in planned:
+            imported, own_facts, own_warnings = _imported(plan)
             imports.append(imported)
             facts.extend(own_facts)
             warnings.extend(w for w in own_warnings if w not in warnings)
@@ -252,44 +298,79 @@ class StatementUseCases:
             warnings=tuple(warnings),
         )
 
-    def _import_one(
-        self, user_id: str, statement_id: str, clean: BankStatement | None, redaction: RedactionReport | None, session_id: str
-    ) -> tuple[ImportedStatement, tuple[Fact, ...], list[Caveat]]:
-        stored = self._store.get(user_id, statement_id)
-        if clean is not None:
-            stored = StoredStatement(statement_id, user_id, self._clock.now(), clean, reconcile(clean).issues)
-            if not self._store.add(stored):  # the same statement was imported concurrently
-                stored, redaction = self._store.get(user_id, statement_id) or stored, None
-        assert stored is not None  # a duplicate was found in the store just before
-        duplicate = redaction is None
-        statement = stored.statement
-        posting = self._posting.post(stored)
+    def _commit(
+        self, user_id: str, session_id: str, prepared: list[tuple[str, BankStatement | None, RedactionReport | None]],
+        built: dict[str, StoredStatement], postings: dict[str, PreparedPosting], now: datetime,
+    ) -> list[_Planned] | None | bool | ImportCommit:
+        """One attempt: read, plan, commit. None if the data changed before the commit (try again), False if a
+        statement this file duplicates was deleted meanwhile (its redaction was skipped), OWNER_GONE if the account was
+        deleted (terminal), else what was committed."""
+        token = self._writes.token(user_id)  # first: any write after it fails the commit, so the reads below are current
+        current = {s.statement_id: s for s in self._store.for_user(user_id)}
+        before_txns = self._transactions.for_user(user_id)
+        known = {p.transaction.txn_id for p in before_txns}
+        planned: list[_Planned] = []
+        new_statements: list[StoredStatement] = []
+        new_txns: dict[str, PostedTransaction] = {}
+        events: list[AuditDraft] = []
+        for statement_id, _, redaction in prepared:
+            duplicate = statement_id in current
+            stored = current.get(statement_id) or built.get(statement_id)
+            if stored is None:
+                return False
+            if not duplicate:
+                new_statements.append(stored)
+            if statement_id not in postings:
+                postings[statement_id] = self._posting.prepare(stored)
+            fresh = [p for p in postings[statement_id].posted if p.transaction.txn_id not in known and p.transaction.txn_id not in new_txns]
+            new_txns.update((p.transaction.txn_id, p) for p in fresh)
+            plan = _Planned(stored, duplicate, None if duplicate else redaction, postings[statement_id].result(len(fresh)))
+            planned.append(plan)
+            events.append(self._imported_event(user_id, session_id, plan, now))
+        events.extend(self._memory_events(user_id, session_id, current, before_txns, new_statements, tuple(new_txns.values()), now))
+        outcome = self._writes.commit(user_id, token, new_statements, tuple(new_txns.values()), events)
+        if outcome is ImportCommit.OWNER_GONE:
+            return outcome
+        if outcome is ImportCommit.CHANGED:
+            return None
+        return planned
 
-        self._audit.append(
+    def _memory_events(
+        self, user_id: str, session_id: str, current: dict[str, StoredStatement], before_txns: tuple[PostedTransaction, ...],
+        new_statements: list[StoredStatement], new_txns: tuple[PostedTransaction, ...], now: datetime,
+    ) -> list[AuditDraft]:
+        """MEMORY_EVIDENCE_CHANGED for each declaration whose status this import changes; none without consent."""
+        declarations = self._memory.declarations_in_use(user_id) if self._memory is not None else ()
+        if not declarations or not (new_statements or new_txns):
+            return []
+        before = (tuple(current.values()), before_txns)
+        after = ((*before[0], *new_statements), (*before_txns, *new_txns))
+        return [
             AuditDraft(
-                event_id=self._ids.new("evt"),
-                timestamp=self._clock.now(),
-                session_id=session_id,
-                user_id=user_id,
-                actor=Actor.USER,
-                kind=AuditKind.STATEMENT_IMPORTED,
-                forecast_snapshot_id=statement_id,
-                policy_version=STATEMENTS_VERSION,
-                execution_result="DUPLICATE" if duplicate else ("VERIFIED" if stored.verified else "UNVERIFIED"),
-                detail=(
-                    f"bank={statement.bank} account_type={statement.account_type.value} provisional={statement.provisional} "
-                    f"lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'} {_redaction_detail(redaction)}"
-                    f"posted={posting.posted} new={posting.new} uncategorized={posting.uncategorized} classifier={posting.classifier or 'none'}"
-                ),
+                event_id=self._ids.new("evt"), timestamp=now, session_id=session_id, user_id=user_id, actor=Actor.SYSTEM,
+                kind=AuditKind.MEMORY_EVIDENCE_CHANGED, policy_version=CHECKER_VERSION, detail=transition.detail(),
             )
-        )
+            for transition in evidence_transitions(user_id, declarations, before, after, now.date())
+        ]
 
-        summary = _summary(stored)
-        warnings = [*_unverified(stored), *_low_confidence(stored), *_degraded(redaction), *posting.warnings]
-        if duplicate:
-            warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
-        facts = (*_facts(summary), *_redaction_facts(summary.statement_id, redaction), *_posting_facts(summary.statement_id, posting))
-        return ImportedStatement(duplicate, summary, _redaction_view(redaction), _ledger_view(posting)), facts, warnings
+    def _imported_event(self, user_id: str, session_id: str, plan: _Planned, now: datetime) -> AuditDraft:
+        stored, posting, statement = plan.stored, plan.posting, plan.stored.statement
+        return AuditDraft(
+            event_id=self._ids.new("evt"),
+            timestamp=now,
+            session_id=session_id,
+            user_id=user_id,
+            actor=Actor.USER,
+            kind=AuditKind.STATEMENT_IMPORTED,
+            forecast_snapshot_id=stored.statement_id,
+            policy_version=STATEMENTS_VERSION,
+            execution_result="DUPLICATE" if plan.duplicate else ("VERIFIED" if stored.verified else "UNVERIFIED"),
+            detail=(
+                f"bank={statement.bank} account_type={statement.account_type.value} provisional={statement.provisional} "
+                f"lines={len(statement.lines)} issues={','.join(i.code.value for i in stored.issues) or 'none'} {_redaction_detail(plan.redaction)}"
+                f"posted={posting.posted} new={posting.new} uncategorized={posting.uncategorized} classifier={posting.classifier or 'none'}"
+            ),
+        )
 
     def list_statements(self, user_id: str) -> Envelope[tuple[StatementSummaryView, ...]]:
         views = tuple(_summary(s) for s in self._store.for_user(user_id))
@@ -319,6 +400,16 @@ class StatementUseCases:
             facts=_facts(summary),
             warnings=(*_unverified(stored), *_low_confidence(stored)),
         )
+
+
+def _imported(plan: _Planned) -> tuple[ImportedStatement, tuple[Fact, ...], list[Caveat]]:
+    stored, posting, redaction = plan.stored, plan.posting, plan.redaction
+    summary = _summary(stored)
+    warnings = [*_unverified(stored), *_low_confidence(stored), *_degraded(redaction), *posting.warnings]
+    if plan.duplicate:
+        warnings.append(Caveat("DUPLICATE_STATEMENT", "This statement was already imported; nothing new was stored.", ("already imported",)))
+    facts = (*_facts(summary), *_redaction_facts(summary.statement_id, redaction), *_posting_facts(summary.statement_id, posting))
+    return ImportedStatement(plan.duplicate, summary, _redaction_view(redaction), _ledger_view(posting)), facts, warnings
 
 
 def _unverified(stored: StoredStatement) -> tuple[Caveat, ...]:

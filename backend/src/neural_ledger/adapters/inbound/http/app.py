@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from ....application.facade import ApplicationServices
+from ....application.ports import AccountGone
 from ....application.use_cases.accounts import SANDBOX_NOTICE, AccountOutcome, AccountStatus, IssuedSession
 from ....application.use_cases.actions import ActorContext
 from ....application.use_cases.statements import MAX_STATEMENT_BYTES
@@ -43,6 +44,17 @@ _ACTION_CODES = {"PROPOSED": 201, "CONFIRMED": 201, "EXECUTED": 200, "FAILED": 5
 _LINK_CODES = {
     "LINKED": 201, "SYNCED": 200, "UNLINKED": 200, "NOT_LINKED": 404, "INVALID_INPUT": 422, "ACCESS_REJECTED": 422,
     "READ_REFUSED": 502, "RELINK_REQUIRED": 409, "CONFLICT": 409, "PROVIDER_UNAVAILABLE": 503,
+}
+# contracts/memory/memory_error.schema.json: x-http-status and a generic message per status, never a supplied value.
+_MEMORY_ERRORS = {
+    "INVALID_INPUT": (422, "invalid input"),
+    "PERSONA_READ_ONLY": (403, "this profile is read-only"),
+    "NOT_FOUND": (404, "not found"),
+    "CONSENT_REQUIRED": (428, "memory consent required"),
+    "PROPOSAL_USED": (409, "this proposal was already confirmed"),
+    "PROPOSAL_STALE": (409, "proposal expired or out of date; prepare a new one"),
+    "VERSION_CONFLICT": (409, "your saved salary changed; reload and try again"),
+    "UNAUTHENTICATED": (401, "sign in required"),
 }
 MAX_JSON_BYTES = 16 * 1024  # auth and profile-write bodies are parsed by hand, so they are bounded by hand
 MAX_ANSWERS = 32
@@ -176,6 +188,11 @@ def create_app(
     async def no_session(request: Request, exc: _NoSession) -> JSONResponse:
         return _auth_error("UNAUTHENTICATED", "sign in required")
 
+    @app.exception_handler(AccountGone)
+    async def account_gone(request: Request, exc: AccountGone) -> JSONResponse:
+        """The account was deleted while the request ran (an import): nothing was stored, and its session is gone."""
+        return _auth_error("UNAUTHENTICATED", "sign in required")
+
     @app.exception_handler(_BadBody)
     async def bad_body(request: Request, exc: _BadBody) -> JSONResponse:
         return _invalid(exc.field)
@@ -228,6 +245,7 @@ def create_app(
             "pii_detector": services.pii_detector,
             "classifier": services.classifier,
             "investments": services.investments.adapter,
+            "connectors": services.connections.mode if services.connections else "off",
             "params_version": services.financial.params.version,
             "audit_chain_ok": check.ok,
             "tools": list(services.registry.names),
@@ -315,6 +333,16 @@ def create_app(
             "data_source": accounts.data_source(current.user_id),
             "expires_at": current.expires_at.isoformat(),
         })
+
+    @app.get("/v1/me/export")
+    def export_data(request: Request):
+        """G02 (Ley 21.719 arts. 5 and 9): a copy of everything stored about the signed-in user, as a JSON download."""
+        if accounts is None or services.data_export is None:
+            return not_found()
+        current = session(request)
+        body = services.data_export.export(current.user_id, current.session_ref)
+        name = f"neural-ledger-data-{body['exported_at'][:10]}.json"
+        return JSONResponse(body, headers={"content-disposition": f'attachment; filename="{name}"'})
 
     # ---- financial reads (T0/T1) --------------------------------------------------------------
 
@@ -417,6 +445,88 @@ def create_app(
     @app.post("/v1/savings-plan")
     def savings_plan(request: Request, body: dict[str, Any] = Body(default={})):
         return _envelope_response(services.financial.savings_plan(user(request), body.get("permitted_profile")))
+
+    # ---- user memory (ADR-048): saved only; the user's own HTTP flows, no agent tool writes here ---------------
+
+    def memory_session(request: Request) -> tuple[str, str]:
+        """The owner from authentication only, and the session that audits the write."""
+        if auth.accounts:
+            current = session(request)
+            return current.user_id, current.session_ref
+        return user(request), "default"
+
+    def memory_error(status: str, field: str | None = None) -> JSONResponse:
+        if status == "NOT_WRITABLE":  # the account went away during the request, or demo mode (personas only)
+            status = "UNAUTHENTICATED" if auth.accounts else "PERSONA_READ_ONLY"
+        code, message = _MEMORY_ERRORS[status]
+        body: dict[str, str] = {"status": status, "message": message}
+        if status == "INVALID_INPUT":
+            body["field"] = field or "body"
+        return JSONResponse(body, status_code=code)
+
+    def memory_outcome(outcome: Any, ok: Callable[[], dict[str, Any]]) -> JSONResponse:
+        return JSONResponse(ok()) if outcome.ok else memory_error(outcome.status, outcome.field)
+
+    def memory_consent_body(state: Any, changed: bool | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "consent": state.consent.value, "consent_generation": state.consent_generation, "memory_revision": state.memory_revision,
+        }
+        if changed is not None:
+            body["changed"] = changed
+        return body
+
+    def memory_service():
+        if services.memory is None:
+            raise HTTPException(status_code=503, detail="memory is not configured")
+        return services.memory
+
+    @app.get("/v1/memory")
+    def memory_view(request: Request):
+        """What Neural Ledger keeps about the user. Available without consent (check is then null)."""
+        owner, _ = memory_session(request)
+        return JSONResponse(memory_service().view(owner))
+
+    @app.get("/v1/memory/export")
+    def memory_export(request: Request):
+        owner, _ = memory_session(request)
+        return JSONResponse(memory_service().export(owner))
+
+    @app.get("/v1/memory/consent")
+    def memory_consent(request: Request):
+        owner, _ = memory_session(request)
+        return JSONResponse(memory_consent_body(memory_service().consent(owner)))
+
+    @app.put("/v1/memory/consent")
+    async def set_memory_consent(request: Request):
+        owner, session_ref = memory_session(request)
+        body = await _json_object(request)
+        outcome = await run_in_threadpool(memory_service().set_consent, owner, session_ref, body)
+        return memory_outcome(outcome, lambda: memory_consent_body(outcome.state, outcome.changed))
+
+    @app.post("/v1/memory/proposals/{proposal_id}/confirm")
+    async def confirm_memory_proposal(proposal_id: str, request: Request):
+        """The user confirms the salary in the copilot's card, as they selected or typed it. Only the user."""
+        owner, session_ref = memory_session(request)
+        body = await _json_object(request)
+        outcome = await run_in_threadpool(memory_service().confirm_proposal, owner, session_ref, proposal_id, body)
+        return memory_outcome(outcome, lambda: memory_service().view(owner))
+
+    @app.put("/v1/profile/income")
+    async def declare_income(request: Request):
+        """Perfil's declaration of the net salary: a new version of the user's chain (expected_version), or its first."""
+        owner, session_ref = memory_session(request)
+        body = await _json_object(request)
+        outcome = await run_in_threadpool(memory_service().declare_from_profile, owner, session_ref, body)
+        return memory_outcome(outcome, lambda: memory_service().view(owner))
+
+    @app.delete("/v1/memory/{chain_id}")
+    async def delete_memory_chain(chain_id: str, request: Request):
+        """Every version of the chain at once; available without consent."""
+        owner, session_ref = memory_session(request)
+        outcome = await run_in_threadpool(memory_service().delete_chain, owner, session_ref, chain_id)
+        return memory_outcome(outcome, lambda: {
+            "chain_id": chain_id, "deleted_versions": outcome.deleted_versions, "revoked_proposals": outcome.invalidated_proposals,
+        })
 
     # ---- chat ---------------------------------------------------------------------------------
 

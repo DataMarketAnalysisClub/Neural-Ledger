@@ -43,7 +43,8 @@ def chat_with(services, adapters, llm, decision_models=None) -> ChatUseCase:
     decisions = DecisionService(decision_models or [RulesDecisionModel()], AP_0_1)
     return ChatUseCase(
         decisions, llm, services.registry, services.financial, adapters.audit_log,
-        InMemoryConversationStore(), adapters.clock, SequentialIds(), AP_0_1,
+        # The system's own id generator: a second sequence would reuse event ids, which a SQLite audit log refuses.
+        InMemoryConversationStore(), adapters.clock, getattr(services.chat, "_ids", SequentialIds()), AP_0_1, services.memory,
     )
 
 

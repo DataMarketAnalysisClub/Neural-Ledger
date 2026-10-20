@@ -134,6 +134,11 @@ class ConnectionUseCases:
         self._store, self._mcp, self._bank, self._statements = store, mcp, bank, statements
         self._audit, self._clock, self._ids, self._mode = audit, clock, ids, mode
 
+    @property
+    def mode(self) -> str:
+        """off | fixture | live, as /health and /v1/connections report it."""
+        return self._mode
+
     def list(self, user_id: str) -> Envelope[ConnectionsList]:
         connections = self._store.for_user(user_id)
         bank = BankInfo(self._bank.name if self._bank else "none", self._bank.public_key if self._bank else None)

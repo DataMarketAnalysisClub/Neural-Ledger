@@ -98,13 +98,15 @@ class Settings:
     @property
     def mode(self) -> str:
         """Live whenever any setting sends data to a provider: the LLM, Jev (decisions or categories), the Azure detector,
-        or an investment provider (the credentials the user types to link an account)."""
+        an investment provider (the credentials the user types to link an account), or live connectors (a token to the
+        MCP servers users add, Fintoc for the bank). Connectors switched off in a deployment do not count."""
         offline = (
             self.llm == "scripted"
             and all(m == "rules" for m in self.decision_chain)
             and "jev" not in self.classifiers
             and self.pii_detector == "none"
             and self.investments == "fixture"
+            and self.connectors_mode != "live"
         )
         return "offline" if offline else "live"
 

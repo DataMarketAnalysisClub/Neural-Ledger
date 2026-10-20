@@ -13,6 +13,9 @@ from typing import Any
 @dataclass(frozen=True, slots=True)
 class UserEntry:
     text: str
+    # The id of a message the user sent, given before any tool runs: a memory origin points at it (ADR-048 §3).
+    # None for text the application writes in the user's turn (a repair note). Adapters never send it to a model.
+    message_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,10 +25,17 @@ class ToolCall:
     arguments: Mapping[str, Any] = field(default_factory=dict)
 
 
+# (consent_generation, memory_revision) of the user's memory when a turn read it (ADR-048 §6). A turn that called a
+# memory tool, or that saw such a turn in its history, stamps its assistant and tool entries; once either counter
+# moves, those entries are stale and never reach a model again. Adapters never send the stamp to a model.
+MemoryStamp = tuple[int, int]
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantEntry:
     text: str | None
     tool_calls: tuple[ToolCall, ...] = ()
+    memory_stamp: MemoryStamp | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +44,7 @@ class ToolResultEntry:
     name: str
     payload: Mapping[str, Any]  # JSON-safe envelope or block notice
     is_error: bool = False
+    memory_stamp: MemoryStamp | None = None
 
 
 Entry = UserEntry | AssistantEntry | ToolResultEntry

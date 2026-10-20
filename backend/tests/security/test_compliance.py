@@ -337,9 +337,11 @@ def _routes(services) -> set[tuple[str, str]]:
     return {(method, route.path) for route in create_app(services).routes for method in getattr(route, "methods", ())}
 
 
-@gap("no export of the user's own data. Ley 21.719 arts. 5 (access) and 9 (portability)")
 def test_g02_a_user_can_export_all_of_their_data(services):
+    """Ley 21.719 arts. 5 (access) and 9 (portability). Built: GET /v1/me/export downloads, as one JSON file, what
+    DELETE /v1/account would erase, audited as DATA_EXPORTED. End to end in tests/security/test_data_export.py."""
     assert ("GET", "/v1/me/export") in _routes(services)
+    assert "DATA_EXPORTED" in {kind.value for kind in AuditKind}
 
 
 def test_g03_a_user_can_delete_their_data(services):

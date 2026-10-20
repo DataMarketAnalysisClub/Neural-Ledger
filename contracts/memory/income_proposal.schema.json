@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/income_proposal.schema.json",
+  "title": "IncomeProposal",
+  "description": "data of the propose_income_change tool (ADR-048): a salary declaration prepared from the message that started the turn, never from earlier messages, for the user to complete and confirm in the card. Nothing is stored until they confirm (POST /v1/memory/proposals/{proposal_id}/confirm), once. READY: one amount, prefilled. CHOOSE_AMOUNT: several, the user picks; the model never decides which is the old and which the new salary. ASK_AMOUNT: none, the card asks; no amount is invented. The interpreted pay month is always shown. `needs_base` asks for the previous salary and its pay month when the chain has no version yet.",
+  "type": "object",
+  "required": ["proposal_id", "status", "candidates", "effective_from", "needs_base", "chain_id", "expected_version", "currency"],
+  "properties": {
+    "proposal_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["READY", "CHOOSE_AMOUNT", "ASK_AMOUNT"]},
+    "candidates": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 100000000}, "description": "Amounts read from the current message, in the order written, without repeats."},
+    "effective_from": {
+      "type": "object",
+      "required": ["pay_month", "read_as"],
+      "properties": {
+        "pay_month": {"$ref": "memory_value.schema.json#/$defs/pay_month"},
+        "read_as": {"enum": ["explicit_year", "next_occurrence", "next_payday"], "description": "explicit_year: month and year written. next_occurrence: a month without a year, read as its next occurrence, the current month included (never retroactive). next_payday: no month written; the next payday's month."}
+      },
+      "additionalProperties": false
+    },
+    "needs_base": {"type": "boolean"},
+    "chain_id": {"type": ["string", "null"], "description": "The salary chain this proposal extends; null for the first declaration."},
+    "expected_version": {"type": "integer", "minimum": 0, "description": "The chain's latest version when the proposal was made (0 for none). Confirming fails with PROPOSAL_STALE if it changed."},
+    "currency": {"const": "CLP"}
+  },
+  "if": {"properties": {"status": {"const": "ASK_AMOUNT"}}},
+  "then": {"properties": {"candidates": {"maxItems": 0}}},
+  "else": {"if": {"properties": {"status": {"const": "READY"}}}, "then": {"properties": {"candidates": {"minItems": 1, "maxItems": 1}}}, "else": {"properties": {"candidates": {"minItems": 2}}}},
+  "additionalProperties": false,
+  "examples": [
+    {"proposal_id": "prp_1", "status": "READY", "candidates": [1200000], "effective_from": {"pay_month": "2026-11", "read_as": "next_occurrence"}, "needs_base": true, "chain_id": null, "expected_version": 0, "currency": "CLP"},
+    {"proposal_id": "prp_2", "status": "ASK_AMOUNT", "candidates": [], "effective_from": {"pay_month": "2026-10", "read_as": "next_payday"}, "needs_base": false, "chain_id": "chn_01", "expected_version": 2, "currency": "CLP"}
+  ]
+}

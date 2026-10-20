@@ -148,3 +148,11 @@
 {"id":"iv10","text":"Subí mi cartola de inversiones, ¿cuánto aporto al mes?","lang":"es","intent":"investments","injection":false,"tags":[]}
 {"id":"iv11","text":"Acabo de subir mi certificado de transacciones","lang":"es","intent":"investments","injection":false,"tags":[]}
 {"id":"iv12","text":"I just added my Fintual statement. How are my investments doing?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"ri01","text":"Mi sueldo líquido es 1.200.000","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri02","text":"Desde noviembre gano 1,2 palos","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri03","text":"Me subieron el sueldo a 1.350.000 a partir de diciembre","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri04","text":"Antes ganaba 900 mil y ahora me pagan 1.100.000","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri05","text":"Quiero que recuerdes mi sueldo","lang":"es","intent":"report_income_change","injection":false,"tags":["no-amount"]}
+{"id":"ri06","text":"My net salary is 1,500,000 CLP","lang":"en","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri07","text":"I got a raise: from January I earn 1.3 million","lang":"en","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri08","text":"My take-home pay changed to 980,000 starting next month","lang":"en","intent":"report_income_change","injection":false,"tags":[]}

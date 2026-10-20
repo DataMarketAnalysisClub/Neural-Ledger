@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
 from ..domain.actions.terms import (
@@ -28,6 +29,9 @@ from ..domain.finance.model import FinancialModel
 from ..domain.investments.documents import ReadInvestmentDocument, StoredInvestmentDocument
 from ..domain.investments.model import InvestmentLink, InvestmentSnapshot, ReportedGoal
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
+from ..domain.memory.catalog import Declaration, MemoryType
+from ..domain.memory.consent import Consent, MemoryState
+from ..domain.memory.proposals import MemoryProposal, WriteOutcome
 from ..domain.privacy.redaction import Span
 from ..domain.receipts.model import ReadReceipt, StoredReceipt
 from ..domain.statements.model import BankStatement, StoredStatement
@@ -193,6 +197,44 @@ class StatementStore(Protocol):
     def get(self, user_id: str, statement_id: str) -> StoredStatement | None: ...
 
     def for_user(self, user_id: str) -> tuple[StoredStatement, ...]: ...
+
+
+class ImportCommit(str, Enum):
+    COMMITTED = "COMMITTED"
+    CHANGED = "CHANGED"  # the data the import decided on moved: prepare again (bounded)
+    OWNER_GONE = "OWNER_GONE"  # the account was deleted: terminal, never retried
+
+
+class AccountGone(Exception):
+    """The account a request was authenticated for was deleted while it ran: nothing was written for it, and the
+    request ends as unauthenticated (the session is gone with the account)."""
+
+
+@runtime_checkable
+class StatementImportWrites(Protocol):
+    """One statement import's writes in one transaction (ADR-048 §8): the new statements, the transactions they post,
+    and the audit events, its memory evidence transitions included. The import prepares everything outside it.
+
+    In accounts mode an import may write only for an existing account or an enabled shared demo persona; the check
+    runs inside the commit's transaction, before the token, so an import that started before an account deletion
+    recreates nothing for it. Demo mode (no accounts) keeps its owners as they are."""
+
+    def token(self, user_id: str) -> str:
+        """An opaque fingerprint of everything an import decides on for this user: their statements, the content of
+        their transactions (a category changed under the same txn_id included), their declarations and their memory
+        consent and counters. Any committed write to one of them changes it."""
+        ...
+
+    def commit(
+        self, user_id: str, token: str, statements: Sequence[StoredStatement], transactions: Sequence[PostedTransaction],
+        events: Sequence[AuditDraft],
+    ) -> ImportCommit:
+        """OWNER_GONE, with no writes, if the owner may no longer be written (see above); CHANGED, with no writes, if
+        token(user_id) is no longer `token`: prepare again. Otherwise COMMITTED: the statements and transactions, all
+        new to this user, stored and the events appended, together. Raises ValueError for rows or events of another
+        owner and IdCollision for a statement, transaction or event that already exists; any exception leaves no
+        writes."""
+        ...
 
 
 @runtime_checkable
@@ -391,6 +433,100 @@ class UserProfileStore(Protocol):
 
 
 @runtime_checkable
+class MemoryStore(Protocol):
+    """The declarations a user confirmed (ADR-048): one chain per user and type, its versions appended, never edited.
+
+    Every read and write names the owner: another user's chain is not found, and their rows are never touched.
+    Conclusions (verified, conflict) are never stored here; domain/memory derives them on read.
+    """
+
+    def for_user(self, user_id: str) -> tuple[Declaration, ...]:
+        """Every declaration of the user, superseded versions included, in chain then version order (the export)."""
+        ...
+
+    def chain(self, user_id: str, chain_id: str) -> tuple[Declaration, ...]:
+        """This user's chain in version order; empty if it does not exist or is another user's."""
+        ...
+
+    def chain_of_type(self, user_id: str, type: MemoryType) -> tuple[Declaration, ...]:
+        """The user's only chain of this type in version order, or empty."""
+        ...
+
+    def append(self, declarations: Sequence[Declaration], expected_version: int) -> bool:
+        """Append consecutive versions of one chain (a base and a change confirmed together), all or none.
+
+        Compare-and-set on the head: expected_version is the chain's last version, 0 for a new chain. False, with no
+        writes, if the head moved, or if a new chain is started while the user already has one of that type.
+        Raises ValueError for a batch that mixes chains, owners or types, whose versions do not follow
+        expected_version, or that holds a declaration outside contracts/memory/declaration.schema.json (one the
+        stored record would not read back identically), and IdCollision for a memory_id or chain_id already used elsewhere; any exception also
+        leaves no writes.
+        """
+        ...
+
+    def delete_chain(self, user_id: str, chain_id: str) -> int:
+        """Delete every version of this user's chain at once. Returns how many; 0 for another user's chain."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryWriteResult:
+    outcome: WriteOutcome
+    state: MemoryState | None = None  # the user's consent and counters after the write (or as found, when refused)
+    changed: bool = False  # set_consent: whether the consent actually changed
+    deleted_versions: int = 0  # delete_chain
+    invalidated_proposals: int = 0  # delete_chain and a revoking set_consent
+
+
+@runtime_checkable
+class MemoryWrites(Protocol):
+    """Every memory write that has to be atomic (ADR-048 §5-6), next to the reads it decides on.
+
+    Each write runs as one transaction over every store it touches: it checks there that the account still exists
+    (a request authenticated before the account was deleted recreates nothing; a shared persona has no account and
+    is never writable), reads the state it decides on, applies the domain's decision (domain/memory/proposals.py)
+    and commits its rows and audit events together. A refusal is an outcome with no writes; any exception also
+    leaves no writes. Audit details are codes, references and counts, never an amount or a message.
+    """
+
+    def state(self, user_id: str) -> MemoryState:
+        """The user's consent and counters; missing, 0 and 0 for a user with none."""
+        ...
+
+    def proposal(self, user_id: str, proposal_id: str) -> MemoryProposal | None:
+        """The user's own proposal; None if unknown or another user's."""
+        ...
+
+    def set_consent(self, user_id: str, requested: Consent, event: AuditDraft) -> MemoryWriteResult:
+        """Grant or revoke. An actual change advances the consent generation and appends `event` with its detail
+        replaced by the transition's codes; a repeated update changes nothing and appends nothing. Revoking also
+        invalidates every pending proposal of the user; declarations stay."""
+        ...
+
+    def prepare(self, proposal: MemoryProposal) -> MemoryWriteResult:
+        """Store a pending proposal, never a declaration, if the account exists, consent is granted and the consent
+        generation and memory revision it captured are still current."""
+        ...
+
+    def confirm(
+        self, user_id: str, proposal_id: str | None, declarations: Sequence[Declaration], expected_version: int,
+        now: datetime, event: AuditDraft,
+    ) -> MemoryWriteResult:
+        """Decide with decide_confirmation; on DONE consume the proposal (when one is named), append the
+        declarations (one version, or a base and a change) as MemoryStore.append would, advance the memory revision
+        and append `event` (MEMORY_CONFIRMED) with its detail replaced by the confirmation's codes and counts. Raises
+        ValueError for a batch MemoryStore.append refuses, another owner, or a declaration whose audit_ref is not
+        `event`'s id."""
+        ...
+
+    def delete_chain(self, user_id: str, chain_id: str, event: AuditDraft) -> MemoryWriteResult:
+        """Delete every version of the user's chain, invalidate the user's pending proposals (none can restore it),
+        advance the memory revision and append `event` with its detail replaced by the
+        counts. NOT_FOUND for an unknown or another user's chain. Needs no consent."""
+        ...
+
+
+@runtime_checkable
 class ConversationStore(Protocol):
     def history(self, user_id: str, session_id: str) -> tuple[Entry, ...]: ...
 
@@ -485,7 +621,7 @@ class AccountErasure(Protocol):
     """Delete everything a user owns, in one atomic step (Ley 21.719 art. 7, G03)."""
 
     def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
-        """Delete the user's statements, transactions, savings rules, proposals and authorizations and, unless
+        """Delete the user's statements, transactions, memory, savings rules, proposals and authorizations and, unless
         keep_account (a demo persona's reset), their sessions, profile and account. Every audit event of the user
         becomes a tombstone (domain/audit/events.py), then `event` is appended with its detail replaced by
         erasure_detail(), which commits to exactly those tombstones. Any exception leaves no writes."""

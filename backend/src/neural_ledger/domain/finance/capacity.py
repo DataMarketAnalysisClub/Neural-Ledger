@@ -72,6 +72,10 @@ def essentials_exact(model: FinancialModel, params: FinanceParams) -> Fraction:
     return model.spend.essentials_p80() + rent + debt
 
 
+def _debt_ratio(debt: int, income: int) -> Fraction:
+    return Fraction(debt, income) if income > 0 else Fraction(10)
+
+
 def assess_capacity(model: FinancialModel, params: FinanceParams) -> CapacityAssessment:
     essentials = essentials_exact(model, params)
     if essentials <= 0:
@@ -82,9 +86,8 @@ def assess_capacity(model: FinancialModel, params: FinanceParams) -> CapacityAss
 
     reserve_cov = Fraction(model.balances.reserve) / essentials
     cv = Fraction(model.income.cv)
-    income = model.income.conservative
-    peak_debt = max(model.debt_service_due(m) for m in months)
-    debt_ratio = Fraction(peak_debt, income) if income > 0 else Fraction(10)
+    # the worst month's own ratio (ADR-049 §8): never one month's debt over another month's income
+    debt_ratio = max(_debt_ratio(model.debt_service_due(m), model.income.for_month(Scenario.CONSERVATIVE, m)) for m in months)
     conservative = project(model, params, Scenario.CONSERVATIVE, horizon)
     headroom_ratio = Fraction(conservative.lowest.headroom, params.liquidity_floor)
     stress = project(model, params, Scenario.STRESS, horizon)
@@ -94,7 +97,7 @@ def assess_capacity(model: FinancialModel, params: FinanceParams) -> CapacityAss
     factors = (
         CapacityFactor("reserve_coverage", float(reserve_cov), band_up(reserve_cov, params.reserve_coverage_bands), "reserve / monthly essentials"),
         CapacityFactor("income_stability", float(cv), band_down(cv, params.income_cv_bands), "coefficient of variation of monthly income"),
-        CapacityFactor("debt_service", float(debt_ratio), band_down(debt_ratio, params.debt_service_bands), "peak monthly debt payments / conservative income"),
+        CapacityFactor("debt_service", float(debt_ratio), band_down(debt_ratio, params.debt_service_bands), "highest monthly debt payments / that month's conservative income"),
         CapacityFactor("conservative_headroom", float(headroom_ratio), band_up(headroom_ratio, params.headroom_ratio_bands), "lowest conservative headroom / floor"),
         CapacityFactor("stress_coverage", float(stress_cov), band_up(stress_cov, params.stress_coverage_bands), "reserve left after the stress shortfall, in months of essentials"),
     )

@@ -9,6 +9,8 @@ import {
   useExecute,
   useFinancialState,
   useIngestDocument,
+  useMemoryConsent,
+  useMemoryCounters,
   usePending,
   usePersona,
   type DocumentIngest,
@@ -22,6 +24,8 @@ import { Button, ErrorState, Notice, PageHeader, StatusBadge, cn } from "@/compo
 import { t, tDynamic, tList } from "@/i18n";
 import { formatMoney } from "@/lib/format";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { MemoryCard } from "@/features/memory/MemoryCard";
+import { isObsolete } from "@/features/memory/counters";
 
 /** The tallest the phone's input grows before it scrolls inside: about six lines. */
 const PHONE_INPUT_MAX = 144;
@@ -88,6 +92,8 @@ function Conversation() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState(initialPrompt);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  // The counters the reply that brought the proposal relied on: the proposal goes with that reply (ADR-048 §6).
+  const [proposalDependency, setProposalDependency] = useState<ChatReply["memory_dependency"]>(null);
   const [authorization, setAuthorization] = useState<Authorization | null>(null);
   const [receipt, setReceipt] = useState<ActionOutcome["receipt"]>(null);
   const nextId = useRef(1);
@@ -103,7 +109,10 @@ function Conversation() {
   const pendingAuth = fresh ? (pending.data?.authorizations[0] ?? null) : null;
   const pendingProposal = fresh && !pendingAuth ? (pending.data?.proposals[0] ?? null) : null;
   const shownAuthorization = authorization ?? pendingAuth;
-  const shownProposal = proposal ?? pendingProposal;
+  // Replies that relied on memory are hidden whole once the tab knows memory moved after them; their proposal too.
+  const counters = useMemoryCounters();
+  useMemoryConsent(messages.some((m) => m.reply?.memory_dependency)); // re-read on focus: a revocation in another tab
+  const shownProposal = proposal ? (isObsolete(proposalDependency, counters) ? null : proposal) : pendingProposal;
 
   useEffect(() => {
     // Scroll the log only: scrollIntoView would also scroll the window.
@@ -134,6 +143,7 @@ function Conversation() {
         speakingTimer.current = setTimeout(() => setSpeakingId(null), 1600);
         if (reply.pending_proposal) {
           setProposal(reply.pending_proposal as Proposal);
+          setProposalDependency(reply.memory_dependency ?? null);
           setAuthorization(null);
           setReceipt(null);
           confirm.reset();
@@ -303,6 +313,7 @@ function Conversation() {
             currency={currency}
             avatarState={m.id === speakingId ? "responding" : "idle"}
             still={m.id !== lastCopilotId}
+            obsolete={isObsolete(m.reply?.memory_dependency, counters)}
             onExpenseSaved={() => send(t("copilot.expense.followUp"))}
           />
         ),
@@ -537,15 +548,19 @@ function CopilotTurn({
   currency,
   avatarState,
   still,
+  obsolete,
   onExpenseSaved,
 }: {
   message: Message;
   currency: string;
   avatarState: AvatarState;
   still: boolean;
+  obsolete: boolean;
   onExpenseSaved: () => void;
 }) {
-  const reply = message.reply;
+  // Memory moved after this reply was built on it: none of it is shown, not its text, figures, cards or tools.
+  const reply = obsolete ? undefined : message.reply;
+  const text = obsolete ? t("copilot.memory.replyObsolete") : message.text;
   const blockedAction = reply?.actions.find((a) => a.status === "BLOCKED");
   return (
     <li className="max-w-[72ch]">
@@ -556,7 +571,7 @@ function CopilotTurn({
           <p className="mb-1 text-xs font-medium text-ink-3">{t("copilot.voice")}</p>
           <div className="rounded-control rounded-bl-[2px] border border-accent/20 bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-ink [overflow-wrap:anywhere]">
             {/* Plain text only: model output is never rendered as markup. */}
-            <FoldableText text={message.text} maxChars={1100} maxLines={14} tone="light" />
+            <FoldableText text={text} maxChars={1100} maxLines={14} tone="light" />
           </div>
         </div>
       </div>
@@ -573,6 +588,9 @@ function CopilotTurn({
         </div>
       )}
       {reply?.pending_expense && <ExpenseCard key={reply.pending_expense.proposal_id} expense={reply.pending_expense} currency={currency} onSaved={onExpenseSaved} />}
+      {reply?.pending_memory_proposal && (
+        <MemoryCard key={reply.pending_memory_proposal.proposal_id} proposal={reply.pending_memory_proposal} dependency={reply.memory_dependency} currency={currency} />
+      )}
       {reply && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {reply.fallback_used ? (

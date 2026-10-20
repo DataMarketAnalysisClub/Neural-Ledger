@@ -32,6 +32,7 @@ class ToolContext:
     checks: tuple[DecisionCheck, ...] = ()
     user_text: str = ""  # the user's message this turn: an amount the user asked for must appear in it (ADR-037)
     recent_user_text: str = ""  # the user's last few messages: an expense said over two turns ("gasté 15 lucas" / "en efectivo")
+    message_id: str = ""  # the id of the message that started this turn (user_text), never of a repair note
 
 
 Handler = Callable[[Mapping[str, Any], ToolContext], Any]
@@ -43,6 +44,7 @@ class Tool:
     tier: Tier
     handler: Handler
     stateful: bool = False  # creates state (e.g. a proposal): hidden in read-only turns
+    reads_memory: bool = False  # its result derives from the user's memory: the turn is stamped (ADR-048 §6)
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +92,10 @@ class ToolRegistry:
     @property
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self._tools))
+
+    def reads_memory(self, name: str) -> bool:
+        tool = self._tools.get(name)
+        return tool is not None and tool.reads_memory
 
     def tier_of(self, name: str) -> Tier | None:
         tool = self._tools.get(name)

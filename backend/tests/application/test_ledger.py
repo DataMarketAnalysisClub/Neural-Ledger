@@ -8,6 +8,8 @@ import pytest
 
 from neural_ledger.adapters.outbound.persistence.memory import (
     InMemoryAuditLog,
+    InMemoryMemoryStore,
+    InMemoryStatementImportWrites,
     InMemoryStatementStore,
     InMemoryTransactionStore,
     InMemoryTransactionWrites,
@@ -75,12 +77,14 @@ class _Classifier:
 def _parts(classifier, audit=None):
     transactions, audit, ids = InMemoryTransactionStore(), audit or InMemoryAuditLog(), SequentialIds()
     clock = FixedClock(datetime(2026, 10, 29, tzinfo=UTC))
+    store = InMemoryStatementStore()
     statements = StatementUseCases(
         _Reader(),
         StatementRedactor(NullDetector()),
-        InMemoryStatementStore(),
-        LedgerPosting(classifier, transactions),
-        audit,
+        store,
+        transactions,
+        LedgerPosting(classifier),
+        InMemoryStatementImportWrites(store, transactions, audit, InMemoryMemoryStore()),
         clock,
         ids,
     )

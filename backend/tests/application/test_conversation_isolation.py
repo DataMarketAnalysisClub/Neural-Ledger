@@ -17,5 +17,6 @@ def test_chat_and_tolerance_do_not_read_other_users_history(services):
     result = services.profiles.risk_tolerance("usr_one", "shared")
     services.chat.handle("shared", "usr_one", "Please help me save for my trip")
 
-    assert model.requests[1].entries == (UserEntry("Please help me save for my trip"),)
+    (entry,) = model.requests[1].entries  # only usr_one's own message, with the id the turn gave it
+    assert isinstance(entry, UserEntry) and entry.text == "Please help me save for my trip"
     assert result.data.language_signal is None

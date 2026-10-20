@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_summary.schema.json",
+  "title": "MemorySummary",
+  "description": "data of the copilot's get_user_memory tool (T0, ADR-048): typed values and derived conclusions only. No text, no glosa, no origin and no store payload reaches the model. Without the memory consent, or for a shared persona, `items` is empty. In this release memory is saved only: numeric_effect is saved_only and reasons is empty. When every version starts later than today's pay month, the item is the next one and upcoming is null.",
+  "type": "object",
+  "required": ["catalog_version", "consent", "items"],
+  "properties": {
+    "catalog_version": {"$ref": "memory_value.schema.json#/$defs/catalog_version"},
+    "consent": {"enum": ["granted", "missing", "revoked"]},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["type", "amount", "effective_from", "status", "numeric_effect", "reasons", "upcoming"],
+      "properties": {
+        "type": {"const": "salary_net"},
+        "amount": {"type": "integer", "minimum": 1, "maximum": 100000000, "description": "Declared by the user, never a credited salary."},
+        "effective_from": {"$ref": "memory_value.schema.json#/$defs/pay_month"},
+        "status": {"enum": ["declared", "verified", "conflict"]},
+        "numeric_effect": {"enum": ["applied", "saved_only"]},
+        "reasons": {"type": "array", "items": {"$ref": "warnings.schema.json"}},
+        "upcoming": {
+          "oneOf": [
+            {"type": "object", "required": ["amount", "effective_from"], "properties": {"amount": {"type": "integer", "minimum": 1, "maximum": 100000000}, "effective_from": {"$ref": "memory_value.schema.json#/$defs/pay_month"}}, "additionalProperties": false},
+            {"type": "null"}
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {"catalog_version": "mem-0.1", "consent": "granted", "items": [{"type": "salary_net", "amount": 1000000, "effective_from": "2026-01", "status": "verified", "numeric_effect": "saved_only", "reasons": [], "upcoming": {"amount": 1200000, "effective_from": "2026-10"}}]}
+  ]
+}

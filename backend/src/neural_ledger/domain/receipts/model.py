@@ -19,7 +19,6 @@ from datetime import date, datetime
 from enum import Enum
 
 from ..agent.questions import ChoiceQuestion
-from ..agent.verification import extract_numbers
 from ..ledger.categorization import PostedTransaction
 from ..ledger.entities import TransactionKind
 from ..shared.hashing import content_id
@@ -214,16 +213,6 @@ class StoredReceipt:
 CASH, CARD, UNKNOWN_PAYMENT = "cash", "card", "unknown"
 PAYMENTS = (CASH, CARD)
 MANUAL = "manual"  # the source of an expense the user told the copilot about: no document, their word, their confirmation
-
-
-def written_amounts(text: str) -> frozenset[int]:
-    """Every amount the user wrote: "15 lucas", "15 mil", "$15.000", "15000", "800". Used to check that an amount
-    the copilot proposes is one the user said (rule 2), never one the model made up."""
-    joined = re.sub(r"(\d)[.,](\d{3})(?!\d)", r"\1\2", text)
-    while joined != (again := re.sub(r"(\d)[.,](\d{3})(?!\d)", r"\1\2", joined)):
-        joined = again
-    plain = {int(n) for n in re.findall(r"\d+", joined) if len(n) <= 9}
-    return frozenset(plain | {int(n.value) for n in extract_numbers(text) if not n.is_percent and n.value == int(n.value)})
 
 
 MAX_RECEIPT_TOTAL = 100_000_000  # CLP; a larger "receipt" is a typo, not a purchase

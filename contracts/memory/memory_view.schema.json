@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/memory/memory_view.schema.json",
+  "title": "MemoryView",
+  "description": "data of GET /v1/memory (Perfil, \"Lo que Neural Ledger sabe de ti\") and of the confirmation and Perfil writes (ADR-048): per chain, the version that applies today, the next one if it starts later, and what the statements say about it. Without the memory consent, `items` still lists the declarations so the user can delete them, but `check` is null and nothing is applied. A shared persona has no items.",
+  "type": "object",
+  "required": ["catalog_version", "consent", "items"],
+  "properties": {
+    "catalog_version": {"$ref": "memory_value.schema.json#/$defs/catalog_version"},
+    "consent": {"enum": ["granted", "missing", "revoked"]},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["chain_id", "type", "versions", "current", "upcoming", "check"],
+      "properties": {
+        "chain_id": {"type": "string", "minLength": 1},
+        "type": {"const": "salary_net"},
+        "versions": {"type": "integer", "minimum": 1, "description": "How many versions the chain holds; the export lists them all."},
+        "current": {"oneOf": [{"$ref": "declaration.schema.json"}, {"type": "null"}], "description": "The version that applies to the pay month of today; null when every version starts later."},
+        "upcoming": {"oneOf": [{"$ref": "declaration.schema.json"}, {"type": "null"}], "description": "The next version, when it starts after the pay month of today."},
+        "check": {"oneOf": [{"$ref": "salary_check.schema.json"}, {"type": "null"}]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {"catalog_version": "mem-0.1", "consent": "missing", "items": []}
+  ]
+}
