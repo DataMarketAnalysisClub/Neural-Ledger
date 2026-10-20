@@ -44,6 +44,25 @@ and effective date, serialized canonically for hashing and signing. A \code{Prop
 came from, an expiry and a status; an \code{Authorization} adds the signed \code{action_hash}, an expiry and, once used,
 \code{consumed_at}. Executed rules are \code{SavingsRule}s in the sandbox bank's store.
 
+\subsection{Receipts, investments, connections and concept cards}\label{sec:new-data}
+
+\begin{description}[style=nextline,leftmargin=1.2em]
+  \item[\code{StoredReceipt}] (\code{domain/receipts/model.py}, ADR-039): a boleta's store (redacted like a statement
+    line), date, total, folio, whether the SII stamp agreed with the print, a category, and the issues found. An
+    expense the user confirmed in chat is kept the same way with \code{source: manual}. A receipt is never posted to
+    the ledger. It counts as logged spending until a statement charge of the same amount, within three days, records it.
+  \item[\code{InvestmentLink}, \code{InvestmentSnapshot}, \code{StoredInvestmentDocument}] (\code{domain/investments},
+    ADR-044): the sealed provider token and email, the goals of each sync (at most 400 snapshots), and the verified
+    Fintual statements and transaction certificates (the newest 24). Amounts are integer pesos, rounded half up once.
+    The holder's name and RUT are never extracted.
+  \item[\code{Connection}, \code{ConnectionSnapshot}] (\code{domain/connections/model.py}, ADR-047): the server
+    address, the enabled tools, the sealed access token, and the latest redacted answer per tool. Fintoc movements
+    become a \code{BankStatement} with \code{bank=fintoc} and go through the statement import.
+  \item[\code{ConceptCard}] (\code{domain/education/concepts.py}, ADR-040): a concept in one language, with its
+    aliases, body, sources and the numbers its body may state. Cards are Markdown files in the repository, not user
+    data.
+\end{description}
+
 \subsection{Users, sessions and the audit trail}
 
 \begin{description}[style=nextline,leftmargin=1.2em]
@@ -88,6 +107,12 @@ the stores search or order by (\cref{tab:schema}). A file at version~0 (before o
     \midrule
     \code{statements} & \code{statement_id}, \code{user_id} & \code{payload} \\
     \code{transactions} & \code{txn_id}, \code{user_id}, \code{posted_on} & \code{payload} \\
+    \code{receipts} & \code{receipt_id}, \code{user_id} & \code{payload} \\
+    \code{investment_links} & \code{user_id} & \code{payload} \\
+    \code{investment_snapshots} & \code{snapshot_id}, \code{user_id} & \code{payload} \\
+    \code{investment_documents} & \code{document_id}, \code{user_id} & \code{payload} \\
+    \code{connections} & \code{connection_id}, \code{user_id} & \code{payload} \\
+    \code{connection_results} & \code{connection_id}, \code{user_id}, \code{tool} & \code{payload} \\
     \code{user_profiles} & \code{user_id} & \code{payload} \\
     \code{user_accounts} & \code{user_id}, \code{email_index} (HMAC), \code{sample_data} & \code{payload} \\
     \code{proposals} & \code{proposal_id}, \code{user_id}, \code{session_id} & \code{payload} \\
@@ -98,7 +123,7 @@ the stores search or order by (\cref{tab:schema}). A file at version~0 (before o
     \code{meta} & \code{name} & \code{value} (the key check) \\
     \bottomrule
   \end{tabularx}
-  \caption{SQLite schema version 1. The associated data of every sealed value is \texttt{<table>|<user\_id>|<row id>}.}\label{tab:schema}
+  \caption{SQLite schema version 1. The associated data of every sealed value is \texttt{<table>|<user\_id>|<row id>}; for \texttt{connection\_results} the row id is \texttt{<connection>|<tool>}. The six tables added after option B are created sealed, so they need no migration.}\label{tab:schema}
 \end{table}
 
 Writes that change account, session, profile or transaction state commit together with their audit events or not

@@ -125,7 +125,7 @@ without one the tolerance is conservative, or at most moderate when the decision
     \midrule
     H1 & Reserve below its minimum ($1\times$ essentials): the whole rule goes to the reserve (\code{plan._allocate}); also reported by the permitted profile \\
     H2 & No start month gives a positive rule that keeps the conservative path above the floor: no rule (\code{size_plan}) \\
-    H3 & Near-term goals (deadline within 12 months) are funded before the reserve top-up, earliest deadline first (\code{_near_term_goals}); not emitted as a separate code \\
+    H3 & Near-term goals (deadline within 12 months) are funded before the reserve top-up, earliest deadline first (\code{_near_term_goals}). A near-term goal the plan will not complete by its deadline is the warning \code{GOAL_OFF_TRACK}, which names the goal (\code{plan_caveats}, UG03) \\
     H4 & Unknown state (no income, no spend history, fewer than 6 cycles, zero essentials): \code{INSUFFICIENT_DATA}, no advice \\
     H5 & No sized rule may push a conservative trough below the floor over the check horizon (\code{size_plan}) \\
     \bottomrule
@@ -160,6 +160,14 @@ capped by what goals and the reserve top-up actually need, and rounded down to 1
   \Return no rule, H2\;
 \end{algorithm}
 
+The plan's envelope also says why the plan suits the user (UG01). It repeats the permitted-profile facts
+(\code{profile.permitted}, \code{profile.tolerance}, \code{profile.capacity}) and adds the capacity level and its
+binding factor. With Camila's fixture, an aggressive tolerance meets conservative capacity, bound by conservative
+headroom: the permitted share is $\tfrac25$. Her conservative available amount is negative in November and December
+2026, so the first window that passes starts in January 2027. Its lowest month is 260{,}000, so the rule is
+$\mathrm{floor}_{10{,}000}(\tfrac25 \cdot 260{,}000) = 100{,}000$ per month. All of it goes to her trip goal, which is
+on track for September 2027.
+
 The search is not monotone: a higher profile, or an extra purchase, can produce a smaller rule.
 \code{tests/property/test_plan_counterexamples.py} keeps two minimal counterexamples as strict expected failures, and
 ADR-014 proposes a fix that is not accepted or built.
@@ -180,6 +188,20 @@ the trough: with $k_m$ the number of cuotas paid by cycle $m$,
 \begin{equation}
   c_{\max} = \min_{m \geq \text{first cuota}} \left\lfloor H_m / k_m \right\rfloor .
 \end{equation}
+
+\subsection{The spending check-in}\label{sec:spending}
+
+\code{domain/finance/spending.py} (ADR-039) compares what the user has spent in the current pay cycle with what the
+conservative forecast already assumes for it. Logged spending is the statement charges plus the verified receipts
+and confirmed expenses that no charge has recorded yet. With $V^{80}$ the cycle's P80 variable spending (seasonal
+factor applied) and $L$ the logged spending,
+\begin{equation}
+  \mathit{left} = V^{80} - L, \qquad \mathit{per\_day} = \Bigl\lfloor \frac{\max(0, \mathit{left})}{\text{days left in the cycle}} \Bigr\rfloor, \qquad \mathit{surplus\_after} = \mathit{PS} - \max(0, -\mathit{left}).
+\end{equation}
+Overspending in a projected cycle lowers every later trough by the same amount, so it comes out of the protected
+surplus one to one. If today's cycle comes before the forecast's first one, overspending only produces a warning. The
+T0 tool \code{get_spending_status} returns these figures as facts, with \code{SPENDING_ABOVE_FORECAST} or
+\code{SPENDING_BREACHES_FLOOR} when they apply.
 
 \subsection{Importing a statement}\label{sec:import}
 
@@ -209,7 +231,12 @@ confidence of at least 0.5, otherwise the charge is \code{uncategorized}. A cate
 
 \code{verify_explanation} (\code{domain/agent/verification.py}) checks a reply against the facts and warnings of the
 tools called in the same turn (\cref{alg:verify}). A failed reply is replaced by \code{narration}, a deterministic text
-built from the same facts, and the failure is audited as \code{VERIFICATION_FAILED}.
+built from the same facts, and the failure is audited as \code{VERIFICATION_FAILED}. The same check covers the
+newer read tools. A concept card declares every number its body states, and the envelope turns each into a fact. Its
+\code{NOT_ADVICE} warning must be mentioned (ADR-040). Figures from investments are facts with the warning
+\code{INVESTMENTS_AS_REPORTED}, or \code{INVESTMENTS_FROM_STATEMENT} for imported documents. A connected service's
+numbers are facts in the currency their object names, or else in the unit \code{external}, which the verifier never
+accepts as money. They carry the warning \code{EXTERNAL_DATA}.
 
 \begin{algorithm}[htbp]
   \caption{Reply verification (\texttt{verify\_explanation}).}\label{alg:verify}
@@ -220,7 +247,7 @@ built from the same facts, and the failure is audited as \code{VERIFICATION_FAIL
   \ForEach{warning $w \in \Omega$}{\lIf{no token of $w.\mathit{must\_mention}$ occurs in $x$}{issue \code{MISSING_WARNING}}}
   \lIf{$x$ says ``safe money'', ``safe to spend'' or ``guaranteed'' (English or Spanish)}{issue \code{BANNED_WORDING}}
   \lIf{a verdict is not \code{FITS_ALL} and $x$ affirms the purchase}{issue \code{CONTRADICTION}}
-  \lIf{$x$ claims a rule was created or executed and no execution succeeded}{issue \code{FALSE_EXECUTION_CLAIM}}
+  \lIf{$x$ claims a rule was created or executed, or that the agent itself moved, transferred, deposited or invested money, and no execution succeeded}{issue \code{FALSE_EXECUTION_CLAIM}}
   \Return pass if there is no issue\;
 \end{algorithm}
 

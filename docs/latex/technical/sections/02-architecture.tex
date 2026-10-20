@@ -35,6 +35,13 @@ offline, so swapping a provider means one adapter file and one registry entry in
     \code{FinancialModelSource} & persona fixtures; ledger estimators & a user's own statements (ADR-029) \\
     \code{StatementStore}, \code{TransactionStore}, \code{ActionRepository}, \code{AuditLog}, \code{UserAccountStore}, \code{SessionStore}, \code{UserProfileStore} & in memory & SQLite, every personal payload sealed (\cref{sec:at-rest}) \\
     \code{AccountWrites}, \code{ProfileWrites}, \code{TransactionWrites}, \code{AccountErasure} & in memory, all locks held & SQLite, one transaction each \\
+    \code{ReceiptReader}, \code{ReceiptStore} & text-layer PDF reader; in memory & EasyOCR for photos, zxing-cpp for the SII stamp (optional extras); SQLite, sealed (ADR-039) \\
+    \code{KnowledgeBase} & \code{LexicalKnowledgeBase} (BM25 over the concept cards) & \code{ChromaKnowledgeBase} (multilingual embeddings, \code{rag} extra), in a fallback chain (ADR-040) \\
+    \code{InvestmentProvider} & \code{FixtureInvestmentProvider} (a synthetic account) & \code{FintualInvestmentProvider}, refused in deployed mode (ADR-044) \\
+    \code{InvestmentDocumentReader}, \code{InvestmentStore} & \code{FintualDocumentReader}; in memory & SQLite, sealed (ADR-044) \\
+    \code{McpClient}, \code{BankFeed} & a synthetic investment MCP server and a synthetic bank & any MCP server over HTTPS the user adds; Fintoc (ADR-047) \\
+    \code{ConnectionStore} & in memory & SQLite, sealed \\
+    \code{EmailDomainCheck} & disposable-inbox blocklist & a DNS check that the domain receives mail \\
     \code{SandboxBank} & \code{SimulatedSandboxBank} & none: no real bank is ever called \\
     \code{Signer}, \code{PasswordHasher}, \code{TokenGenerator} & HMAC-SHA256, scrypt, \code{secrets} & none \\
     \bottomrule
@@ -54,7 +61,7 @@ two so that a demo never runs in the wrong one.
     \toprule
     Setting & Values & Effect \\
     \midrule
-    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, or \code{NL_PII_DETECTOR=azure}. Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
+    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, \code{NL_PII_DETECTOR=azure}, or \code{NL_INVESTMENTS=fintual}. \code{NL_CONNECTORS=live} does not count (\cref{sec:discrepancies}). Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
     \code{NL_AUTH} & demo, accounts & \emph{demo}: the \code{X-User-Id} header names a persona, profiles are read-only, no auth routes (local runs and tests only). \emph{accounts}: sign-up, sign-in and an HttpOnly session cookie; the header is rejected. \\
     \code{NL_PERSISTENCE} & memory, sqlite & In-process stores, or one SQLite file at \code{NL_SQLITE_PATH}. \\
     \code{NL_DEPLOYMENT} & local, deployed & \emph{deployed} refuses to start without a data key from a secret or the environment, with a key on the data volume, while the old \code{<db>.key} exists, or with the development HMAC secret (\cref{sec:keys}). \\
@@ -63,9 +70,18 @@ two so that a demo never runs in the wrong one.
   \caption{Runtime settings.}\label{tab:modes}
 \end{table}
 
+Four more settings choose a feature's adapters, and each defaults to one that needs no network.
+\code{NL_INVESTMENTS} is \code{fixture} or \code{fintual}; deployed mode refuses \code{fintual}.
+\code{NL_CONNECTORS} is \code{fixture} or \code{live}; in deployed mode, live connectors are off unless
+\code{NL_CONNECTORS_LIVE} is true, and \code{NL_MCP_ALLOW_PRIVATE} (http and localhost servers) is refused.
+\code{NL_KNOWLEDGE_BASE} is \code{lexical}, or \code{chroma,lexical} for a fallback chain. \code{NL_EMAIL_CHECKS} is
+\code{disposable} and optionally \code{dns}.
+
 \code{docker-compose.yml} is the submission and CI path: it runs offline, in accounts mode, with SQLite on the
 \code{ledger-data} volume, and needs no key; without one the API creates a key file next to the database and prints a
-warning. A deployment adds \code{docker-compose.data-key.yml}, which mounts the data key as a Docker secret at
+warning. It also turns on both email checks. The compose profile \code{rag} adds a \code{chroma} container
+(\code{chromadb/chroma:1.5.9}, volume \code{chroma-data}, no published port) that the API reaches through
+\code{NL_KB_URL}. The API still embeds the questions; if the container is down, the lexical index answers. A deployment adds \code{docker-compose.data-key.yml}, which mounts the data key as a Docker secret at
 \code{/run/secrets/nl_data_key} and sets \code{NL_DEPLOYMENT=deployed}. The public demo's own override (no host ports,
 Cloudflare Tunnel, security headers in nginx) lives in \code{deploy/docker-compose.deploy.yml} on the branch
 \code{ops/deploy-neural-ledger}, which is not merged at the commit described here.
@@ -96,9 +112,12 @@ adds \code{X-Content-Type-Options: nosniff} and \code{Cache-Control: no-store} t
     Budget & Matches & Per caller & Per IP \\
     \midrule
     statements & \code{POST /v1/statements} & 10 & 30 \\
+    documents & \code{POST /v1/documents} & 10 & 30 \\
     chat & \code{POST /v1/chat} & 20 & 60 \\
     auth & \code{POST /v1/auth/*} & 10 & 10 \\
     account & \code{DELETE /v1/account} & 5 & 10 \\
+    investment link & \code{POST /v1/investments/link} & 5 & 10 \\
+    investment sync & \code{POST /v1/investments/sync} & 10 & 30 \\
     api & any other \code{/v1/*} & 300 & 900 \\
     \bottomrule
   \end{tabular}
@@ -137,8 +156,8 @@ policy, confirm an action, write the profile or the tolerance) are recognized an
     \toprule
     Tier & Tools \\
     \midrule
-    T0 read & \code{get_financial_state}, \code{get_commitments}, \code{get_user_profile}, \code{get_pending_actions}, \code{get_audit_events} \\
-    T1 analyze, suggest & \code{forecast_cashflow}, \code{simulate_purchase}, \code{compute_protected_surplus}, \code{assess_financial_capacity}, \code{assess_risk_tolerance}, \code{derive_permitted_profile}, \code{compute_savings_plan}, \code{propose_savings_rule} (stateful), \code{propose_liquidity_floor} (stateful) \\
+    T0 read & \code{get_financial_state}, \code{get_commitments}, \code{get_user_profile}, \code{get_pending_actions}, \code{get_audit_events}, \code{get_spending_status}, \code{get_latest_document}, \code{search_financial_concepts}, \code{get_investments}, \code{get_connected_data} \\
+    T1 analyze, suggest & \code{forecast_cashflow}, \code{simulate_purchase}, \code{compute_protected_surplus}, \code{assess_financial_capacity}, \code{assess_risk_tolerance}, \code{derive_permitted_profile}, \code{compute_savings_plan}, \code{propose_savings_rule} (stateful), \code{propose_liquidity_floor} (stateful), \code{propose_expense} (stateful) \\
     T2 execute & \code{execute_sandbox_action} (only with a user-confirmed authorization) \\
     T3 prohibited & always blocked and audited (\code{ACTION_BLOCKED}) \\
     \bottomrule
@@ -151,12 +170,21 @@ policy, confirm an action, write the profile or the tolerance) are recognized an
 Money can move (in the sandbox) only through three steps, each audited (\cref{fig:confirmation},
 \code{application/use_cases/actions.py}). \emph{Propose} creates a pending proposal valid for 30 minutes. A savings
 rule's amount comes from a stored plan snapshot, never from model text; a liquidity floor's amount is accepted only if
-the user wrote that number in the same turn (ADR-037). \emph{Confirm} is reachable only from the UI endpoint
+the user wrote that number in the same turn (ADR-037). A stored plan records the origin of the state it was sized
+on. If a new statement, a new as-of date or a new floor has changed that state, proposing or confirming the plan is
+blocked with \code{PLAN_SUPERSEDED} (UG02). \emph{Confirm} is reachable only from the UI endpoint
 \code{POST /v1/actions/proposals/\{id\}/confirm} with the user as actor; the terms shown must equal the proposal's
 canonical terms. It creates an authorization whose \code{action_hash} is HMAC-SHA256 of the canonical terms under
 \code{NL_HMAC_SECRET}, valid for ten minutes. \emph{Execute} re-reads the terms from that authorization, passes the
 gate in \cref{alg:gate}, writes \code{EXECUTION_STARTED} (if the audit cannot be written, nothing executes), consumes
 the authorization atomically, and only then calls the sandbox bank.
+
+The same rule, that the agent proposes and only the user writes, covers the newer features through user-only HTTP
+routes, none of them a tool. An expense said in chat is prepared by \code{propose_expense} and stored only when the
+user confirms it in a card (\code{POST /v1/expenses/\{id\}/confirm}). A receipt is corrected in a form
+(\code{PATCH /v1/receipts/\{id\}}). An investment account is linked, synced and unlinked under \code{/v1/investments},
+and a connection is added, has its tools enabled, is synced and is removed under \code{/v1/connections}. Tool names
+that would link or unlink an investment account are T3 \code{CREDENTIAL_CHANGE}.
 
 \begin{figure}[htbp]
   \centering

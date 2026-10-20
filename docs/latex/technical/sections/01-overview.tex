@@ -33,10 +33,19 @@ Five principles, stated in \code{CLAUDE.md} and enforced by tests, shape everyth
 
 The document consolidates five Markdown files into one description: \code{docs/ARCHITECTURE.md} (where code goes),
 \code{docs/FINANCIAL_CORE.md} (the engine), \code{docs/DECISIONS.md} (the decision log), \code{docs/SECURITY.md} and
-\code{docs/PRIVACY.md}. It describes the code at commit \texttt{\nlCommit}, which includes the security hardening
-called \emph{option B} (ADR-038): open sign-up with a sandbox notice, every personal field sealed at rest, the data
-key kept off the data volume, and account deletion. A companion document, the \emph{Security self-assessment
-report}, evaluates the same system against its threats and lists the residual risks.
+\code{docs/PRIVACY.md}. It describes the code at commit \texttt{\nlCommit} on \code{\nlBranch}, which includes the
+security hardening called \emph{option B} (ADR-038): open sign-up with a sandbox notice, every personal field sealed
+at rest, the data key kept off the data volume, and account deletion. Since version 1.0 of this document, staging
+has gained five features, each described where it touches the system:
+\begin{itemize}
+  \item documents dropped on the copilot: receipts, a daily spending check-in and expenses said in chat (ADR-039);
+  \item explanations of financial terms from team-written concept cards (ADR-040);
+  \item the user's Fintual investments, from imported statements or a linked account (ADR-044);
+  \item read-only connections to an MCP server the user adds and to their bank through Fintoc (ADR-047);
+  \item the three suitability gaps UG01--UG03, now closed (\cref{sec:plan}).
+\end{itemize}
+Sign-up also checks the email's domain now (\cref{sec:notice}). A companion document, the \emph{Security
+self-assessment report}, evaluates the same system against its threats and lists the residual risks.
 
 \Cref{tab:map} is a map of the repository.
 
@@ -47,9 +56,9 @@ report}, evaluates the same system against its threats and lists the residual ri
     \toprule
     Path & Contents \\
     \midrule
-    \code{backend/src/neural_ledger/domain} & Pure rules: finance, permissions, actions, audit chain, agent verification, privacy redaction, statements, user records \\
+    \code{backend/src/neural_ledger/domain} & Pure rules: finance, permissions, actions, audit chain, agent verification, privacy redaction, statements, receipts, investments, connections, concept cards, user records \\
     \code{backend/src/neural_ledger/application} & Use cases, services and the ports (interfaces) the use cases need \\
-    \code{backend/src/neural_ledger/adapters} & Inbound (HTTP with FastAPI, CLI) and outbound (persistence, models, bank, readers) implementations \\
+    \code{backend/src/neural_ledger/adapters} & Inbound (HTTP with FastAPI, CLI) and outbound (persistence, models, bank, readers, investment providers, MCP and Fintoc clients, knowledge bases) implementations \\
     \code{backend/src/neural_ledger/bootstrap} & Configuration, key resolution, migration and the composition root (\code{container.py}) \\
     \code{backend/tests} & Architecture, golden, property, security, suitability, contract, adapter and HTTP tests \\
     \code{contracts/} & JSON Schemas (draft 2020-12): the source of truth for every interface \\

@@ -20,6 +20,9 @@ evaluates them, rates the remaining risks and lists what is out of scope.
     Personal data in statements & Stored, returned, logged or sent to a provider & Redaction at import (ADR-028) \\
     Data at rest & A copy of the database, its WAL, a backup or the volume & Every personal payload sealed; key kept off the volume (\cref{sec:at-rest}) \\
     Real data on a sandbox & A visitor uploads a real statement (open sign-up) & Sandbox notice and acknowledgement; sealing; deletion (\cref{sec:notice}) \\
+    Third-party text & Instructions in a receipt, a concept card, a Fintual goal name or a connected service's answer steer the model & Wrapped as untrusted text; no tool writes; numbers are facts; the narration never repeats goal names (S24, S30, S32, S36) \\
+    Provider credentials & A Fintual password or token, an MCP token or a Fintoc link leaks, or the agent links an account & Password used once and dropped; tokens sealed and bound to user and adapter; never in a response, log, prompt or audit; link and unlink are T3 (S31, S38) \\
+    Connected servers & A user-added address reaches the internal network (SSRF), or a ``read-only'' tool writes & HTTPS and public addresses only, no redirects, size and time limits; tools enabled only if read-only, argument-free and without a write verb; only the user's sync calls them (S35, S37) \\
     \bottomrule
   \end{tabularx}
   \caption{Assets, threats and the controls that answer them (\texttt{docs/SECURITY.md}).}\label{tab:threats}
@@ -48,7 +51,10 @@ approved sandbox action, T3 is prohibited and always blocked and audited (\cref{
 \code{sandbox_savings} (at most 1{,}000{,}000 per action) and a liquidity floor that stays on \code{checking} (at most
 100{,}000{,}000). The simulated bank checks the destination again on its side. Text from statements, merchants and
 the profile's display name reaches the model only wrapped as \texttt{\{"untrusted\_text": \dots\}}, and profile writes are T3
-for the agent, so injected text cannot persist as instructions.
+for the agent, so injected text cannot persist as instructions. The newer sources of third-party text follow the
+same rule. Receipts, concept-card passages (at most 1{,}500 characters), Fintual goal names and connected services'
+answers (at most 4{,}000 characters) reach the model only as untrusted text. No tool lets the agent store,
+correct, link, sync or delete any of them.
 
 \subsection{Accounts, sessions and the sandbox notice}\label{sec:notice}
 
@@ -62,6 +68,10 @@ sandbox... do not upload real bank statements and do not enter real personal dat
 server enforces it: \code{SignupRequest.sandbox_acknowledged} must be \code{true}, or the answer is 422 on that field and
 nothing is stored; \code{USER_REGISTERED} records which notice was accepted (\code{sandbox_notice=sandbox-1}). The
 statement upload screen repeats the warning above the file picker.
+
+Sign-up also checks the email's domain (\code{NL_EMAIL_CHECKS}): it refuses a disposable-inbox domain (the maintained
+\code{disposable-email-domains} list, offline, parent domains included) and, with \code{dns}, a domain that does not
+exist or receives no mail. Only the domain is sent to the resolver; a DNS timeout lets the email through.
 
 \subsection{Data at rest}\label{sec:at-rest}
 
@@ -162,7 +172,7 @@ at the user any more.
   \KwIn{user $u$, keep\_account (true for a demo persona's reset), erasure draft $d$ with no user id}
   \KwOut{rows deleted per table, number of tombstones}
   \textsc{begin immediate}\;
-  \ForEach{table in statements, transactions, savings\_rules, proposals, authorizations}{delete rows of $u$; count}
+  \ForEach{table in statements, transactions, receipts, connections, connection\_results, savings\_rules, proposals, authorizations, investment\_links, investment\_snapshots, investment\_documents}{delete rows of $u$; count}
   \lIf{not keep\_account}{delete $u$'s sessions, profile and account; count}
   $E \gets \emptyset$\;
   \ForEach{audit event $e$ of $u$, by sequence}{
@@ -179,8 +189,12 @@ with \code{keep_account} true, recorded as \code{DEMO_DATA_RESET}. The fixture a
 
 \subsection{Evidence}
 
-\code{make test-security} runs the attack tests S01--S23; \code{docs/SECURITY.md} lists each with its expected behaviour
-and audit event. Option B adds \code{tests/adapters/test_data_key.py} (key sources, deployed refusals, wrong key,
+\code{make test-security} runs the attack tests S01--S24, S30--S32 and S35--S38; \code{docs/SECURITY.md} lists each
+with its expected behaviour and audit event, except S24 (concept cards, \cref{sec:discrepancies}). The newer ones cover
+concept-card injection and the \code{NOT_ADVICE} warning (S24), Fintual goal names, credentials and imported
+statements (S30--S32), and connected servers: false read-only labels, injected answers, SSRF and token leaks
+(S35--S38). Receipts have their own attack tests in \code{tests/security/test_receipts.py}. The suitability suite
+(\code{make test-suitability}) now passes 24 checks with no expected failures, UG01--UG03 included. Option B adds \code{tests/adapters/test_data_key.py} (key sources, deployed refusals, wrong key,
 migration), \code{tests/adapters/test_encryption_at_rest.py} (raw database bytes after a full HTTP flow; upgrade of a
 schema~0 file) and \code{tests/security/test_account_deletion.py} (user B intact, no row of any table refers to user A,
 forged tombstones fail). \code{tests/security/test_compliance.py} turns each legal requirement into a test that names

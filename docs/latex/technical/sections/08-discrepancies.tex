@@ -14,7 +14,7 @@ follows the code. The differences found while writing it:
   \item \textbf{Plain-text payloads.} ADR-033 step 2 says payloads written before encryption ``are still read''. Since
     option B a value in clear is refused; an older file is upgraded and sealed at startup or by \code{migrate-data}.
   \item \textbf{Status of the security suite.} The README's status list and document table mention S01--S12 and S01--S15;
-    \code{docs/SECURITY.md} and the tests cover S01--S23 plus the option B tests.
+    \code{docs/SECURITY.md} and the tests cover S01--S24, S30--S32 and S35--S38, plus the option B tests.
   \item \textbf{``No accounts or personal data.''} The README ends with ``no real money, accounts or personal data''.
     Accounts exist in accounts mode, and with open sign-up the software cannot guarantee that no personal data is stored;
     \code{docs/SECURITY.md} now says so.
@@ -23,6 +23,15 @@ follows the code. The differences found while writing it:
     that override, its nginx configuration and its runbook exist only on the unmerged branch
     \code{ops/deploy-neural-ledger}, so what this document says about the edge (TLS, the tunnel, nginx headers) comes from
     that branch, not from the commit described.
+  \item \textbf{Live mode and connectors.} \code{docs/PRIVACY.md} says \code{mode} is \code{live} as soon as any
+    provider sends data out, and lists MCP servers and Fintoc among those providers. In the code
+    (\code{Settings.mode}), \code{NL_CONNECTORS=live} does not make the mode live, and \code{GET /health} has no
+    connectors field; only \code{GET /v1/connections} reports the connector mode.
+  \item \textbf{Attack test S24.} \code{tests/security/test_education_attacks.py} holds eight S24 tests (concept-card
+    injection, \code{NOT_ADVICE}), but the attack table in \code{docs/SECURITY.md} has no S24 row.
+  \item \textbf{Suitability gaps.} The ``Not in this plan'' paragraph of ADR-033 in \code{docs/DECISIONS.md} describes
+    UG01--UG03 as later work that needs a \code{params_version} decision. They are closed in the code without one,
+    because no amount changed, and \code{docs/SECURITY.md} records them as closed.
   \item \textbf{Decision statuses.} Several records in \code{docs/DECISIONS.md} are ``Proposed'' although their code is
     built and tested (\cref{sec:decisions}).
 \end{enumerate}
