@@ -48,6 +48,7 @@ class BlockReason(str, Enum):
     PROPOSAL_EXPIRED = "PROPOSAL_EXPIRED"
     PROPOSAL_NOT_PENDING = "PROPOSAL_NOT_PENDING"
     TERMS_CHANGED = "TERMS_CHANGED"
+    PLAN_SUPERSEDED = "PLAN_SUPERSEDED"  # the plan was sized on a financial state that has since changed (UG02)
     AUDIT_UNAVAILABLE = "AUDIT_UNAVAILABLE"
 
 

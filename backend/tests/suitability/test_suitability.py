@@ -34,6 +34,7 @@ from neural_ledger.application.use_cases.actions import ActorContext
 from neural_ledger.application.use_cases.profile import ProfileUseCases
 from neural_ledger.domain.agent.policy import AP_0_1
 from neural_ledger.domain.agent.questions import Judgment
+from neural_ledger.domain.agent.verification import verify_explanation
 from neural_ledger.domain.audit.events import Actor
 from neural_ledger.domain.finance.capacity import assess_capacity
 from neural_ledger.domain.finance.forecast import Recurring, Scenario, project
@@ -43,8 +44,9 @@ from neural_ledger.domain.finance.profile import RiskProfile, lower_profile
 from neural_ledger.domain.finance.purchase import Verdict, simulate_purchase
 from neural_ledger.domain.shared.envelope import Status
 from neural_ledger.domain.shared.month import Month
+from neural_ledger.domain.shared.serialization import to_primitive
 
-from ..security.helpers import SESSION, ScriptedFakeLLM, agent_ctx, call, chat_with, say
+from ..security.helpers import SESSION, ScriptedFakeLLM, agent_ctx, call, chat_with, say, user_ctx
 
 pytestmark = pytest.mark.suitability
 
@@ -299,28 +301,70 @@ def test_u06_a_rule_saves_no_more_than_needed_and_rounds_down(models, params):
 # ------------------------------------------------------------------------------------------------
 # Gaps (strict xfail)
 # ------------------------------------------------------------------------------------------------
-@gap("a plan does not say why it suits the user. Delegated Regulation art. 54(12) (suitability report), ESMA GL1, Ley 19.496 art. 3 b)")
 def test_ug01_a_plan_states_the_tolerance_capacity_and_binding_factor_behind_it(services):
-    keys = {f.key for f in services.financial.savings_plan("camila").facts}
-    assert {"profile.tolerance", "profile.capacity", "capacity.binding_factor"} <= keys
+    """Delegated Regulation art. 54(12) (suitability report), ESMA GL1, Ley 19.496 art. 3 b)."""
+    facts = {f.key: f.value for f in services.financial.savings_plan("camila").facts}
+    assert {"profile.permitted", "profile.tolerance", "profile.capacity", "capacity.level", "capacity.binding_factor"} <= set(facts)
+    assert facts["plan.profile"] == facts["profile.permitted"]
 
 
-@gap("a proposal from a superseded financial state is accepted. ESMA GL5 (keep client information up to date)")
 def test_ug02_a_proposal_from_a_superseded_financial_state_is_refused(camila, services, adapters, monkeypatch):
+    """ESMA GL5 (keep client information up to date): a plan sized before a new statement cannot be proposed."""
     plan = services.financial.savings_plan("camila")
     serve(adapters, monkeypatch, replace(camila, source_version=camila.source_version + "-new-statement"))
     outcome = services.actions.propose_savings_rule(agent_ctx(), plan.snapshot_id)
-    assert outcome.status in ("INSUFFICIENT_DATA", "BLOCKED", "INVALID_INPUT")
+    assert (outcome.status, outcome.reason) == ("BLOCKED", "PLAN_SUPERSEDED")
+    blocked = [e.draft for e in adapters.audit_log.events() if e.draft.kind.value == "ACTION_BLOCKED"]
+    assert blocked and blocked[-1].blocked_reason == "PLAN_SUPERSEDED"
+    fresh = services.financial.savings_plan("camila")  # recomputed on the new state, it can be proposed
+    assert services.actions.propose_savings_rule(agent_ctx(), fresh.snapshot_id).status == "PROPOSED"
 
 
-@gap("an off-track near-term goal is not a warning (H3 is not an emitted rule). ESMA GL8, Ley 19.496 art. 3 b)")
+def test_ug02_a_proposal_cannot_be_confirmed_after_the_state_changes(camila, services, adapters, monkeypatch):
+    """ESMA GL5: a statement imported between the proposal and the user's confirmation also blocks it."""
+    plan = services.financial.savings_plan("camila")
+    proposal = services.actions.propose_savings_rule(agent_ctx(), plan.snapshot_id).proposal
+    serve(adapters, monkeypatch, replace(camila, source_version=camila.source_version + "-new-statement"))
+    outcome = services.actions.confirm(user_ctx(), proposal.proposal_id, to_primitive(proposal.terms))
+    assert (outcome.status, outcome.reason, outcome.authorization) == ("BLOCKED", "PLAN_SUPERSEDED", None)
+
+
+def test_ug02_a_hostile_model_cannot_propose_a_snapshot_from_before_a_new_statement(camila, services, adapters, monkeypatch):
+    """Model assumed hostile: it replays the snapshot id of a plan the user saw before a new statement arrived."""
+    stale = services.financial.savings_plan("camila").snapshot_id
+    serve(adapters, monkeypatch, replace(camila, source_version=camila.source_version + "-new-statement"))
+    llm = ScriptedFakeLLM([call("propose_savings_rule", plan_snapshot_id=stale), say("Your savings rule is ready to confirm.")])
+    chat_with(services, adapters, llm).handle(SESSION, "camila", "Set up my savings rule")
+    results = [e for r in llm.requests for e in r.entries if isinstance(e, ToolResultEntry) and e.name == "propose_savings_rule"]
+    assert results and results[-1].payload["outcome"]["reason"] == "PLAN_SUPERSEDED", "the scripted model must reach the tool"
+    kinds = [e.draft.kind.value for e in adapters.audit_log.events()]
+    assert "PROPOSAL_CREATED" not in kinds
+    blocked = [e.draft for e in adapters.audit_log.events() if e.draft.kind.value == "ACTION_BLOCKED"]
+    assert blocked and blocked[-1].blocked_reason == "PLAN_SUPERSEDED"
+
+
 def test_ug03_an_off_track_near_term_goal_is_a_warning_the_agent_must_mention(camila, services, adapters, monkeypatch):
+    """ESMA GL8, Ley 19.496 art. 3 b): H3 is emitted as a warning naming the goal; the rule amount does not change."""
     as_of = Month.of(camila.as_of)
     urgent = replace(camila.goals[0], goal_id="urgent", target_amount=50_000_000, saved_amount=0, deadline=as_of.plus(2))
+    on_time = services.financial.savings_plan("camila")
     serve(adapters, monkeypatch, replace(camila, goals=(urgent,)))
     envelope = services.financial.savings_plan("camila")
     assert not envelope.data.goal_status[0].on_track
-    assert "GOAL_OFF_TRACK" in {w.code for w in envelope.warnings}
+    off_track = [w for w in envelope.warnings if w.code == "GOAL_OFF_TRACK"]
+    assert [w.must_mention for w in off_track] == [(urgent.name,)]
+    assert "GOAL_OFF_TRACK" not in {w.code for w in on_time.warnings}  # Camila's own trip is on track
+    silent = verify_explanation("I can propose a savings rule.", envelope.facts, envelope.warnings)
+    assert "MISSING_WARNING" in {i.kind for i in silent.issues}
+    assert verify_explanation(off_track[0].message, envelope.facts, envelope.warnings).ok
+
+
+def test_ug03_a_goal_beyond_the_near_term_window_never_warns(camila, services, adapters, monkeypatch):
+    """H3 covers goals due within near_term_goal_months only; a later goal is not part of the plan's funding."""
+    as_of = Month.of(camila.as_of)
+    later = replace(camila.goals[0], goal_id="later", target_amount=50_000_000, saved_amount=0, deadline=as_of.plus(24))
+    serve(adapters, monkeypatch, replace(camila, goals=(later,)))
+    assert "GOAL_OFF_TRACK" not in {w.code for w in services.financial.savings_plan("camila").warnings}
 
 
 # ------------------------------------------------------------------------------------------------
