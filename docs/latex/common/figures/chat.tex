@@ -1,0 +1,21 @@
+% One chat turn (application/use_cases/chat.py).
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{st/.style={box,text width=30mm,minimum height=15mm}}
+  \node[st] (msg) at (0,0) {\textbf{User message}\\cut at 4,000\\characters};
+  \node[st,core] (dm) at (40,0) {\textbf{Decision chain}\\intent + injection\\(rules, Jev)};
+  \node[st,core] (gate) at (80,0) {\textbf{Gate}\\refuse, clarify,\\read-only, proceed};
+  \node[st] (llm) at (120,0) {\textbf{Language model}\\picks tools of the\\allowed tiers};
+  \node[st] (tools) at (120,-30) {\textbf{Tools}\\envelopes: data,\\facts, warnings};
+  \node[st,core] (ver) at (80,-30) {\textbf{Verifier}\\every number a fact,\\every warning said};
+  \node[st] (reply) at (40,-30) {\textbf{Reply}\\model text, or\\deterministic narration};
+  \node[store,minimum width=20mm] (audit) at (0,-30) {audit\\chain};
+  \draw[flow] (msg) -- (dm);
+  \draw[flow] (dm) -- (gate);
+  \draw[flow] (gate) -- node[label,above=1mm]{max tier} (llm);
+  \draw[flow] (llm) -- (tools);
+  \draw[flow] (tools) -- (ver);
+  \draw[flow] (ver) -- (reply);
+  \draw[weak] (reply) -- (audit);
+  \node[font=\scriptsize,anchor=north] at (audit.south) {every step is audited};
+  \draw[weak] (ver.north) -- ++(0,6) -| node[label,pos=0.25,above]{one repair for honest mistakes} ($(llm.south west)+(4,0)$);
+\end{tikzpicture}

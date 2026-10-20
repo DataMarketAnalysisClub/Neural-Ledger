@@ -37,6 +37,10 @@ Personal data is removed from every cartola at import, before anything is stored
 
 **Explaining financial terms (ADR-040).** When you ask what a term means, the copilot answers from concept cards the team wrote (Spanish and English, in `backend/src/neural_ledger/adapters/outbound/knowledge/corpus/`), never from the model's memory. By default a lexical search over the cards runs offline and needs nothing extra. For semantic, multilingual search, install the `rag` extra, `pip install -e "backend[rag]"`, and set `NL_KNOWLEDGE_BASE=chroma,lexical` in `.env` (Chroma first, the lexical search as the fallback). The index is kept under `NL_KB_DIR` (default `./var/chroma`) and rebuilt when a card changes. The first run downloads the embedding model (`paraphrase-multilingual-MiniLM-L12-v2`), so it needs the network once; `NL_KB_EMBEDDING_MODEL` picks another. With Docker, the index runs in its own container: set `NL_API_EXTRAS=api,pdf,ml,rag` and `NL_KNOWLEDGE_BASE=chroma,lexical` in `.env`, then `docker compose --profile rag up --build`; the API reaches it at `NL_KB_URL` (`http://chroma:8000`). Without the profile, Docker runs on the lexical search. Each answer records the `knowledge_base` that served it.
 
+**Documents, investments and connections.** Drop a statement or a receipt on the copilot (`POST /v1/documents`) and the server routes it; a daily spending check-in compares what you have spent this cycle with the forecast (ADR-039). Fintual investments are read from the statements you import, or from a linked account while it is in development (ADR-044). You can also add a read-only MCP server or your bank through Fintoc (ADR-047). Each of these is off or synthetic by default: `NL_INVESTMENTS=fixture`, `NL_CONNECTORS=fixture`. `NL_CONNECTORS=live` and `NL_INVESTMENTS=fintual` send credentials out, so they make `/health` report `mode: live` and need `NL_HMAC_SECRET` (and `NL_DATA_KEY` with SQLite); `NL_DEPLOYMENT=deployed` refuses the first and keeps live connectors off unless `NL_CONNECTORS_LIVE=true`. `/health` shows `connectors` and `investments`.
+
+**Your data (accounts mode).** *Profile → Download my data* (`GET /v1/me/export`) returns one JSON file with what a deletion would erase, and *Delete account* removes it all (`DELETE /v1/account`). *Memory* is optional and saved only (ADR-048): with your consent the copilot can keep the net salary you declare, after you confirm it in a card or in your profile. It is checked against your statements and changes no projection. ADR-048 and ADR-049 are still Proposed, so use it in a sandbox.
+
 On Windows without `make`, `.\scripts\dev.ps1 <task>` runs the same tasks (`install` creates `.venv` with Python 3.12).
 
 To use a real LLM or Jev, copy `.env.example` to `.env` and set `NL_LLM`, `NL_DECISION_CHAIN` and the keys. Without them the app runs in **offline mode** (scripted model + rules decision model), which is also the fallback when a provider is down. Live mode also needs `NL_HMAC_SECRET` set: it refuses to start with the development default. `NL_CLASSIFIER=jev,naive_bayes` categorizes statement lines with Jev and falls back to the offline naive Bayes; it sends each charge's redacted text to Jev (ADR-032). `NL_PII_DETECTOR=azure` adds Azure AI Language as a second redaction layer; it is off by default because it sends statement text to Microsoft (see `docs/SECURITY.md`).
@@ -58,20 +62,25 @@ evidence/    exported audit logs and test results for the submission
 |---|---|
 | [docs/SCOPE.md](docs/SCOPE.md) | What we are building, the review findings, open decisions, the plan |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Where code goes and how to add tools, providers and adapters |
-| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permission tiers, S01–S15 and known risks |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, permission tiers, attack tests S01–S24, S30–S32 and S35–S38, the compliance map and known risks |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Privacy policy: what data is processed, where, for how long, who receives it, and what is not built yet |
+| [docs/TERMS.md](docs/TERMS.md) | Terms of use of the sandbox |
+| [docs/FINANCIAL_CORE.md](docs/FINANCIAL_CORE.md) | The engine: parameters, formulas and hard rules |
+| [docs/latex/](docs/latex/README.md) | The technical documentation and the security self-assessment (LaTeX, PDFs in `build/`) |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture decision log |
 | [docs/runbooks/SYNTHETIC_DATA.md](docs/runbooks/SYNTHETIC_DATA.md) | Random cartolas to upload, and seeding the database with them |
 | [docs/runbooks/INCIDENT_RESPONSE.md](docs/runbooks/INCIDENT_RESPONSE.md) | Breach response: detect, contain, assess, notify, recover, learn |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow and definition of done |
 
-## Status (Oct 10, 2026)
+## Status (Oct 20, 2026)
 
-- ✅ Offline end-to-end demo arc (six scenes), verified replies, hash-chained audit
-- ✅ Financial core stage 2 (forecast, simulator, surplus, capacity, plan): all 14 golden answers E01–E14
-- ✅ Security suite S01–S12 · contracts · architecture tests · SQLite adapter · CI workflow (first run on push)
-- ✅ Stage 1: deterministic ledger generator + estimators reproduce both personas exactly; E01–E14 also pass on the estimated models (`NL_MODEL_SOURCE=ledger`, `make demo-ledger`)
-- ⏳ Real LLM provider choice (Role B) · Jev adapter (Role B) · frontend (Role D)
+- ✅ Offline end-to-end demo arc (six scenes), verified replies, hash-chained audit; golden answers E01–E14 unchanged (`params_version` `fc-0.3`)
+- ✅ Financial core: forecast, simulator, surplus, capacity, plan, spending check-in; suitability gaps UG01–UG03 closed
+- ✅ Accounts mode with sealed storage (SQLite), account deletion and a download of your data (G02)
+- ✅ Receipts and documents (ADR-039), concept cards with lexical or Chroma search (ADR-040), Fintual (ADR-044), read-only connections (ADR-047)
+- ✅ Security suite S01–S24, S30–S32, S35–S38 · compliance map · contracts · architecture tests · CI on every push
+- ✅ User memory, saved only (ADR-048): no number depends on it
+- ⏳ Decision gate for a declared salary to enter the forecast (ADR-049, Roles A and E, 22 October) · opposition and consent (G05, G06) · real LLM provider and Jev choice (Role B)
 
 ## Team
 
@@ -83,4 +92,4 @@ evidence/    exported audit logs and test results for the submission
 | D · Frontend | Vicente Ramírez |
 | E · Quality and submission | Joaquín Parraud |
 
-The data is synthetic. This is a sandbox: no real money, accounts or personal data.
+The data is synthetic. This is a sandbox: no real money moves, and you should not enter real personal data. Accounts exist in accounts mode, and open sign-up cannot guarantee that no personal data is stored; see [docs/PRIVACY.md](docs/PRIVACY.md).

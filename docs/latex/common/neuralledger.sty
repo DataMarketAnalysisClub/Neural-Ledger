@@ -1,0 +1,144 @@
+% Shared style for the Neural Ledger documents (docs/latex). Load with \usepackage{neuralledger}
+% after setting TEXINPUTS (latexmkrc does it) so that ../common is on the search path.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{neuralledger}[2026/10/19 Neural Ledger document style]
+
+% ---- Fonts, encoding, page --------------------------------------------------------------------
+\RequirePackage[T1]{fontenc}
+\RequirePackage{lmodern}
+\RequirePackage[english]{babel}
+\RequirePackage[a4paper,margin=2.4cm,headheight=14pt]{geometry}
+\RequirePackage[final]{microtype}
+\RequirePackage{parskip}
+\setlength{\emergencystretch}{3em}
+
+% ---- Mathematics, tables, lists, colour --------------------------------------------------------
+\RequirePackage{amsmath,amssymb}
+\RequirePackage{booktabs}
+\RequirePackage{tabularx}
+\RequirePackage{array}
+\RequirePackage{longtable}
+\RequirePackage{multirow}
+\RequirePackage{enumitem}
+\setlist{itemsep=0.15em,topsep=0.3em}
+\RequirePackage{xcolor}
+% Greys only: every figure and table must stay legible when printed in black and white.
+\definecolor{nlink}{gray}{0.15}
+\definecolor{nlfill}{gray}{0.92}
+\definecolor{nlfilldark}{gray}{0.80}
+\definecolor{nlrule}{gray}{0.45}
+\RequirePackage{caption}
+\RequirePackage[section]{placeins} % floats stay in their section
+\captionsetup{font=small,labelfont=bf,skip=6pt}
+\RequirePackage{fancyhdr}
+\RequirePackage{lastpage}
+
+% ---- Code and identifiers ----------------------------------------------------------------------
+% \code{...}: an identifier, path or command in monospace, breakable at punctuation (no overfull lines).
+\RequirePackage[obeyspaces,spaces]{url}
+\DeclareUrlCommand\code{\urlstyle{tt}}
+\renewcommand{\UrlBreaks}{\do\/\do\.\do\_\do\-\do\:\do\|\do\=\do\,\do\(\do\)\do\[\do\]\do\{\do\}}
+\renewcommand{\UrlBigBreaks}{}
+\RequirePackage{listings}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  breakatwhitespace=false,
+  frame=single,
+  rulecolor=\color{nlrule},
+  framesep=4pt,
+  xleftmargin=6pt,
+  xrightmargin=6pt,
+  showstringspaces=false,
+  upquote=true,
+}
+
+% ---- Algorithms --------------------------------------------------------------------------------
+\RequirePackage[ruled,vlined,linesnumbered]{algorithm2e}
+\SetAlFnt{\small}
+\SetAlCapFnt{\small}
+\SetAlCapNameFnt{\small}
+\SetKwInput{KwIn}{Input}
+\SetKwInput{KwOut}{Output}
+\SetKwComment{Comment}{\# }{}
+\SetCommentSty{textit}
+\SetKw{KwContinue}{continue}
+\SetKw{KwFail}{fail}
+
+% ---- Diagrams ----------------------------------------------------------------------------------
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc,shapes.geometric,shapes.multipart,decorations.pathreplacing}
+\tikzset{
+  >={Stealth[length=2.2mm]},
+  every node/.style={font=\footnotesize},
+  box/.style={draw,rounded corners=2pt,align=center,inner sep=4pt,minimum height=7mm,fill=white},
+  core/.style={box,fill=nlfill},
+  ext/.style={box,dashed},
+  store/.style={draw,cylinder,shape border rotate=90,aspect=0.18,align=center,inner sep=3pt,minimum height=11mm,fill=nlfill},
+  keybox/.style={draw,line width=1.4pt,align=center,inner sep=4pt,minimum height=7mm,fill=white},
+  layer/.style={draw,rounded corners=3pt,inner sep=6pt,fill=white},
+  boundary/.style={draw,dashed,thick,rounded corners=4pt,inner sep=7pt},
+  zone/.style={draw,rounded corners=4pt,inner sep=7pt,fill=nlfill},
+  flow/.style={->,thick},
+  weak/.style={->,densely dotted},
+  label/.style={font=\scriptsize,align=center,fill=white,inner sep=1.5pt},
+  num/.style={circle,draw,fill=white,inner sep=1pt,font=\scriptsize\bfseries,minimum size=4.2mm},
+}
+
+% ---- Cross references (hyperref before cleveref) ---------------------------------------------------
+\RequirePackage[hidelinks,bookmarksnumbered,pdfusetitle,unicode]{hyperref}
+\RequirePackage[capitalise,noabbrev,nameinlink]{cleveref}
+\crefname{algocf}{Algorithm}{Algorithms}
+\Crefname{algocf}{Algorithm}{Algorithms}
+\crefname{lstlisting}{Listing}{Listings}
+
+% ---- Metadata and title page ------------------------------------------------------------------------
+\input{meta.tex}
+
+% \nlTitlePage{<document title>}{<subtitle>}{<one-paragraph scope note>}
+\newcommand{\nlTitlePage}[3]{%
+  \begin{titlepage}
+    \thispagestyle{empty}
+    \vspace*{2.5cm}
+    {\large\scshape \nlProject\par}
+    \vspace{0.6cm}
+    {\rule{\linewidth}{0.8pt}\par}
+    \vspace{0.4cm}
+    {\LARGE\bfseries #1\par}
+    \vspace{0.3cm}
+    {\large #2\par}
+    \vspace{0.4cm}
+    {\rule{\linewidth}{0.4pt}\par}
+    \vspace{0.8cm}
+    {\small \nlTagline\\ \nlEvent\par}
+    \vspace{1.2cm}
+    \nlAuthorTable
+    \vspace{1.2cm}
+
+    {\small
+    \begin{tabular}{@{}ll@{}}
+      Date & \nlDate \\
+      Document version & \nlDocVersion \\
+      Software version & \nlSoftwareVersion{} (\texttt{backend/pyproject.toml}) \\
+      Code described & commit \texttt{\nlCommit} on branch \texttt{\nlBranch} \\
+    \end{tabular}\par}
+    \vfill
+    {\small #3\par}
+  \end{titlepage}}
+
+\newcommand{\nlHeaders}[1]{%
+  \pagestyle{fancy}
+  \fancyhf{}
+  \fancyhead[L]{\small\scshape \nlProject}
+  \fancyhead[R]{\small #1}
+  \fancyfoot[C]{\small \thepage\ / \pageref*{LastPage}}
+  \renewcommand{\headrulewidth}{0.4pt}}
+
+% A short labelled paragraph used for "Code:" pointers and ADR fields.
+\newcommand{\field}[1]{\textbf{#1.}\ }
+% A note where the Markdown documentation and the code disagree (the code wins).
+\newenvironment{discrepancy}{\par\medskip\noindent\begin{minipage}{\linewidth}\small\textbf{Docs vs code.}\ }{\end{minipage}\par\medskip}
+
+\endinput

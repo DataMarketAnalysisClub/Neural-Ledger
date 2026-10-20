@@ -1,0 +1,29 @@
+% Key hierarchy (bootstrap/data_key.py, adapters/outbound/persistence/field_cipher.py) and the other secrets.
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{src/.style={box,text width=33mm,align=left,minimum height=8mm}}
+  \node[font=\footnotesize\bfseries,anchor=south west] at (-19,18) {key sources, first found wins};
+  \node[src] (s1) at (0,11) {\textbf{1.} Docker secret\\\code{/run/secrets/nl_data_key}};
+  \node[src] (s2) at (0,0) {\textbf{2.} \code{NL_DATA_KEY_FILE}};
+  \node[src] (s3) at (0,-10) {\textbf{3.} \code{NL_DATA_KEY} variable};
+  \node[src,dashed] (s4) at (0,-24) {\textbf{local runs only:} \code{<db>.key} on the data volume, with a warning};
+  \node[keybox,text width=27mm] (master) at (42,-6) {\code{NL_DATA_KEY}\\32 random bytes\\(64 hex characters)};
+  \foreach \s in {s1,s2,s3} \draw[flow] (\s.east) -- (master.west);
+  \draw[flow,dashed] (s4.east) -- (master.south west);
+  \node[box,text width=33mm] (hk1) at (82,8) {HKDF-SHA256, info\\\scriptsize\code{neural-ledger/v2/field-encryption}};
+  \node[box,text width=33mm] (hk2) at (82,-20) {HKDF-SHA256, info\\\scriptsize\code{neural-ledger/v1/blind-index/email}};
+  \draw[flow] (master.east) -- (hk1.west);
+  \draw[flow] (master.east) -- (hk2.west);
+  \node[keybox,text width=21mm] (fk) at (124,8) {field key\\256 bit};
+  \node[keybox,text width=21mm] (ik) at (124,-20) {email index\\key, 256 bit};
+  \draw[flow] (hk1) -- (fk);
+  \draw[flow] (hk2) -- (ik);
+  \node[core,text width=24mm] (aes) at (124,27) {AES-256-GCM\\seal, open\\\code{nlenc2:}};
+  \node[core,text width=24mm] (hmac) at (124,-39) {HMAC-SHA256\\of the email:\\\code{email_index}};
+  \draw[flow] (fk) -- (aes);
+  \draw[flow] (ik) -- (hmac);
+  \draw[weak] (master.north) |- node[label,pos=0.72]{opens legacy \code{nlenc1:} values only} (aes.west);
+  \node[keybox,text width=33mm,align=left] (hmacsec) at (0,-52) {\code{NL_HMAC_SECRET}\\variable, at least 16 characters};
+  \node[core,text width=40mm] (sign) at (50,-52) {HMAC-SHA256 of the canonical\\action terms: \code{action_hash}};
+  \draw[flow] (hmacsec) -- (sign);
+  \node[box,text width=42mm,align=left] (other) at (110,-56) {Not keys: the session token is stored as its SHA-256 digest; the password as scrypt ($N{=}2^{14}$, $r{=}8$, $p{=}1$).};
+\end{tikzpicture}

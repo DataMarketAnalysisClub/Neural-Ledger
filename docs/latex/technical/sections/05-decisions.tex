@@ -1,0 +1,161 @@
+\section{Key design decisions}\label{sec:decisions}
+
+The decision log (\code{docs/DECISIONS.md}) has 41 records. This section restates the sixteen that shape the system most,
+in the log's format: context, decision, consequences. The status is the log's own. Several decisions are still
+``Proposed'' although their code is built and tested: the team marks a record ``Accepted'' at a sync, and some have
+not been through one yet.
+
+\newcommand{\adr}[3]{\subsection*{#1 \textperiodcentered{} #2}\addcontentsline{toc}{subsection}{#1 \textperiodcentered{} #2}\noindent\textit{Status: #3.}\par}
+
+\adr{ADR-001}{Clean architecture with a standard-library core}{Proposed}
+\field{Context} Five people, ten days, and undecided providers for the language model, the decision model, storage
+and the client.
+\field{Decision} \code{domain} and \code{application} use only the standard library; everything external is a port
+with an offline adapter; one composition root. Enforced by \code{tests/architecture}.
+\field{Consequences} A provider swap is one adapter file. Slightly more structure than a script, mitigated by the
+recipes in \code{docs/ARCHITECTURE.md}.
+
+\adr{ADR-003}{The application orchestrates; the language model is an adapter}{Proposed}
+\field{Context} An early diagram put the language model in front of everything, in the control path of actions.
+\field{Decision} Use cases own the flow. The decision model classifies the raw text independently of the language
+model, which only chooses the tools allowed in the turn and writes text. Execution reads terms from the stored
+authorization.
+\field{Consequences} A fully compromised model cannot move money; test S01 checks it with a hostile fake model.
+
+\adr{ADR-004}{A decision-model port of closed questions, in a configurable chain}{Proposed}
+\field{Decision} The port asks closed questions (choice, score, yes/no) and returns a label, probabilities and a
+confidence. Adapters: keyword rules (always available) and Jev. \code{NL_DECISION_CHAIN} sets the order; when every
+model is unavailable, the turn is read-only.
+\field{Consequences} ``Jev first or rules first'' is configuration, and no money decision depends on any model.
+
+\adr{ADR-006}{Offline mode is a requirement}{Proposed}
+\field{Decision} The scripted language model and the rules decision model run the whole demo arc without keys or
+network.
+\field{Consequences} Reproducible CI and recordings, outages covered (S10), and judges can run the system with
+\texttt{docker compose up}.
+
+\adr{ADR-008}{HMAC-signed authorizations and a hash-chained audit log}{Proposed}
+\field{Decision} \code{action_hash} $=$ HMAC-SHA256(server secret, canonical terms); audit events chained by
+\code{prev_hash} and \code{event_hash}; an execution starts only after its audit event is written.
+\field{Consequences} Tampered terms (S05) and edited audit events are detected; the exported log is evidence anyone can
+verify. Option B adds tombstones to the chain (ADR-038).
+
+\adr{ADR-013}{Content-addressed snapshot ids and a parameter lock}{Proposed}
+\field{Decision} A ledger's \code{source_version} hashes its canonical content; every \code{snapshot_id} hashes
+\code{source_version}, \code{as_of} and \code{params_version}; \code{FinanceParams.fingerprint()} is pinned per version
+in a test.
+\field{Consequences} One peso anywhere changes the snapshot id, and the audit's \code{forecast_snapshot_id} and
+\code{policy_version} always name the data and the numbers used.
+
+\adr{ADR-020}{Reconciliation is the authority over the reader}{Built}
+\field{Decision} The domain recomputes totals and balances from the lines and compares them with what the bank printed.
+Low OCR confidence only warns.
+\field{Consequences} Amounts are trusted because they add up, never because a reader was confident; descriptions are the
+only thing reconciliation cannot check.
+
+\adr{ADR-028}{Personal data is removed from a statement once, at import}{Built}
+\field{Context} Statement descriptions carry names, RUTs, account and card numbers, emails and phones.
+\field{Decision} Deterministic rules, plus an optional detector that can only add masking, run before anything is
+stored, classified, audited or returned. An import that cannot be redacted stores nothing.
+\field{Consequences} No surface (API, audit, database, logs, model) sees the raw text; test S15 checks every surface.
+Rules are written for Chilean statements, and a name outside a transfer line can slip through.
+
+\adr{ADR-037}{The user's own liquidity floor}{Built, needs Roles A and B review}
+\field{Decision} A floor is an action like a savings rule: proposed by the copilot, confirmed by the user, executed in
+the sandbox bank. Its amount is accepted only if the user wrote it in the same turn. The latest floor rule replaces the
+register's 150{,}000 for that user in every computation, and enters the snapshot id.
+\field{Consequences} \code{params_version} is unchanged and the golden answers do not move; Role A must confirm that a
+floor below the register's suits the capacity bands.
+
+\adr{ADR-038}{Option B: open sign-up, explicit sandbox, everything sealed, deletable accounts}{Built on \code{security/option-b-hardening}}
+\field{Context} Anyone can create an account on the public demo, so a visitor could store a real cartola. Profiles,
+proposals, rules, the audit chain and the email were plain text, and the offline key file sat on the database's
+volume.
+\field{Decision} Keep sign-up open, but: a notice that cannot be dismissed, with a server-checked acknowledgement; the
+key from a Docker secret, refused on the data volume in deployed mode; every personal payload sealed, with HKDF
+subkeys and an HMAC blind index for the email; account deletion with audit tombstones; demo personas reset, never
+deleted. It replaces step 6 of ADR-033 (one route instead of two, and erased events instead of kept ones).
+\field{Consequences} One migration per server; losing the key loses the data; the host stays out of scope; a notice is
+a rule, not a control (\cref{sec:security}).
+
+\adr{ADR-039}{Drop any document on the copilot: receipts, statements and a daily spending check-in}{Built, needs Roles A, C and E review}
+\field{Context} The product was used once a month, when a statement arrived.
+\field{Decision} \code{POST /v1/documents} takes any file and the server routes it: a spreadsheet is a statement;
+otherwise the printed words decide, then the decision chain on the redacted text at a confidence of at least 0.80.
+Receipts are read and checked (total, date, net plus VAT, the SII stamp against the print), never posted, and counted
+once against statement charges. A spending check-in compares the cycle's logged spending with the forecast's P80
+(\cref{sec:spending}). Expenses said in chat are proposed by the agent and confirmed by the user.
+\field{Consequences} \code{params_version} stays \code{fc-0.3}. Photos need the \code{ocr} extra, which the image
+does not ship, so in Docker receipts are read from PDFs.
+
+\adr{ADR-040}{Financial education by retrieval: concept cards, definitions not advice}{Built, needs Role B review}
+\field{Context} Every term got the same fixed paragraph, and an answer from the model's memory cannot be checked.
+\field{Decision} About 70 cards (35 concepts, Spanish and English) written by the team in its own words, each citing
+its public sources. A \code{KnowledgeBase} port with a BM25 adapter (offline, default) and a ChromaDB adapter with
+multilingual embeddings. The T0 tool \code{search_financial_concepts}, on the \code{EXPLAIN} intent only. Card numbers
+are facts, \code{EDUCATIONAL_NOT_ADVICE} must be mentioned, and card text is untrusted data. Defining an ETF is allowed;
+advice on what to invest in stays out of scope.
+\field{Consequences} An optional \code{rag} extra and \code{chroma} container. A recall@3 gate in
+\code{tests/rag_eval} (both indexes reach 1.0 on 48 questions in Spanish and English). Card content is a team responsibility.
+
+\adr{ADR-044}{Fintual: the agent reads the statements the user imports}{Built (steps 1 and 2), Proposed}
+\field{Context} Users want to know what they hold outside the bank. Fintual's API has no read-only scope: its token
+acts as the user.
+\field{Decision} A read-only \code{InvestmentProvider} port; linking keeps only a sealed token; one T0 tool,
+\code{get_investments}; link and unlink are T3 for the agent. Step 2 imports Fintual's two PDFs through the document
+workflow and keeps them only if their shares, prices and totals add up. Linking a real account is refused by Fintual
+today (\code{READ_REFUSED}) and is shown as in development.
+\field{Consequences} Investments do not reach the forecast yet (Role A, \code{fc-0.4}). Deployed mode refuses the
+real provider.
+
+\adr{ADR-047}{Read-only connections: any MCP server the user adds, and their bank through Fintoc}{Proposed, needs Roles A, B, C and E}
+\field{Context} No Chilean investment app publishes a read API, and banks open theirs only from July 2027.
+\field{Decision} Read-only is enforced on our side: a tool can be enabled only if it declares itself read-only, is
+not destructive, has no write verb in its name and needs no arguments. Only the user's sync calls it, always with
+empty arguments. Addresses must be HTTPS and public. Answers are redacted, sealed and read by the agent through
+\code{get_connected_data} as untrusted text. Fintoc movements go through the statement import. Connectors are off in
+deployed mode unless explicitly enabled.
+\field{Consequences} A server can still lie about what a tool does, and DNS rebinding is a known gap
+(\cref{sec:security}). Nothing from a connection reaches the forecast.
+
+\adr{ADR-048}{Typed user memory: declarations the user confirms, conclusions derived on read}{Proposed, needs Roles A, C and E; built as saved only}
+\field{Context} A user can state their net salary, but nothing survived the conversation, and ADR-009 and ADR-030 had
+rejected free-form memory because it is a persistent prompt-injection channel.
+\field{Decision} A closed catalog \code{mem-0.1} with one type, \code{salary_net} (an integer CLP amount and the pay
+month it starts). Declarations are stored as versions of a chain; whether the statements support one is derived on every
+read. The origin of a declaration is a reference, never text. Only the user confirms, in a card or in the profile; the
+two tools take no arguments and no tool writes. A revocable consent gates every use. The rows are sealed and are in the
+export, the erasure and the key migration. Confirmations, deletions and the evidence changes found at import are audited.
+\field{Consequences} The project owner approved building it \emph{saved only}: it changes no calculation and keeps
+\code{fc-0.3}. A fence orders memory changes against the two points of a chat turn at which a reply is authorized and
+published (\cref{sec:memory}). The tables were added without a schema version bump, so an older binary must not open a
+database that holds memory. The plan's eleven acceptance scenarios could not be recovered; \code{test_memory_acceptance.py}
+holds a replacement matrix.
+
+\adr{ADR-049}{A declared salary enters the forecast by decomposition, never by difference (fc-0.4)}{Proposed; gate for Roles A and E by 22 October 2026}
+\field{Context} Adding the gap between the declared and the observed salary double counts a raise once the raise reaches
+the history, and a declaration must not lift the conservative scenario on words alone.
+\field{Decision} Take the identified salary out of the history and put the declaration in its place:
+typical income is the P50 of the other credits plus the declared salary, and conservative income is their P20 plus the
+lower of the declared salary and the median of the matched credits, once there are two. With no verified base, or in
+conflict, memory has no effect. Income becomes a per-month calendar, and the debt-service ratio of capacity is taken
+month by month. Four warnings say whether memory is applied or only saved. New parameters give \code{fc-0.4}.
+\field{Consequences} The calculation is written and tested but not wired (\cref{sec:memory}). If the gate does not close,
+the conservative scenario stays observed. A varying salary can lift the conservative income above the observed P20 by
+the ADR's own example, which Roles A and E must accept or change.
+
+\subsection*{Open decisions}\addcontentsline{toc}{subsection}{Open decisions}
+\begin{itemize}
+  \item \textbf{ADR-014}: plan sizing is not monotone (\cref{sec:plan}); a fix is proposed, not accepted.
+  \item \textbf{UG01--UG03}: closed in code, without a new \code{params_version} because no amount changed. Role A
+    still has to approve emitting H3 as a warning only.
+  \item \textbf{ADR-044 and ADR-047} overlap: Fintual is both a provider of its own and a possible MCP server. Fintual
+    questions go to \code{get_investments}.
+  \item \textbf{ADR-021}: statements that do not reconcile should go to the user for correction and be usable either way;
+    decided, not built (today they are stored and not posted).
+  \item \textbf{ADR-033}: the plan to close the compliance gaps. Rate limits (G07), encryption at rest (G11), deletion
+    (G03) and export (G02) are built; opposition and blocking (G05) and consent (G06) are not.
+  \item \textbf{ADR-048 and ADR-049} are Proposed. Memory is built saved only; whether a declared salary may change the
+    forecast is the gate Roles A and E must close by 22 October 2026. ADR-041 and ADR-046, which belong to the same plan,
+    are reserved and not written.
+\end{itemize}
