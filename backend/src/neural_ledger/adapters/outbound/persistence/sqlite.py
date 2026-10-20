@@ -1222,6 +1222,13 @@ class SqliteActionRepository:
         )
         return tuple(self._open_proposal(r) for r in proposals), tuple(self._open_authorization(r) for r in auths)
 
+    def for_user(self, user_id: str) -> tuple[tuple[Proposal, ...], tuple[Authorization, ...]]:
+        proposals = self._db.fetchall("SELECT proposal_id, user_id, payload FROM proposals WHERE user_id = ? ORDER BY rowid", (user_id,))
+        auths = self._db.fetchall(
+            "SELECT authorization_id, user_id, payload, consumed_at FROM authorizations WHERE user_id = ? ORDER BY rowid", (user_id,)
+        )
+        return tuple(self._open_proposal(r) for r in proposals), tuple(self._open_authorization(r) for r in auths)
+
 
 def _open_record(cipher: FieldCipher, row: tuple) -> dict:
     """An audit record (event_id, user_id, sealed record): the hash chain lives inside it, so verifying the chain

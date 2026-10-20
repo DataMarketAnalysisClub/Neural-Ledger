@@ -1,0 +1,149 @@
+\section{Data model}\label{sec:data-model}
+
+Domain objects are frozen dataclasses; use cases return an \code{Envelope} (financial reads) or an \code{ActionOutcome}
+(actions). Money fields are integers in minor units of the user's currency (CLP has no minor unit, so one peso is one
+unit).
+
+\subsection{The financial model}
+
+A \code{FinancialModel} (\code{domain/finance/model.py}) is everything the engine needs about one user, either loaded
+from a persona fixture, estimated from a synthetic ledger (stage 1, \code{domain/finance/estimation.py}) or estimated
+from the user's own verified statements (ADR-029, \code{application/services/statement_model.py}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{42mm}X@{}}
+    \toprule
+    Field & Meaning \\
+    \midrule
+    \code{as_of}, \code{first_cycle} & the day before a payday, and the first pay cycle to project (months are pay cycles; payday is the last weekday) \\
+    \code{balances} & checking (the opening trough), reserve, and one bucket per goal \\
+    \code{income} & \code{typical} and \code{conservative} monthly income, the coefficient of variation (an exact \code{Fraction}), and the method (contracted or percentile) \\
+    \code{commitments} & rent, subscriptions, loans and cuotas, each with first and last due cycle and a confidence; a label from merchant text is untrusted data \\
+    \code{spend} & variable spend per category with P50 and P80, an \code{essential} flag, and seasonal factors (one December factor) \\
+    \code{goals} & target, saved amount and deadline \\
+    \code{source_version}, \code{largest_one_off_expense} & a content hash of the source data (part of every snapshot id) and the stress shock candidate \\
+    \bottomrule
+  \end{tabularx}
+  \caption{\texttt{FinancialModel}.}\label{tab:model}
+\end{table}
+
+\subsection{Statements, transactions and actions}
+
+A \code{BankStatement} is what a reader returns: bank layout, masked account reference (\code{****3456}), currency,
+period, lines (date, amount, description, kind, section, installment) and everything the bank printed for checking
+(summary, daily balances, section totals and, for a credit card, its obligations). After redaction and reconciliation
+it is stored as a \code{StoredStatement} with its issues; it is \emph{verified} when it reconciles. A verified, final
+statement is posted line by line as \code{PostedTransaction}s (\code{domain/ledger/categorization.py}), each with its
+category, the classifier that chose it and that classifier's confidence.
+
+\code{ActionTerms} (\code{domain/actions/terms.py}) is the exact content of an action: action type
+(\code{create_savings_rule} or \code{set_liquidity_floor}), amount, currency, frequency, source account, destination
+and effective date, serialized canonically for hashing and signing. A \code{Proposal} wraps terms with the snapshot it
+came from, an expiry and a status; an \code{Authorization} adds the signed \code{action_hash}, an expiry and, once used,
+\code{consumed_at}. Executed rules are \code{SavingsRule}s in the sandbox bank's store.
+
+\subsection{Receipts, investments, connections and concept cards}\label{sec:new-data}
+
+\begin{description}[style=nextline,leftmargin=1.2em]
+  \item[\code{StoredReceipt}] (\code{domain/receipts/model.py}, ADR-039): a boleta's store (redacted like a statement
+    line), date, total, folio, whether the SII stamp agreed with the print, a category, and the issues found. An
+    expense the user confirmed in chat is kept the same way with \code{source: manual}. A receipt is never posted to
+    the ledger. It counts as logged spending until a statement charge of the same amount, within three days, records it.
+  \item[\code{InvestmentLink}, \code{InvestmentSnapshot}, \code{StoredInvestmentDocument}] (\code{domain/investments},
+    ADR-044): the sealed provider token and email, the goals of each sync (at most 400 snapshots), and the verified
+    Fintual statements and transaction certificates (the newest 24). Amounts are integer pesos, rounded half up once.
+    The holder's name and RUT are never extracted.
+  \item[\code{Connection}, \code{ConnectionSnapshot}] (\code{domain/connections/model.py}, ADR-047): the server
+    address, the enabled tools, the sealed access token, and the latest redacted answer per tool. Fintoc movements
+    become a \code{BankStatement} with \code{bank=fintoc} and go through the statement import.
+  \item[\code{ConceptCard}] (\code{domain/education/concepts.py}, ADR-040): a concept in one language, with its
+    aliases, body, sources and the numbers its body may state. Cards are Markdown files in the repository, not user
+    data.
+\end{description}
+
+\subsection{User memory}\label{sec:memory-data}
+
+\begin{description}[style=nextline,leftmargin=1.2em]
+  \item[\code{Declaration}] (\code{domain/memory/catalog.py}, ADR-048): one version of a user's declared net salary: an
+    id, a chain id and version number, the owner, the type, the typed value, the pay month it starts, when and by whom it
+    was confirmed (always the user), the source (\code{chat} or \code{profile}), an origin that is a reference and never
+    text, and the audit reference of its confirmation. Whether statements support it is never stored.
+  \item[\code{MemoryState}] (\code{domain/memory/consent.py}): per user, the consent (missing, granted or revoked), a
+    consent generation that moves on every actual change, and a memory revision that moves on every confirmation or
+    deletion and is never reset.
+  \item[\code{MemoryProposal}] (\code{domain/memory/proposals.py}): a salary prepared from a chat message, waiting for the
+    user: the candidates and pay month read from that message, the chain and version it would extend, and the counters
+    of its moment. It is used once and expires after the proposal time to live (30 minutes).
+\end{description}
+
+\subsection{Users, sessions and the audit trail}
+
+\begin{description}[style=nextline,leftmargin=1.2em]
+  \item[\code{UserAccount}] (\code{domain/user/account.py}): a generated \code{usr_} id, the normalized email, an encoded
+    scrypt hash and the creation time. The email and the hash never reach the agent, an envelope, a log or the audit.
+  \item[\code{Session}]: a generated \code{sess_} reference (the only session identifier the audit sees), the owner,
+    the SHA-256 digest of the token, creation, expiry (exactly twelve hours later) and revocation time.
+  \item[\code{UserProfile}] (\code{domain/user/profile.py}): display name (1--40 letters, spaces, periods, apostrophes or
+    hyphens, so it cannot carry instructions in markup or code), language, declared tolerance and versioned
+    questionnaire answers. The agent can read it (T0) but never write it: profile writes are user-only HTTP routes.
+  \item[\code{AuditEvent}] (\code{domain/audit/events.py}): an \code{AuditDraft} (event id, time, session, actor, kind,
+    intent and confidence, decision-model answers, tool and a hash of its parameters, snapshot, policy version, tier,
+    authorization, result, block reason, model version, a short detail, owner) sealed onto a chain with
+    \code{sequence}, \code{prev_hash} and \code{event_hash} $=$ SHA-256 of the canonical JSON of everything else.
+\end{description}
+
+\subsection{Envelopes and snapshot ids}\label{sec:envelope}
+
+Every financial read returns an \code{Envelope} (\code{domain/shared/envelope.py}, \code{contracts/common/envelope.schema.json}):
+a status (\code{OK}, \code{INSUFFICIENT_DATA}, \code{INVALID_INPUT}), the parameter version, the data, a
+\code{snapshot_id}, and two lists. \code{facts} are traceable numbers (key, value, unit, derivation); \code{warnings} are
+\code{Caveat}s with \code{must_mention} tokens. A snapshot id is a content hash of the model's \code{source_version},
+its \code{as_of} and the parameter version (ADR-013); with a user floor rule (ADR-037) the floor is part of it too.
+Changing any number of the input changes the id, so a proposal can always be traced to the exact data and parameters
+it was sized from. \code{FinanceParams.fingerprint()} hashes every parameter exactly, and
+\code{tests/unit/test_params_lock.py} pins the fingerprint per version: a parameter cannot change without a new
+\code{params_version}.
+
+\subsection{Persistence schema}\label{sec:schema}
+
+The SQLite adapter (\code{adapters/outbound/persistence/sqlite.py}) keeps schema version~1 in \code{PRAGMA user_version}.
+Every column that holds personal or financial content is sealed (\cref{sec:at-rest}); the clear columns are the ones
+the stores search or order by (\cref{tab:schema}). A file at version~0 (before option B) is upgraded by
+\code{upgrade_schema} inside the migration (\cref{alg:migrate}).
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{30mm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{28mm}@{}}
+    \toprule
+    Table & Clear columns & Sealed column \\
+    \midrule
+    \code{statements} & \code{statement_id}, \code{user_id} & \code{payload} \\
+    \code{transactions} & \code{txn_id}, \code{user_id}, \code{posted_on} & \code{payload} \\
+    \code{receipts} & \code{receipt_id}, \code{user_id} & \code{payload} \\
+    \code{investment_links} & \code{user_id} & \code{payload} \\
+    \code{investment_snapshots} & \code{snapshot_id}, \code{user_id} & \code{payload} \\
+    \code{investment_documents} & \code{document_id}, \code{user_id} & \code{payload} \\
+    \code{connections} & \code{connection_id}, \code{user_id} & \code{payload} \\
+    \code{connection_results} & \code{connection_id}, \code{user_id}, \code{tool} & \code{payload} \\
+    \code{user_memory} & \code{sequence}, \code{memory_id}, \code{chain_id}, \code{version}, \code{user_id}, \code{type} & \code{payload} \\
+    \code{memory_state} & \code{user_id} & \code{payload} \\
+    \code{memory_proposals} & \code{proposal_id}, \code{user_id} & \code{payload} \\
+    \code{user_profiles} & \code{user_id} & \code{payload} \\
+    \code{user_accounts} & \code{user_id}, \code{email_index} (HMAC), \code{sample_data} & \code{payload} \\
+    \code{proposals} & \code{proposal_id}, \code{user_id}, \code{session_id} & \code{payload} \\
+    \code{authorizations} & \code{authorization_id}, \code{user_id}, \code{session_id}, \code{consumed_at} & \code{payload} \\
+    \code{savings_rules} & \code{rule_id}, \code{user_id} & \code{payload} \\
+    \code{audit_events} & \code{sequence}, \code{event_id}, \code{user_id}, \code{session_id} & \code{record} \\
+    \code{sessions} & all: reference, owner, token digest, times & none \\
+    \code{meta} & \code{name} & \code{value} (the key check) \\
+    \bottomrule
+  \end{tabularx}
+  \caption{SQLite schema version 1. The associated data of every sealed value is \texttt{<table>|<user\_id>|<row id>}; for \texttt{connection\_results} the row id is \texttt{<connection>|<tool>}. The nine tables added after option B are created sealed, so they need no migration. The three memory tables keep version~1 (\cref{sec:security}, no downgrade).}\label{tab:schema}
+\end{table}
+
+Writes that change account, session, profile or transaction state commit together with their audit events or not
+at all: the \code{*Writes} adapters run one \code{BEGIN IMMEDIATE} transaction and append the audit drafts inside it, so a
+failed audit leaves no unrecorded change. \code{PRAGMA secure_delete=ON} makes SQLite overwrite deleted rows.

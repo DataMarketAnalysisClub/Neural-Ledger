@@ -66,6 +66,25 @@ def test_authorization_is_single_use(stores):
     assert repo.consume_authorization("missing", NOW) is False
 
 
+def test_for_user_lists_every_proposal_and_authorization_of_that_user_only(stores):
+    """The data export (G02) reads these: every status, across sessions, never another user's."""
+    repo, _ = stores
+    mine = Proposal("prop_1", "s1", "camila", TERMS, "plan_x", NOW, NOW + timedelta(minutes=30))
+    later = Proposal("prop_2", "s2", "camila", TERMS, "plan_y", NOW, NOW + timedelta(minutes=30))
+    repo.add_proposal(mine)
+    repo.add_proposal(Proposal("prop_3", "s1", "diego", TERMS, "plan_z", NOW, NOW + timedelta(minutes=30)))
+    repo.add_proposal(later)
+    repo.update_proposal(replace(mine, status=ProposalStatus.CONFIRMED))
+    used = Authorization("auth_1", "prop_1", "s1", "camila", TERMS, "sig", NOW, NOW + timedelta(minutes=10))
+    repo.add_authorization(used)
+    repo.add_authorization(Authorization("auth_2", "prop_3", "s1", "diego", TERMS, "sig", NOW, NOW + timedelta(minutes=10)))
+    assert repo.consume_authorization("auth_1", NOW)
+    proposals, authorizations = repo.for_user("camila")
+    assert proposals == (replace(mine, status=ProposalStatus.CONFIRMED), later)
+    assert authorizations == (replace(used, consumed_at=NOW),)
+    assert repo.for_user("nobody") == ((), ())
+
+
 def test_audit_log_is_a_valid_chain(stores):
     _, audit = stores
     for i in range(5):

@@ -76,6 +76,26 @@ def test_the_session_cookie_is_the_caller_when_present(services):
     assert client.get("/v1/state").status_code == 200
 
 
+def _sign_in(client):
+    return client.post("/v1/auth/signin", json={"email": "a@example.com", "password": "wrong-password-1"})
+
+
+def test_one_ip_using_up_sign_in_does_not_lock_out_other_ips(services):
+    app = create_app(services, cors_origins=("http://localhost:3000",), rate_limits=DEFAULT_LIMITS)
+    attacker, visitor = TestClient(app, client=("203.0.113.7", 50000)), TestClient(app, client=("198.51.100.9", 50000))
+    assert 429 not in [_sign_in(attacker).status_code for _ in range(10)]
+    assert _sign_in(attacker).status_code == 429
+    assert _sign_in(visitor).status_code != 429
+    assert visitor.post("/v1/auth/demo-session").status_code != 429
+
+
+def test_a_caller_with_no_cookie_or_header_still_has_a_budget_per_ip(services):
+    client = _client(services, limits=(Limit("api", "/v1/", per_caller=2, per_ip=5),))
+    assert [client.get("/v1/state").status_code for _ in range(3)] == [200, 200, 429]  # the caller budget, keyed by IP
+    other = _client(services, limits=(Limit("api", "/v1/", per_caller=5, per_ip=2),))
+    assert [other.get("/v1/state").status_code for _ in range(3)] == [200, 200, 429]  # and the IP budget
+
+
 def test_health_is_never_limited(services):
     client = _client(services, limits=(Limit("api", "/v1/", per_caller=0, per_ip=0),))
     assert all(client.get("/health").status_code == 200 for _ in range(20))

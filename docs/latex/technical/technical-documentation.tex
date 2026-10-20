@@ -1,0 +1,28 @@
+% Technical documentation: architecture, algorithms, security design.
+% Build from docs/latex with `make` (latexmk, see latexmkrc). Consolidates docs/ARCHITECTURE.md,
+% docs/FINANCIAL_CORE.md, docs/DECISIONS.md, docs/SECURITY.md and docs/PRIVACY.md; the code is the authority.
+\documentclass[11pt,a4paper]{article}
+\usepackage{neuralledger}
+\hypersetup{pdftitle={Neural Ledger: Technical Documentation},pdfauthor={\nlAuthorsInline}}
+
+\begin{document}
+\nlTitlePage{Technical Documentation}{Architecture, algorithms and security design}{%
+This document describes the system as implemented at the commit named above. Every claim points to the file or
+function that implements it; where the Markdown documentation in \texttt{docs/} disagrees with the code, the code is
+followed and the difference is noted in a \emph{Docs vs code} paragraph and collected in \cref{sec:discrepancies}.
+The repository is public, and all data in it is synthetic.}
+
+\nlHeaders{Technical documentation}
+\tableofcontents
+\clearpage
+
+\input{technical/sections/01-overview}
+\input{technical/sections/02-architecture}
+\input{technical/sections/03-data-model}
+\input{technical/sections/04-financial-core}
+\input{technical/sections/05-decisions}
+\input{technical/sections/06-security}
+\input{technical/sections/07-privacy}
+\input{technical/sections/08-discrepancies}
+
+\end{document}

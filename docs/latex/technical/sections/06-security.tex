@@ -1,0 +1,216 @@
+\section{Security design}\label{sec:security}
+
+This section describes the controls as designed and built. The companion \emph{Security self-assessment report}
+evaluates them, rates the remaining risks and lists what is out of scope.
+
+\subsection{Threat model}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\linewidth}{@{}p{26mm}XX@{}}
+    \toprule
+    Asset & Threat & Primary controls \\
+    \midrule
+    Sandbox money & The model, or text injected through merchant names or chat, moves money & Tiers and the gate; signed, single-use, expiring authorizations only the user can create; terms re-read from storage (\cref{sec:confirmation}) \\
+    Truth of advice & The model invents or bends numbers, or hides a caveat & Every number must be a fact, every warning mentioned; otherwise deterministic narration (\cref{sec:verifier}) \\
+    Suitability & A plan more aggressive than the finances allow & Permitted profile $=$ min(tolerance, capacity), recomputed server-side; hard rules H1--H5 \\
+    Evidence & Audit events edited, removed or forged & Hash chain; erasure only through committed tombstones (\cref{sec:chain}) \\
+    Identity & A caller claims another user & Cookie sessions resolved server-side; identity header rejected; Origin check (\cref{sec:http}) \\
+    Personal data in statements & Stored, returned, logged or sent to a provider & Redaction at import (ADR-028) \\
+    Data at rest & A copy of the database, its WAL, a backup or the volume & Every personal payload sealed; key kept off the volume (\cref{sec:at-rest}) \\
+    Real data on a sandbox & A visitor uploads a real statement (open sign-up) & Sandbox notice and acknowledgement; sealing; deletion (\cref{sec:notice}) \\
+    Third-party text & Instructions in a receipt, a concept card, a Fintual goal name or a connected service's answer steer the model & Wrapped as untrusted text; no tool writes; numbers are facts; the narration never repeats goal names (S24, S30, S32, S36) \\
+    Provider credentials & A Fintual password or token, an MCP token or a Fintoc link leaks, or the agent links an account & Password used once and dropped; tokens sealed and bound to user and adapter; never in a response, log, prompt or audit; link and unlink are T3 (S31, S38) \\
+    Connected servers & A user-added address reaches the internal network (SSRF), or a ``read-only'' tool writes & HTTPS and public addresses only, no redirects, size and time limits; tools enabled only if read-only, argument-free and without a write verb; only the user's sync calls them (S35, S37) \\
+    Declared memory & The model writes, confirms or reads stale memory, or a revoked consent keeps being used & No tool writes; the user confirms; a revocable consent gates every read; stamped entries never reach a model once a counter moves; a per-user fence orders changes against reply publication (\cref{sec:memory}) \\
+    Copy of one's data & The export leaks a secret, or omits data a deletion would erase & The copy is built from the same stores the erasure empties, and a test maps every erased table to it; never the password hash, a token, a connection secret or a signature (\cref{sec:export}) \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Assets, threats and the controls that answer them (\texttt{docs/SECURITY.md}).}\label{tab:threats}
+\end{table}
+
+\subsection{Trust boundaries}
+
+\Cref{fig:trust} shows the public demo: a browser reaches Cloudflare's edge over TLS, a tunnel opened from the host
+carries the request to the web container, and nginx proxies \code{/api} to the API. Six boundaries matter.
+\textbf{B1} separates untrusted visitors (and their files) from the edge; \textbf{B2} is the tunnel into the host;
+\textbf{B3} is the API's own perimeter, where the identity guard, the rate limits and input validation run; \textbf{B4}
+is the data key's separate mount; \textbf{B5} is the path to model providers, crossed only in live mode and only by
+redacted text, and whose answers are untrusted; \textbf{B6} is the host itself, outside the scope of the application.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/trust}
+  \caption{Trust boundaries of the public demo. The deployment override that removes host ports and adds the tunnel is on \texttt{ops/deploy-neural-ledger}.}\label{fig:trust}
+\end{figure}
+
+\subsection{Agent permissions}
+
+The gate (\code{domain/permissions/policy.py}) knows four tiers: T0 reads, T1 analyzes and proposes, T2 executes an
+approved sandbox action, T3 is prohibited and always blocked and audited (\cref{tab:tools}). The policy
+\code{pp-0.2} allows two actions, each with a fixed route: a savings rule from \code{checking} to
+\code{sandbox_savings} (at most 1{,}000{,}000 per action) and a liquidity floor that stays on \code{checking} (at most
+100{,}000{,}000). The simulated bank checks the destination again on its side. Text from statements, merchants and
+the profile's display name reaches the model only wrapped as \texttt{\{"untrusted\_text": \dots\}}, and profile writes are T3
+for the agent, so injected text cannot persist as instructions. The newer sources of third-party text follow the
+same rule. Receipts, concept-card passages (at most 1{,}500 characters), Fintual goal names and connected services'
+answers (at most 4{,}000 characters) reach the model only as untrusted text. No tool lets the agent store,
+correct, link, sync or delete any of them. Memory is the same: the two memory tools take no arguments and refuse any,
+twelve tool names that would save, confirm, edit, delete or consent are T3 \code{SELF_ESCALATION}, and the amount in a
+proposal comes from the user's own message, read by the server.
+
+\subsection{Accounts, sessions and the sandbox notice}\label{sec:notice}
+
+Passwords are hashed with scrypt ($N = 2^{14}$, $r = 8$, $p = 1$, 16-byte salt; \code{adapters/outbound/system/password.py});
+stored parameters are bounded, so a tampered row cannot ask for unbounded memory. A sign-in with an unknown email does the
+same scrypt work on a dummy hash, and both failures return byte-identical bodies (S20); sign-up, however, answers 409
+for a registered email. Sessions are described in \cref{sec:http}.
+
+Sign-up is open (option B). The sign-up page always shows a notice that cannot be dismissed (``This is a hackathon
+sandbox... do not upload real bank statements and do not enter real personal data'') and a required checkbox. The
+server enforces it: \code{SignupRequest.sandbox_acknowledged} must be \code{true}, or the answer is 422 on that field and
+nothing is stored; \code{USER_REGISTERED} records which notice was accepted (\code{sandbox_notice=sandbox-1}). The
+statement upload screen repeats the warning above the file picker.
+
+Sign-up also checks the email's domain (\code{NL_EMAIL_CHECKS}): it refuses a disposable-inbox domain (the maintained
+\code{disposable-email-domains} list, offline, parent domains included) and, with \code{dns}, a domain that does not
+exist or receives no mail. Only the domain is sent to the resolver; a DNS timeout lets the email through.
+
+\subsection{Data at rest}\label{sec:at-rest}
+
+The SQLite adapter seals every payload listed in \cref{tab:schema} with AES-256-GCM (\code{FieldCipher} in
+\code{adapters/outbound/persistence/field_cipher.py}): a random 12-byte nonce per value, stored as
+\code{nlenc2:} followed by base64 of nonce, ciphertext and tag. The associated data is \texttt{<table>|<user\_id>|<row id>},
+so a value copied into another user's row, or into another table, fails to open instead of being read. A value that
+is not sealed is refused when read: after the migration, plain text in the file can only be an edit made around the
+application, so it cannot downgrade a field to clear text. The email, which must stay searchable, is replaced by
+\code{email_index} $=$ HMAC-SHA256 of the normalized address; the address itself is only inside the sealed account
+payload. The audit record is sealed whole, its hashes included, so the file holds no hash against which a guessed
+event could be tested.
+
+\subsubsection{Key hierarchy}\label{sec:keys}
+
+\code{NL_DATA_KEY} is 32 random bytes. It is never used directly: HKDF-SHA256 derives one 256-bit subkey per purpose
+(\cref{fig:keys}). Values sealed before option B with the raw key (format \code{nlenc1:}) still open, and the migration
+rewrites them. Two other secrets are separate roots: \code{NL_HMAC_SECRET} signs authorizations, and session tokens and
+passwords are only ever stored as digests.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/keys}
+  \caption{Key hierarchy. Thick-ruled boxes are secret material; shaded boxes are what the keys are used for.}\label{fig:keys}
+\end{figure}
+
+\Cref{alg:keys} is how the API finds the key and what a deployment refuses (\code{bootstrap/data_key.py},
+\code{_data_cipher} in \code{bootstrap/container.py}). A refusal happens before the database is opened, so it leaves no
+file behind. Once a key is chosen, \code{verify_data_key} opens a sealed known value in the \code{meta} table (or, in a
+file that has none, the first sealed value of each column) and refuses a key that does not open it.
+
+\begin{algorithm}[htbp]
+  \caption{Choosing the data key (\texttt{resolve} and \texttt{check}).}\label{alg:keys}
+  \KwIn{settings $S$, \code{/proc/self/mountinfo}}
+  \KwOut{a field cipher, or a refusal}
+  $f \gets S.\mathit{data\_key\_file}$ or \code{/run/secrets/nl_data_key}\;
+  \uIf{$f$ is a file}{$k \gets$ its content}
+  \uElseIf{$S.\mathit{data\_key\_file}$ was set}{refuse ``not a file''}
+  \uElseIf{\code{NL_DATA_KEY} is set}{$k \gets$ \code{NL_DATA_KEY}}
+  \lElse{$k \gets$ none}
+  \If{$S.\mathit{deployment}$ is deployed}{
+    \lIf{$k$ is none}{refuse ``no data key''}
+    \lIf{$k$ came from a file on the database's mount (or in its directory)}{refuse ``key on the data volume''}
+    \lIf{\code{<db>.key} still exists}{refuse ``run migrate-data, then delete it''}
+    \lIf{\code{NL_HMAC_SECRET} is the development default}{refuse}
+  }
+  \lIf{$k$ is not none}{\Return cipher($k$)}
+  \lIf{live mode}{refuse ``live mode needs NL\_DATA\_KEY''}
+  warn loudly; \Return cipher(key file \code{<db>.key}, created once) \Comment*[r]{local runs only}
+\end{algorithm}
+
+\subsubsection{Migration and key rotation}
+
+\code{neural-ledger migrate-data} (\code{bootstrap/migrate.py}, \code{adapters/outbound/persistence/sqlite_migration.py})
+moves a database to the configured key once (\cref{alg:migrate}). It runs before the application is built, so the
+refusals above do not stop it; the operator stops the API first. Pointing \code{--old-key-file} at the previous key
+rotates keys the same way.
+
+\begin{algorithm}[htbp]
+  \caption{Migration (\texttt{migrate}).}\label{alg:migrate}
+  \KwIn{database $D$, new cipher $c'$, old ciphers $O$ (from \code{<db>.key} or \code{--old-key-file}), dry run flag}
+  \KwOut{counts per table: current, re-keyed, sealed from plain text}
+  \textsc{begin immediate}\;
+  \If{\code{PRAGMA user_version} $< 1$}{rebuild \code{user_accounts} (email $\to$ \code{email_index}), and \code{proposals}, \code{authorizations}, \code{audit_events} (add \code{user_id})}
+  \ForEach{sealed column $(t, \mathit{aad})$ and row $r$}{
+    $v \gets r.\mathit{value}$\;
+    \uIf{$v$ is not sealed}{$x \gets v$ \Comment*[r]{plain text from before}}
+    \uElseIf{$c'$ opens $v$}{\lIf{$v$ is \code{nlenc2:}}{count current; \KwContinue} $x \gets c'.\mathrm{open}(v)$}
+    \uElseIf{some $c \in O$ opens $v$}{$x \gets c.\mathrm{open}(v)$}
+    \lElse{\textsc{rollback}; refuse ``opens with no given key''}
+    write $c'.\mathrm{seal}(x, \mathit{aad}(r))$\;
+  }
+  write the key check sealed with $c'$\;
+  \eIf{dry run}{\textsc{rollback}}{\textsc{commit}; \textsc{vacuum}; WAL checkpoint (truncate)}
+\end{algorithm}
+
+The transaction makes a failure or a dry run leave the file untouched; running the command again changes nothing; and
+VACUUM rewrites the file, so free pages keep no copy of the old plain text or old ciphertext. It ends by telling the
+operator to delete the old key file, which deployed mode refuses to start next to.
+
+\subsection{No downgrade}
+
+Tables added without touching existing rows, such as the three memory tables (ADR-048), keep schema version~1: a
+current binary creates them empty when it opens an older file. That is additive initialization, not a downgrade
+guarantee. An older binary opens the same file without complaint but does not know the new tables' deletion
+obligations, so its account deletion and persona reset would leave declared memory behind. Never run a binary older than
+the one that last wrote a database containing memory; restore the matching binary, or delete the database.
+
+\subsection{Account deletion}\label{sec:deletion}
+
+\code{DELETE /v1/account} takes the password again and a typed confirmation, \code{DELETE} or the account's email
+(\cref{fig:deletion}). It deletes every row the user owns, in one transaction, and turns the user's audit events into
+tombstones that one \code{ACCOUNT_DELETED} event commits to (\cref{alg:erase}, \cref{sec:chain}). Every session ends
+because its row is gone, and the response clears the cookie. Conversations and snapshots, which live only in memory,
+are dropped too. The event that records the deletion has no user id and no session, so nothing in the database points
+at the user any more.
+
+\begin{figure}[htbp]
+  \centering
+  \input{common/figures/deletion}
+  \caption{Account deletion. One SQLite transaction covers every row and the audit chain.}\label{fig:deletion}
+\end{figure}
+
+\begin{algorithm}[htbp]
+  \caption{Erasure (\texttt{SqliteAccountErasure.erase} in \texttt{sqlite.py}).}\label{alg:erase}
+  \KwIn{user $u$, keep\_account (true for a demo persona's reset), erasure draft $d$ with no user id}
+  \KwOut{rows deleted per table, number of tombstones}
+  \textsc{begin immediate}\;
+  \ForEach{table in statements, transactions, receipts, connections, connection\_results, savings\_rules, proposals, authorizations, investment\_links, investment\_snapshots, investment\_documents, user\_memory, memory\_state, memory\_proposals}{delete rows of $u$; count}
+  \lIf{not keep\_account}{delete $u$'s sessions, profile and account; count}
+  $E \gets \emptyset$\;
+  \ForEach{audit event $e$ of $u$, by sequence}{
+    \lIf{$e$ is an erasure event}{\KwContinue}
+    replace $e$ with its tombstone naming $d$ (same sequence, \code{prev_hash}, \code{event_hash}); add $e.\mathit{sequence}$ to $E$\;
+  }
+  append $d$ with detail \texttt{erased\_events=$|E|$; erased\_sha256=SHA256($E$); counts}\;
+  \textsc{commit}; WAL checkpoint (truncate)\;
+\end{algorithm}
+
+\textbf{Demo personas are reset, not deleted.} Camila and Diego are shared fixtures with no password. In a persona
+session the profile page offers \emph{Reset demo data}: confirmation \code{RESET}, no password, and the erasure above
+with \code{keep_account} true, recorded as \code{DEMO_DATA_RESET}. The fixture and every visitor's session stay.
+
+\subsection{Evidence}
+
+\code{make test-security} runs the attack tests S01--S24, S30--S32 and S35--S38; \code{docs/SECURITY.md} lists each
+with its expected behaviour and audit event, S24 (concept cards) included since pull request \#58. The newer ones cover
+concept-card injection and the \code{EDUCATIONAL_NOT_ADVICE} warning (S24), Fintual goal names, credentials and imported
+statements (S30--S32), and connected servers: false read-only labels, injected answers, SSRF and token leaks
+(S35--S38). Memory has its own tests, with no S number yet: \code{tests/security/test_memory_agent.py} (the agent
+cannot write memory; a hostile model fed the salary), \code{tests/security/test_import_after_deletion.py} (an import that
+began before an account deletion stores nothing), \code{tests/security/test_data_export.py} (what the export holds and
+leaves out), plus the store, write-failure, dependency and acceptance tests listed in \code{docs/SECURITY.md}. Receipts have their own attack tests in \code{tests/security/test_receipts.py}. The suitability suite
+(\code{make test-suitability}) now passes 24 checks with no expected failures, UG01--UG03 included. Option B adds \code{tests/adapters/test_data_key.py} (key sources, deployed refusals, wrong key,
+migration), \code{tests/adapters/test_encryption_at_rest.py} (raw database bytes after a full HTTP flow; upgrade of a
+schema~0 file) and \code{tests/security/test_account_deletion.py} (user B intact, no row of any table refers to user A,
+forged tombstones fail). \code{tests/security/test_compliance.py} turns each legal requirement into a test that names
+its norm (\cref{sec:privacy}).

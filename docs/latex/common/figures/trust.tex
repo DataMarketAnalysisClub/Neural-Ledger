@@ -1,0 +1,32 @@
+% Trust boundaries of the public demo (deployment files on ops/deploy-neural-ledger, data key from this branch).
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{tb/.style={num,fill=nlfilldark}}
+  \node[ext,text width=24mm] (user) at (0,0) {\textbf{Browser}\\untrusted: text, files, headers};
+  \node[box,text width=25mm] (cf) at (33,0) {\textbf{Cloudflare edge}\\TLS; rate rule on auth POSTs};
+  \node[box,text width=24mm] (cfd) at (69,0) {cloudflared\\outbound tunnel};
+  \node[box,text width=24mm] (web) at (69,-24) {web (nginx)\\headers, \code{/api} proxy};
+  \node[core,text width=38mm,align=left] (api) at (117,-24) {\textbf{api}\\identity guard, rate limits\\permission gate, verifier\\keys held in memory};
+  \node[store] (vol) at (104,-50) {data volume\\SQLite + WAL};
+  \node[keybox] (sec) at (130,-50) {secret\\file};
+  \node[ext,text width=40mm] (prov) at (116,14) {\textbf{Model providers} (live mode)\\replies are untrusted: checked by the gate and the verifier};
+  \begin{scope}[on background layer]
+    \node[zone,fit=(cfd)(web)(api)(vol)(sec),inner sep=5mm] (host) {};
+    \node[boundary,fill=white,fit=(api)(vol)(sec),inner sep=2mm] (cont) {};
+  \end{scope}
+  \node[anchor=north west,font=\footnotesize\bfseries] at (host.north west) {Host (nixbox), Docker};
+  \node[anchor=north east,font=\scriptsize] at (cont.south east) {api container};
+  \draw[flow] (user) -- (cf);
+  \draw[flow] (cf) -- (cfd);
+  \draw[flow] (cfd) -- (web);
+  \draw[flow] (web) -- (api);
+  \draw[flow] (api.south -| vol.north) -- (vol.north);
+  \draw[flow] (sec.north) -- (sec.north |- api.south);
+  \draw[flow,dashed] (api.north) -- node[label,right]{HTTPS, redacted text} (prov.south);
+  \node[tb] at ($(user.east)!0.5!(cf.west)+(0,5)$) {B1};
+  \node[tb] at ($(cf.east)!0.5!(cfd.west)+(0,5)$) {B2};
+  \node[tb] at ($(web.east)!0.5!(api.west)+(0,5)$) {B3};
+  \node[tb] at ($(sec.north)+(5,6)$) {B4};
+  \node[tb] at ($(api.north)+(-5,5)$) {B5};
+  \node[tb] at ($(host.south west)+(5,5)$) {B6};
+  \node[anchor=west,font=\scriptsize] at ($(host.south west)+(9,5)$) {root on the host};
+\end{tikzpicture}

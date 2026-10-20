@@ -22,8 +22,8 @@ function Page() {
   return <PersonaProvider><ProfilePage /></PersonaProvider>;
 }
 
-const exported = { format: "neural-ledger-export-2", exported_at: "2026-10-20T12:00:00+00:00", user_id: "usr_ana", account: null, profile: null,
-  statements: [], transactions: [], receipts: [], connections: [], savings_rules: [],
+const exported = { format: "neural-ledger-export-3", exported_at: "2026-10-20T12:00:00+00:00", user_id: "usr_ana", account: null, profile: null,
+  statements: [], transactions: [], receipts: [], connections: [], savings_rules: [], proposals: [], authorizations: [],
   investments: { link: null, latest_snapshot: null, documents: [] }, memory: { consent: { consent: "missing", consent_generation: 0, memory_revision: 0 }, declarations: { catalog_version: "mem-0.1", declarations: [] } }, audit_events: [] };
 
 function serve(user_id: string, data_source: string, deletion: () => Response, exporting = () => new Response(JSON.stringify(exported), { status: 200 })) {

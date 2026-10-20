@@ -1,0 +1,25 @@
+% Account deletion as a sequence (adapters/inbound/http/app.py, application/use_cases/accounts.py, persistence/sqlite.py).
+\begin{tikzpicture}[x=0.985mm,y=1mm]
+  \tikzset{actor/.style={box,text width=23.5mm,minimum height=9mm},
+           msg/.style={->,thick},ret/.style={->,densely dashed},
+           note/.style={draw,fill=nlfill,align=left,inner sep=3pt,font=\scriptsize}}
+  \foreach \x/\n/\t in {0/ui/{User\\(profile page)}, 34/http/{HTTP API\\guard, rate limit}, 68/uc/{Account\\UseCases}, 102/er/{AccountErasure\\one transaction}, 136/au/{Audit chain}} {
+    \node[actor] (\n) at (\x,0) {\t};
+    \draw[densely dotted] (\n.south) -- (\x,-126);
+  }
+  \draw[msg] (0,-12) -- node[label,above]{\code{DELETE /v1/account}} (34,-12);
+  \node[font=\scriptsize,anchor=north] at (17,-13) {confirm, password};
+  \draw[msg] (34,-22) -- node[label,above]{\code{delete_account}} (68,-22);
+  \node[note,anchor=north west,text width=29mm] at (69,-25) {confirm is DELETE or the email; scrypt check of the password};
+  \draw[msg] (68,-44) -- node[label,above]{\code{erase(keep_account=False)}} (102,-44);
+  \node[note,anchor=north west,text width=29mm] at (103,-47) {BEGIN IMMEDIATE; delete the user's rows in 17 tables (\code{secure_delete})};
+  \draw[msg] (102,-66) -- node[label,above]{tombstone A's events} (136,-66);
+  \draw[msg] (102,-75) -- node[label,above]{append \code{ACCOUNT_DELETED}} (136,-75);
+  \node[note,anchor=north west,text width=29mm] at (103,-78) {detail: count and SHA-256 of the erased sequences, row counts; no user id};
+  \node[note,anchor=north west,text width=29mm] at (103,-95) {COMMIT; WAL checkpoint};
+  \draw[ret] (102,-104) -- node[label,above]{row counts} (68,-104);
+  \draw[msg] (68,-108) -- ++(5,0) -- ++(0,-3) -- ++(-5,0);
+  \node[font=\scriptsize,anchor=west] at (74,-109.5) {forget conversations, snapshots};
+  \draw[ret] (68,-117) -- node[label,above]{200 \code{DELETED}} (34,-117);
+  \draw[ret] (34,-121) -- node[label,below]{cookie cleared} (0,-121);
+\end{tikzpicture}

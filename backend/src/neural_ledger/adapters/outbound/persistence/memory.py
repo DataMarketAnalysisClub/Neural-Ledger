@@ -221,6 +221,13 @@ class InMemoryActionRepository:
             tuple(a for a in self._authorizations.values() if a.session_id == session_id),
         )
 
+    def for_user(self, user_id: str) -> tuple[tuple[Proposal, ...], tuple[Authorization, ...]]:
+        with self._lock:
+            return (
+                tuple(p for p in self._proposals.values() if p.user_id == user_id),
+                tuple(a for a in self._authorizations.values() if a.user_id == user_id),
+            )
+
     # test hook for S05 (tampering with stored terms)
     def _tamper(self, authorization_id: str, **changes) -> None:
         a = self._authorizations[authorization_id]

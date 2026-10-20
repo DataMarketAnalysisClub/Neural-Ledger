@@ -1,0 +1,49 @@
+\section{Where the Markdown documentation and the code disagree}\label{sec:discrepancies}
+
+Where the files in \code{docs/} and the README disagree with the code at commit \texttt{\nlCommit}, this document
+follows the code. The differences found while writing it:
+
+\begin{enumerate}
+  \item \textbf{Parameter version.} \code{docs/FINANCIAL_CORE.md} gives the register as \code{fc-0.2}; the code is at
+    \code{fc-0.3} (\cref{sec:core}).
+  \item \textbf{Names of policy objects.} The constants \code{FC_0_1}, \code{AP_0_1} and \code{PP_0_1} hold versions
+    \code{fc-0.3}, \code{ap-0.2} and \code{pp-0.2}. The audit records the version string, not the constant's name.
+  \item \textbf{Forecast from a user's own statements.} \code{docs/PRIVACY.md} (``Why'') says the forecast and the plans
+    compute from the persona model and that ADR-029 is not built. In the code, an account's model is estimated from its
+    own verified statements (\code{StatementModelSource}, ADR-029 step 2); personas keep their fixtures.
+  \item \textbf{Plain-text payloads.} ADR-033 step 2 says payloads written before encryption ``are still read''. Since
+    option B a value in clear is refused; an older file is upgraded and sealed at startup or by \code{migrate-data}.
+  \item \textbf{Status of the security suite} (fixed). The README's status list and document table once mentioned S01--S12
+    and S01--S15; they now give S01--S24, S30--S32 and S35--S38, as \code{docs/SECURITY.md} and the tests do.
+  \item \textbf{``No accounts or personal data.''} (fixed). The README once ended with ``no real money, accounts or personal
+    data''. It now says the data is synthetic and that users should not enter real personal data; accounts exist in
+    accounts mode, and with open sign-up the software cannot guarantee that no personal data is stored.
+  \item \textbf{Runtime modes.} The table in \code{docs/ARCHITECTURE.md} does not list \code{NL_DEPLOYMENT} (\cref{tab:modes}).
+  \item \textbf{Deployment files.} \code{docs/SECURITY.md} refers to the public demo's server and its deployment override;
+    that override, its nginx configuration and its runbook exist only on the unmerged branch
+    \code{ops/deploy-neural-ledger}, so what this document says about the edge (TLS, the tunnel, nginx headers) comes from
+    that branch, not from the commit described.
+  \item \textbf{Live mode and connectors} (fixed). Until pull request \#58, \code{NL_CONNECTORS=live} did not make
+    \code{Settings.mode} live and \code{GET /health} had no connectors field, although \code{docs/PRIVACY.md} lists MCP
+    servers and Fintoc among the providers. Now live connectors make the mode live, a deployment that switches them off
+    does not count, and \code{/health} reports \code{connectors}. Running them locally therefore needs
+    \code{NL_HMAC_SECRET}, and \code{NL_DATA_KEY} with SQLite, like any live provider.
+  \item \textbf{Attack test S24} (fixed). The eight S24 tests (11 cases: concept-card injection and the
+    \code{EDUCATIONAL_NOT_ADVICE} warning) had no row in the attack table of \code{docs/SECURITY.md}; pull request \#58
+    added it. \textbf{Connection rate limit} (fixed): the same pull request gives every \code{POST /v1/connections*} its own
+    budget instead of the general one.
+  \item \textbf{Suitability gaps.} The ``Not in this plan'' paragraph of ADR-033 in \code{docs/DECISIONS.md} describes
+    UG01--UG03 as later work that needs a \code{params_version} decision. They are closed in the code without one,
+    because no amount changed, and \code{docs/SECURITY.md} records them as closed.
+  \item \textbf{Memory is saved only.} ADR-048 and ADR-049 describe a declared salary that enters the forecast. The
+    code builds the storage, consent, confirmation and evidence, and the decomposition (\code{income_memory.py}), but
+    nothing calls the decomposition: no number changes and \code{params_version} stays \code{fc-0.3}. The ADR text keeps its
+    original plan and its status note says so (\cref{sec:memory}).
+  \item \textbf{ADR numbers.} The memory plan was written as ADR-040 and ADR-047, numbers staging had already given to
+    concept cards and connections, so it became ADR-048 and ADR-049. ADR-041 and ADR-046 are reserved and not written.
+  \item \textbf{Export and the privacy notice.} The privacy file once listed export (G02) as missing; it is built and
+    its test sits in the gaps block without the xfail marker. \code{docs/TERMS.md} and \code{docs/PRIVACY.md} were
+    updated with it.
+  \item \textbf{Decision statuses.} Several records in \code{docs/DECISIONS.md} are ``Proposed'' although their code is
+    built and tested (\cref{sec:decisions}).
+\end{enumerate}

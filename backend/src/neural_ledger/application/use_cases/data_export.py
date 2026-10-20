@@ -1,10 +1,14 @@
 """A copy of everything stored about one user (G02, Ley 21.719 arts. 5, access, and 9, portability).
 
 HTTP only: the agent has no tool for it, since the copy holds personal data the copilot never needs. It reads the
-same stores the account deletion empties, so what can be downloaded is what a deletion erases. Never in the copy:
-the password hash, session tokens, connection secrets and the investment access token. Memory (ADR-048) is in the copy
-with or without consent, like its own export: the consent and its counters, and every declaration version; a pending
-proposal is not (the port has no list, and it expires within PP_0_1.proposal_ttl_seconds).
+same stores the account deletion empties, so what can be downloaded is what a deletion erases, savings-rule proposals
+(every status) and their authorizations included; of the investment syncs only the latest is in the copy
+(tests/security/test_data_export.py maps every erased table to its section, or to the reason it has none).
+Never in the copy: the password hash, session tokens, connection secrets, the investment access token and an
+authorization's signature (action_hash: the HMAC of its terms is not the secret, but like every other outbound view it
+never leaves the server, and the terms it covers are in the copy). Memory (ADR-048) is in the copy with or without
+consent, like its own export: the consent and its counters, and every declaration version; a pending memory proposal is
+not (the port has no list, and it expires within PP_0_1.proposal_ttl_seconds).
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from typing import Any
 from ...domain.audit.events import Actor, AuditDraft, AuditKind
 from ...domain.shared.serialization import to_primitive
 from ..ports import (
+    ActionRepository,
     AuditLog,
     Clock,
     ConnectionStore,
@@ -28,7 +33,7 @@ from ..ports import (
 )
 from .memory import MemoryUseCases
 
-EXPORT_FORMAT = "neural-ledger-export-2"  # bump when a section is added, renamed or changes shape
+EXPORT_FORMAT = "neural-ledger-export-3"  # bump when a section is added, renamed or changes shape
 
 
 class DataExport:
@@ -42,6 +47,7 @@ class DataExport:
         connections: ConnectionStore,
         bank: SandboxBank,
         investments: InvestmentStore,
+        actions: ActionRepository,
         audit: AuditLog,
         clock: Clock,
         ids: IdGenerator,
@@ -55,6 +61,7 @@ class DataExport:
         self._connections = connections
         self._bank = bank
         self._investments = investments
+        self._actions = actions
         self._audit = audit
         self._clock = clock
         self._ids = ids
@@ -70,6 +77,7 @@ class DataExport:
         account = self._accounts.get(user_id)  # None for a demo persona: it has no account
         connections = self._connections.for_user(user_id)
         link = self._investments.link(user_id)
+        proposals, authorizations = self._actions.for_user(user_id)
         return {
             "format": EXPORT_FORMAT,
             "exported_at": now.isoformat(),
@@ -85,6 +93,8 @@ class DataExport:
                 {**to_primitive(c), "results": to_primitive(self._connections.results(user_id, c.connection_id))} for c in connections
             ],
             "savings_rules": to_primitive(self._bank.active_rules(user_id)),
+            "proposals": to_primitive(proposals),
+            "authorizations": [{k: v for k, v in to_primitive(a).items() if k != "action_hash"} for a in authorizations],
             "investments": {
                 "link": None if link is None else {k: v for k, v in to_primitive(link).items() if k != "token"},
                 "latest_snapshot": to_primitive(self._investments.latest(user_id)),

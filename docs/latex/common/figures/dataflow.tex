@@ -1,0 +1,22 @@
+% Data flow of a statement upload, from the request to the sealed rows (application/use_cases/statements.py).
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \tikzset{st/.style={box,text width=32mm,minimum height=15mm}}
+  \node[st] (upload) at (0,0) {\textbf{Upload}\\\code{POST /v1/statements}\\raw bytes, at most 15\,MB};
+  \node[st] (read) at (41,0) {\textbf{Read}\\xlsx, PDF or OCR\\into a \code{BankStatement}};
+  \node[st,core] (redact) at (82,0) {\textbf{Redact}\\rules, then a detector;\\names, RUTs masked};
+  \node[st,core] (reconcile) at (123,0) {\textbf{Reconcile}\\printed totals and\\balances; verified or not};
+  \node[st] (store) at (123,-25) {\textbf{Store statement}\\once per user and id};
+  \node[st] (post) at (82,-25) {\textbf{Post transactions}\\verified only; classifier\\+ domain gate};
+  \node[st] (audit) at (41,-25) {\textbf{Audit}\\\code{STATEMENT_IMPORTED}\\counts only, never text};
+  \node[keybox,text width=113mm,minimum height=9mm] (seal) at (82,-47) {\textbf{Seal} every payload: AES-256-GCM under the field key, associated data \texttt{table|user|row}};
+  \node[store,minimum width=27mm] (db) at (0,-36) {SQLite file\\\code{nlenc2:} payloads\\+ clear ids, dates};
+  \draw[flow] (upload) -- node[num,above=1mm]{1} (read);
+  \draw[flow] (read) -- node[num,above=1mm]{2} (redact);
+  \draw[flow] (redact) -- node[num,above=1mm]{3} (reconcile);
+  \draw[flow] (reconcile) -- node[num,right=1mm]{4} (store);
+  \draw[flow] (store) -- node[num,above=1mm]{5} (post);
+  \draw[flow] (post) -- node[num,above=1mm]{6} (audit);
+  \foreach \n in {store,post,audit} \draw[flow] (\n.south) -- (\n.south |- seal.north);
+  \draw[flow] (seal.west) -| (db.south);
+  \draw[weak] (read.north) -- ++(0,5) -| node[label,pos=0.25,above]{the statement as read lives only in memory; from step 2 on only the redacted copy exists} (reconcile.north);
+\end{tikzpicture}

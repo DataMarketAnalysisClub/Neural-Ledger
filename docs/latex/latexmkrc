@@ -1,0 +1,10 @@
+# latexmk configuration for docs/latex (run from this directory: `latexmk` or `make`).
+# Both documents find the shared style and figures in common/; auxiliary files go to .aux/,
+# and the Makefile copies each finished PDF to build/.
+$pdf_mode = 1;
+$out_dir = '.aux';
+$aux_dir = '.aux';
+$pdflatex = 'pdflatex -interaction=nonstopmode -halt-on-error -file-line-error %O %S';
+ensure_path('TEXINPUTS', './common//', '../common//');
+@default_files = ('technical/technical-documentation.tex', 'security-assessment/security-self-assessment.tex');
+$max_repeat = 6;
