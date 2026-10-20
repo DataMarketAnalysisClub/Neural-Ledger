@@ -23,12 +23,17 @@ import type { ExpenseConfirmation } from "@/contracts/expenses/expense_confirmat
 import type { ExpenseProposal } from "@/contracts/outputs/expense_proposal";
 import type { Transactions } from "@/contracts/outputs/transactions";
 import type { CategoryUpdate } from "@/contracts/transactions/category_update";
-import { request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type PersonaId } from "./client";
+import type { InvestmentOverview } from "@/contracts/outputs/investments";
+import type { InvestmentLinkOutcome } from "@/contracts/investments/link_outcome";
+import type { InvestmentLinkRequest } from "@/contracts/investments/link_request";
+import type { InvestmentDocumentsRemoved } from "@/contracts/investments/documents_removed";
+import { ApiError, request, requestEnvelope, type ActionOutcome, type ApiIdentity, type AuditEvent, type ChatReply, type Envelope, type PersonaId } from "./client";
 import { useOptionalAuth } from "@/features/auth/AuthProvider";
 import type { ProfileTolerance } from "./profile";
 
 export type { FinancialState, Forecast, SurplusResult, Commitments, CapacityAssessment, SavingsPlan, PermittedProfile, PurchaseSimulation };
 export type { Statements, Statement, StatementImport, Transactions, CategoryUpdate, DocumentIngest, SpendingStatus, Receipts };
+export type { InvestmentOverview, InvestmentLinkOutcome, InvestmentLinkRequest };
 export type Scenario = "typical" | "conservative" | "stress";
 export type IncludePlan = "none" | "recommended" | "active";
 
@@ -98,6 +103,8 @@ export interface Health {
   audit_chain_ok: boolean;
   tools: string[];
   server_time?: string | null;
+  /** Who reads a linked investment account: "fixture" (a synthetic sandbox account) or "fintual" (ADR-044). */
+  investments?: string;
 }
 
 export function useHealth() {
@@ -220,6 +227,80 @@ export function useTransactions() {
   return useQuery({ queryKey: [identity.user_id, "transactions"], queryFn: () => requestEnvelope<Transactions>("/v1/transactions", { identity }) });
 }
 
+/** The linked investment account (ADR-044). No link is a state the screen shows, not an error: 404 NOT_LINKED. */
+async function investmentLink(identity: ApiIdentity): Promise<InvestmentLinkOutcome> {
+  try {
+    return await request<InvestmentLinkOutcome>("/v1/investments/link", { identity });
+  } catch (error) {
+    const body = error instanceof ApiError ? (error.body as Partial<InvestmentLinkOutcome> | null) : null;
+    if (error instanceof ApiError && error.httpStatus === 404 && body?.status === "NOT_LINKED") return body as InvestmentLinkOutcome;
+    throw error;
+  }
+}
+
+/** Only asked by an account that may link one: a demo persona or demo mode never can (S31). */
+export function useInvestmentLink(enabled: boolean) {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "investment-link"], queryFn: () => investmentLink(identity), enabled });
+}
+
+/** What the copilot knows of the user's investments: the imported documents, else a linked account. Nothing yet is a
+ * state the screen shows, not an error: the API answers INSUFFICIENT_DATA with missing ["investment_account"]. */
+async function investments(identity: ApiIdentity): Promise<Envelope<InvestmentOverview> | null> {
+  try {
+    return await requestEnvelope<InvestmentOverview>("/v1/investments", { identity });
+  } catch (error) {
+    if (error instanceof ApiError && error.detail.missing?.includes("investment_account")) return null;
+    throw error;
+  }
+}
+
+/** Read without calling any provider: importing and syncing are the user's actions. */
+export function useInvestments(enabled: boolean) {
+  const { identity } = usePersona();
+  return useQuery({ queryKey: [identity.user_id, "investments"], queryFn: () => investments(identity), enabled });
+}
+
+/** The account forgets every investment document it imported (ADR-044). A linked account, if any, stays. */
+export function useRemoveInvestmentDocuments() {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<InvestmentDocumentsRemoved>("/v1/investments/documents", { identity, method: "DELETE" }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: [identity.user_id, "investments"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+    },
+  });
+}
+
+function useInvestmentWrite<T>(send: (identity: ApiIdentity, input: T) => Promise<InvestmentLinkOutcome>) {
+  const { identity } = usePersona();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: T) => send(identity, input),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: [identity.user_id, "investment-link"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "investments"] });
+      void client.invalidateQueries({ queryKey: [identity.user_id, "audit"] });
+    },
+  });
+}
+
+/** Sends the Fintual email and password once; the API keeps only the token it gets back, sealed. Never stored here. */
+export function useLinkInvestments() {
+  return useInvestmentWrite((identity, body: InvestmentLinkRequest) =>
+    request<InvestmentLinkOutcome>("/v1/investments/link", { identity, method: "POST", body }));
+}
+
+export function useSyncInvestments() {
+  return useInvestmentWrite<void>((identity) => request<InvestmentLinkOutcome>("/v1/investments/sync", { identity, method: "POST" }));
+}
+
+export function useUnlinkInvestments() {
+  return useInvestmentWrite<void>((identity) => request<InvestmentLinkOutcome>("/v1/investments/link", { identity, method: "DELETE" }));
+}
+
 export interface ChainCheck {
   ok: boolean;
   checked: number;
@@ -278,11 +359,11 @@ export function useIngestDocument() {
   const client = useQueryClient();
   const auth = useOptionalAuth();
   return useMutation({
-    /** `kind` is the user's own answer when the file was not recognized: "receipt" or "statement". */
-    mutationFn: ({ file, kind }: { file: Blob; kind?: "receipt" | "statement" }) =>
+    /** `kind` is the user's own answer when the file was not recognized, or where they dropped it ("investment" on the Investments page). */
+    mutationFn: ({ file, kind }: { file: Blob; kind?: "receipt" | "statement" | "investment" }) =>
       requestEnvelope<DocumentIngest>("/v1/documents", { identity, method: "POST", body: file, query: { session_id: sessionId, kind } }),
     onSettled: () => {
-      for (const key of ["statements", "transactions", "audit", "spending", "receipts"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
+      for (const key of ["statements", "transactions", "audit", "spending", "receipts", "investments"]) void client.invalidateQueries({ queryKey: [identity.user_id, key] });
       void auth?.refreshMe();
     },
   });

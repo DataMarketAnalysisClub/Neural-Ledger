@@ -38,7 +38,12 @@ export interface AuditEvent {
     | "SESSION_ENDED"
     | "ACCOUNT_DELETED"
     | "DEMO_DATA_RESET"
-    | "ERASED";
+    | "ERASED"
+    | "INVESTMENTS_LINKED"
+    | "INVESTMENTS_SYNCED"
+    | "INVESTMENTS_UNLINKED"
+    | "INVESTMENT_DOCUMENT_IMPORTED"
+    | "INVESTMENT_DOCUMENTS_REMOVED";
   user_intent?: string | null;
   intent_confidence?: number | null;
   tool_requested?: string | null;
