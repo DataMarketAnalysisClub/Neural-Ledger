@@ -106,6 +106,10 @@ class CommitmentsView:
     schedule: tuple[MonthTotal, ...]
 
 
+# The capacity facts a plan repeats to say why it suits the user (UG01: Delegated Regulation art. 54(12), ESMA GL1).
+_WHY_KEYS = frozenset({"capacity.level", "capacity.binding_factor"})
+
+
 @dataclass(frozen=True, slots=True)
 class StoredPlan:
     """What a plan snapshot id points to. Proposals read the amount from here."""
@@ -364,7 +368,9 @@ class FinancialUseCases:
         """
 
         def body(model: FinancialModel) -> Envelope[SavingsPlan]:
-            permitted = self._permitted(model).permitted
+            capacity = assess_capacity(model, self._params_for(model))
+            suitability = derive_permitted_profile(self._tolerance(model.user_id), capacity, model)
+            permitted = suitability.permitted
             requested = _parse_enum(RiskProfile, requested_profile, "permitted_profile") if requested_profile else permitted
             effective = lower_profile(requested, permitted)
             caveats = []
@@ -377,8 +383,10 @@ class FinancialUseCases:
                     )
                 )
             plan = size_plan(model, self._params_for(model), effective)
+            # UG01: the plan carries why it suits the user (tolerance, capacity and the factor that binds it).
+            why = (*permitted_facts(suitability), *(f for f in capacity_facts(capacity, model.currency) if f.key in _WHY_KEYS))
             envelope = self._ok(
-                model, plan, plan_facts(plan, model.currency), caveats, kind="plan", parts=(effective,)
+                model, plan, (*plan_facts(plan, model.currency), *why), caveats, kind="plan", parts=(effective,)
             )
             self._snapshots.put(envelope.snapshot_id, user_id, StoredPlan(plan, model.currency, user_id))
             return envelope

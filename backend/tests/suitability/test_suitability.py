@@ -299,10 +299,11 @@ def test_u06_a_rule_saves_no_more_than_needed_and_rounds_down(models, params):
 # ------------------------------------------------------------------------------------------------
 # Gaps (strict xfail)
 # ------------------------------------------------------------------------------------------------
-@gap("a plan does not say why it suits the user. Delegated Regulation art. 54(12) (suitability report), ESMA GL1, Ley 19.496 art. 3 b)")
 def test_ug01_a_plan_states_the_tolerance_capacity_and_binding_factor_behind_it(services):
-    keys = {f.key for f in services.financial.savings_plan("camila").facts}
-    assert {"profile.tolerance", "profile.capacity", "capacity.binding_factor"} <= keys
+    """Delegated Regulation art. 54(12) (suitability report), ESMA GL1, Ley 19.496 art. 3 b)."""
+    facts = {f.key: f.value for f in services.financial.savings_plan("camila").facts}
+    assert {"profile.permitted", "profile.tolerance", "profile.capacity", "capacity.level", "capacity.binding_factor"} <= set(facts)
+    assert facts["plan.profile"] == facts["profile.permitted"]
 
 
 @gap("a proposal from a superseded financial state is accepted. ESMA GL5 (keep client information up to date)")
