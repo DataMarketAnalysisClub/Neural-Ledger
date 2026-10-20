@@ -2,7 +2,9 @@
 
 HTTP only: the agent has no tool for it, since the copy holds personal data the copilot never needs. It reads the
 same stores the account deletion empties, so what can be downloaded is what a deletion erases. Never in the copy:
-the password hash, session tokens, connection secrets and the investment access token.
+the password hash, session tokens, connection secrets and the investment access token. Memory (ADR-048) is in the copy
+with or without consent, like its own export: the consent and its counters, and every declaration version; a pending
+proposal is not (the port has no list, and it expires within PP_0_1.proposal_ttl_seconds).
 """
 
 from __future__ import annotations
@@ -24,8 +26,9 @@ from ..ports import (
     UserAccountStore,
     UserProfileStore,
 )
+from .memory import MemoryUseCases
 
-EXPORT_FORMAT = "neural-ledger-export-1"  # bump when a section is added, renamed or changes shape
+EXPORT_FORMAT = "neural-ledger-export-2"  # bump when a section is added, renamed or changes shape
 
 
 class DataExport:
@@ -42,6 +45,7 @@ class DataExport:
         audit: AuditLog,
         clock: Clock,
         ids: IdGenerator,
+        memory: MemoryUseCases | None = None,
     ) -> None:
         self._accounts = accounts
         self._profiles = profiles
@@ -54,6 +58,7 @@ class DataExport:
         self._audit = audit
         self._clock = clock
         self._ids = ids
+        self._memory = memory
 
     def export(self, user_id: str, session_ref: str) -> dict[str, Any]:
         """The caller's data as JSON-ready primitives. The export is audited first, so the copy includes its own event."""
@@ -85,5 +90,15 @@ class DataExport:
                 "latest_snapshot": to_primitive(self._investments.latest(user_id)),
                 "documents": to_primitive(self._investments.documents(user_id)),
             },
+            "memory": self._memory_section(user_id),
             "audit_events": [to_primitive(e.to_record()) for e in self._audit.events() if e.draft.user_id == user_id],
+        }
+
+    def _memory_section(self, user_id: str) -> dict[str, Any] | None:
+        if self._memory is None:
+            return None
+        state = self._memory.consent(user_id)
+        return {
+            "consent": {"consent": state.consent.value, "consent_generation": state.consent_generation, "memory_revision": state.memory_revision},
+            "declarations": self._memory.export(user_id),
         }

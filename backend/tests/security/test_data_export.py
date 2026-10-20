@@ -1,6 +1,6 @@
 """G02 (Ley 21.719 arts. 5 and 9): a user downloads a copy of everything stored about them.
 
-The copy holds A's data and nothing of B's, never a password, its hash, a session token or a connection secret,
+The copy holds A's data and nothing of B's, memory included, never a password, its hash, a session token or a connection secret,
 matches its contract, and is audited. Without a session there is no copy; demo mode has no route."""
 
 from __future__ import annotations
@@ -50,6 +50,9 @@ def test_the_copy_is_all_of_a_and_nothing_of_b(two_accounts):
     assert [c["name"] for c in body["connections"]] == ["Inversiones"]
     assert [r["user_id"] for r in body["savings_rules"]] == [user_a]
     assert body["investments"]["link"]["provider"] and body["investments"]["latest_snapshot"]
+    # Memory (ADR-048): what a deletion erases, with or without consent; every version, never another user's.
+    assert [d["chain_id"] for d in body["memory"]["declarations"]["declarations"]] == [f"chn_{user_a}"]
+    assert body["memory"]["consent"] == {"consent": "missing", "consent_generation": 0, "memory_revision": 0}
     assert {e["user_id"] for e in body["audit_events"]} == {user_a}
     assert body["audit_events"][-1]["kind"] == "DATA_EXPORTED"  # audited first, so the copy shows its own event
     for leaked in (user_b, EMAIL_B, NAME_B, PASSWORD, TOKEN, "scrypt$", FINTUAL["password"], '"token"', "fixture-"):
