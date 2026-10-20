@@ -427,9 +427,9 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     connections = ConnectionUseCases(connection_store, mcp, bank_feed, statements, audit_log, clock, ids, s.connectors_mode)
     registry = build_registry(
         financial, actions, profile_uc, audit_uc, documents, investments, education,
-        load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version, connections,
+        load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version, connections, memory,
     )
-    chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
+    chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1, memory)
 
     services = ApplicationServices(
         financial=financial,

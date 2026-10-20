@@ -73,6 +73,8 @@ class ScriptedLanguageModel:
             if not amounts:
                 return None
             return call("propose_expense", amount=amounts[0], description=_recent_description(request))
+        if intent == "report_income_change" and "propose_income_change" not in done:
+            return call("propose_income_change")  # no arguments: the server reads the user's own message
         if intent == "spending_check":
             if ADDED_DOCUMENT.search(text) and "get_latest_document" not in done:
                 return call("get_latest_document")

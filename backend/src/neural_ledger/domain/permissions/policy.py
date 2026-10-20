@@ -71,6 +71,20 @@ PROHIBITED_CAPABILITIES: dict[str, BlockReason] = {
     "link_investment_account": BlockReason.CREDENTIAL_CHANGE,
     "connect_fintual": BlockReason.CREDENTIAL_CHANGE,
     "unlink_investment_account": BlockReason.CREDENTIAL_CHANGE,
+    # Memory is written by the user over HTTP only (ADR-048 §5): no tool stores, confirms, edits or deletes a
+    # declaration, and none grants or revokes the consent.
+    "save_user_memory": BlockReason.SELF_ESCALATION,
+    "write_user_memory": BlockReason.SELF_ESCALATION,
+    "update_user_memory": BlockReason.SELF_ESCALATION,
+    "confirm_income_change": BlockReason.SELF_ESCALATION,
+    "confirm_memory_proposal": BlockReason.SELF_ESCALATION,
+    "declare_income": BlockReason.SELF_ESCALATION,
+    "set_salary": BlockReason.SELF_ESCALATION,
+    "delete_user_memory": BlockReason.SELF_ESCALATION,
+    "delete_memory_chain": BlockReason.SELF_ESCALATION,
+    "set_memory_consent": BlockReason.SELF_ESCALATION,
+    "grant_memory_consent": BlockReason.SELF_ESCALATION,
+    "revoke_memory_consent": BlockReason.SELF_ESCALATION,
 }
 
 

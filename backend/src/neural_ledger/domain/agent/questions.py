@@ -17,6 +17,7 @@ class Intent(str, Enum):
     PROTECTED_SURPLUS = "protected_surplus"
     SPENDING_CHECK = "spending_check"
     LOG_EXPENSE = "log_expense"
+    REPORT_INCOME_CHANGE = "report_income_change"  # the user states their net salary or a change of it (ADR-048)
     SAVINGS_PLAN = "savings_plan"
     SET_LIQUIDITY_FLOOR = "set_liquidity_floor"
     EXECUTE_ACTION = "execute_action"
@@ -72,6 +73,7 @@ INTENT_QUESTION = ChoiceQuestion(
         "Asks how much money is free to spend now after commitments and reserve",
         "Asks how much they can spend today, per day or until payday, how their spending is going, or mentions a receipt (boleta) they added",
         "Tells the assistant about money they already spent (gasté, pagué, compré, spent, paid), or answers how they paid it (cash, card)",
+        "States their own net salary or a change of it, for the assistant to remember (mi sueldo es, gano, me subieron el sueldo, my salary is)",
         "Asks to build or size a plan to save toward a goal or to rebuild the reserve",
         "Asks to set or change the minimum balance (floor, piso, saldo mínimo) the account must keep every month",
         "Tells the assistant to carry out or confirm an action it proposed, such as creating a rule or moving money",

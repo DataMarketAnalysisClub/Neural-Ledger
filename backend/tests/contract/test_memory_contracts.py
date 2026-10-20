@@ -1,7 +1,7 @@
 """ADR-048: the user-memory contracts hold together before any code implements them.
 
-The two tool schemas are drafts in contracts/memory/tools/ until their registry entry exists (step 9 of the plan);
-contracts/tools/ is what the registry loads and must match, so they move there with the code.
+The two tool schemas moved from contracts/memory/tools/ to contracts/tools/ with their registry entry (step 9 of the
+plan): contracts/tools/ is what the registry loads and must match.
 """
 
 from __future__ import annotations
@@ -121,10 +121,43 @@ def test_every_warning_says_whether_memory_is_applied():
 
 
 @pytest.mark.parametrize("name, tier", [("propose_income_change", "T1"), ("get_user_memory", "T0")])
-def test_the_tool_drafts_take_no_arguments(name, tier):
-    schema = _load(f"memory/tools/{name}.input.schema.json")
+def test_the_memory_tools_take_no_arguments_and_are_registered_with_their_tier(name, tier, services):
+    schema = _load(f"tools/{name}.input.schema.json")
     assert schema["x-tier"] == tier
     assert schema["properties"] == {} and schema["additionalProperties"] is False
     with pytest.raises(jsonschema.ValidationError):  # the model cannot pass an amount
-        validate({"amount": 1_200_000}, f"memory/tools/{name}.input.schema.json")
-    assert not (CONTRACTS / f"tools/{name}.input.schema.json").exists(), "move the draft together with its registry entry"
+        validate({"amount": 1_200_000}, f"tools/{name}.input.schema.json")
+    assert services.registry.tier_of(name).value == tier
+    assert not (MEMORY / "tools").exists(), "the drafts moved to contracts/tools with their registry entry"
+
+
+# ---- step 7: consent, its counters and the outcomes of the writes -------------------------------------------
+
+@pytest.mark.parametrize("body", [{"consent": "missing"}, {"consent": True}, {"consent": "granted", "user_id": "u2"}, {}])
+def test_a_consent_update_takes_only_granted_or_revoked(body):
+    with pytest.raises(jsonschema.ValidationError):
+        validate(body, "memory/memory_consent_update.schema.json")
+
+
+def test_the_stored_consent_state_is_what_the_contract_shows():
+    from neural_ledger.domain.memory.consent import Consent, MemoryState, state_record, with_consent
+
+    state = with_consent(MemoryState("u1"), Consent.GRANTED)
+    validate({**state_record(state), "changed": True}, "memory/memory_consent.schema.json")
+    with pytest.raises(jsonschema.ValidationError):
+        validate({**state_record(state), "user_id": "u1"}, "memory/memory_consent.schema.json")  # the owner is never shown
+
+
+def test_every_refusal_of_a_memory_write_is_an_error_of_the_contract():
+    from neural_ledger.domain.memory.proposals import WriteOutcome
+
+    statuses = set(_load("memory/memory_error.schema.json")["properties"]["status"]["enum"])
+    # NOT_WRITABLE (the account went away, or a persona) is answered as UNAUTHENTICATED or PERSONA_READ_ONLY
+    assert {o.value for o in WriteOutcome} - {"DONE", "NOT_WRITABLE"} <= statuses
+
+
+def test_the_audit_contract_knows_the_memory_events():
+    from neural_ledger.domain.audit.events import AuditKind
+
+    kinds = set(_load("audit/audit_event.schema.json")["properties"]["kind"]["enum"])
+    assert {k.value for k in AuditKind} == kinds

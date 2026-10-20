@@ -62,6 +62,13 @@ def no_concept_card(lang: str = "en", unavailable: bool = False) -> str:
     table = _NO_CARDS_NOW if unavailable else _NO_CARD
     return table.get(lang, table["en"])
 NO_RESULT = "I couldn't get a result for that. Could you rephrase?"
+# Memory is saved only in this release (ADR-048, ADR-049 deferred): every sentence about it says so.
+SAVED_ONLY = "A saved salary is checked against your statements; it does not change your projections."
+MEMORY_CONSENT_NEEDED = (
+    "To remember your salary I need your permission first: turn on memory in your profile, then tell me again. "
+    "Nothing was saved."
+)
+MEMORY_CHANGED = "Your memory settings changed while I was answering, so I left that part out. Ask me again if you need it."
 
 _BLOCK_SENTENCES = {
     "AUTHORIZATION_EXPIRED": "The authorization expired, so please confirm again in the app.",
@@ -136,6 +143,8 @@ def _narrate_one(name: str, payload: Payload, cur: str) -> list[str]:
         return [NOT_LINKED]
     if status == "INSUFFICIENT_DATA" and name == "search_financial_concepts":
         return [no_concept_card("en", unavailable="knowledge_base" in payload.get("missing", ()))]
+    if status == "INSUFFICIENT_DATA" and list(payload.get("missing", ())) == ["memory_consent"]:
+        return [MEMORY_CONSENT_NEEDED]
     if status == "INSUFFICIENT_DATA":
         missing =", ".join(payload.get("missing", ())) or "some data"
         return [f"I don't have enough data to answer that yet (missing: {missing}), so I won't guess."]
@@ -518,6 +527,45 @@ def _concepts(p: Payload, cur: str) -> list[str]:
     return [f"{title}: {body}" if body else f"{title}.", NOT_ADVICE_SENTENCE[lang]]
 
 
+def _income_proposal(p: Payload, cur: str) -> list[str]:
+    d = p["data"]
+    month = d["effective_from"]["pay_month"]
+    amounts = d["candidates"]
+    if d["status"] == "READY":
+        said = f"I read {_money(amounts[0], cur)} as your net salary from the pay month {month}."
+    elif d["status"] == "CHOOSE_AMOUNT":
+        said = f"I read {' and '.join(_money(a, cur) for a in amounts)}: choose your net salary in the card, from the pay month {month}."
+    else:
+        said = f"I didn't find an amount in your message: type your net salary in the card, from the pay month {month}."
+    base = " If your salary changed, the card also asks for the previous one." if d["needs_base"] else ""
+    return [f"{said}{base} Check it and confirm it in the card below; nothing is saved until you do. {SAVED_ONLY}"]
+
+
+_STATUS_SENTENCES = {
+    "verified": "your statements show it",
+    "declared": "no statement shows it yet",
+    "conflict": "your last eligible paydays did not show it, so confirm it again if it changed",
+}
+
+
+def _user_memory(p: Payload, cur: str) -> list[str]:
+    d = p["data"]
+    if d["consent"] != "granted":
+        return ["Memory is off, so I don't use anything you told me about yourself. You can turn it on in your profile."]
+    if not d["items"]:
+        return ["I have nothing saved about your salary. Tell me your net salary and I'll prepare it for you to confirm."]
+    sentences = []
+    for item in d["items"]:
+        sentence = (
+            f"You declared a net salary of {_money(item['amount'], cur)} from the pay month {item['effective_from']}; "
+            f"{_STATUS_SENTENCES[item['status']]}."
+        )
+        if item["upcoming"]:
+            sentence += f" From {item['upcoming']['effective_from']} you declared {_money(item['upcoming']['amount'], cur)}."
+        sentences.append(sentence)
+    return [*sentences, SAVED_ONLY]
+
+
 def _fact(payload: Payload, key: str) -> Any:
     for fact in payload.get("facts", ()):
         if fact["key"] == key:
@@ -547,5 +595,7 @@ _HANDLERS = {
     "propose_expense": _expense,
     "get_investments": _investments,
     "search_financial_concepts": _concepts,
+    "propose_income_change": _income_proposal,
+    "get_user_memory": _user_memory,
 }
 _SAYS_ITS_OWN_CAVEATS = {"search_financial_concepts"}  # the not-advice sentence, in the card's language
