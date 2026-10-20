@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from ....application.facade import ApplicationServices
+from ....application.ports import AccountGone
 from ....application.use_cases.accounts import SANDBOX_NOTICE, AccountOutcome, AccountStatus, IssuedSession
 from ....application.use_cases.actions import ActorContext
 from ....application.use_cases.statements import MAX_STATEMENT_BYTES
@@ -174,6 +175,11 @@ def create_app(
 
     @app.exception_handler(_NoSession)
     async def no_session(request: Request, exc: _NoSession) -> JSONResponse:
+        return _auth_error("UNAUTHENTICATED", "sign in required")
+
+    @app.exception_handler(AccountGone)
+    async def account_gone(request: Request, exc: AccountGone) -> JSONResponse:
+        """The account was deleted while the request ran (an import): nothing was stored, and its session is gone."""
         return _auth_error("UNAUTHENTICATED", "sign in required")
 
     @app.exception_handler(_BadBody)

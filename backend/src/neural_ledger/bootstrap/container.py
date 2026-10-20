@@ -41,6 +41,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemorySavingsRuleStore,
     InMemorySessionStore,
     InMemorySnapshotStore,
+    InMemoryStatementImportWrites,
     InMemoryStatementStore,
     InMemoryTransactionStore,
     InMemoryTransactionWrites,
@@ -61,6 +62,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteReceiptStore,
     SqliteSavingsRuleStore,
     SqliteSessionStore,
+    SqliteStatementImportWrites,
     SqliteStatementStore,
     SqliteTransactionStore,
     SqliteTransactionWrites,
@@ -384,7 +386,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         raise ValueError(f"unknown NL_CLASSIFIER {', '.join(unknown)!r} (known: {', '.join(CLASSIFIERS)})")
     chain = [CLASSIFIERS[name](s) for name in s.classifiers]
     classifier = chain[0] if len(chain) == 1 else FallbackClassifier(chain)
-    posting = LedgerPosting(classifier, transaction_store)
+    posting = LedgerPosting(classifier)
     unknown = [name for name in s.knowledge_bases if name not in KNOWLEDGE_BASES]
     if unknown:
         raise ValueError(f"unknown NL_KNOWLEDGE_BASE {', '.join(unknown)!r} (known: {', '.join(KNOWLEDGE_BASES)})")
@@ -394,7 +396,20 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     if s.pii_detector not in DETECTORS:
         raise ValueError(f"unknown NL_PII_DETECTOR {s.pii_detector!r} (known: {', '.join(DETECTORS)})")
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
-    statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
+    # With accounts, an import writes only for an existing account or an enabled demo persona (checked in its commit).
+    import_personas = frozenset(auth.demo_personas)
+    if db is not None:
+        import_writes: InMemoryStatementImportWrites | SqliteStatementImportWrites = SqliteStatementImportWrites(
+            db, cipher, accounts=auth.accounts, personas=import_personas,
+        )
+    else:
+        import_writes = InMemoryStatementImportWrites(
+            statement_store, transaction_store, audit_log, memory_store,
+            account_store if auth.accounts else None, import_personas,
+        )
+    statements = StatementUseCases(
+        StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, transaction_store, posting, import_writes, clock, ids, memory,
+    )
     ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
     # Investment statements the user imports (the path in use), and an account linked at the provider (ADR-044).
     investments = InvestmentUseCases(
