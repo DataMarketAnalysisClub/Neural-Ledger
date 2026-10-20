@@ -39,10 +39,15 @@ from ..shared.month import Month
 from ..statements.model import StoredStatement
 from .catalog import Declaration, applicable, chain
 
+# The version of these verification rules, kept apart from the financial parameters: memory is saved only in this
+# release, so the forecast stays fc-0.3 and nothing here is fc-0.4. A change of any SalaryRules value is a new version.
+CHECKER_VERSION = "salary-check-0.1"
+
 
 @dataclass(frozen=True, slots=True)
 class SalaryRules:
-    """The fc-0.4 values ADR-049 proposes. They join FinanceParams (and its lock) once Roles A and E approve them."""
+    """The values ADR-049 proposes for fc-0.4, versioned as CHECKER_VERSION while memory has no numerical effect.
+    They would join FinanceParams (and its lock) only with the numerical integration, once Roles A and E approve."""
 
     tolerance: Fraction = Fraction(5, 100)
     window_business_days: int = 3

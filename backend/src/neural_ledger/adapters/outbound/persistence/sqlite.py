@@ -6,6 +6,7 @@ Postgres would be one more adapter behind the same ports.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -16,7 +17,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from ....application.ports import ErasureReport, IdCollision
+from ....application.ports import ErasureReport, IdCollision, ImportCommit, MemoryWriteResult
 from ....domain.actions.terms import (
     ActionTerms,
     ActionType,
@@ -39,6 +40,22 @@ from ....domain.investments.documents import (
 from ....domain.investments.model import MAX_SNAPSHOTS, InvestmentGoal, InvestmentLink, InvestmentSnapshot
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.ledger.entities import AccountType, InstallmentInfo, Transaction, TransactionKind
+from ....domain.memory.catalog import Declaration, MemoryType, check_appended, declaration_record, parse_declaration
+from ....domain.memory.consent import Consent, MemoryState, parse_state, state_record, with_consent, with_memory_change
+from ....domain.memory.proposals import (
+    MemoryProposal,
+    ProposalState,
+    WriteOutcome,
+    check_confirmation,
+    confirmation_event,
+    consent_detail,
+    decide_confirmation,
+    decide_preparation,
+    deletion_detail,
+    parse_proposal,
+    proposal_record,
+)
+from ....domain.memory.transitions import check_import_batch
 from ....domain.receipts.model import ReceiptIssue, ReceiptIssueCode, StoredReceipt
 from ....domain.shared.month import Month
 from ....domain.shared.serialization import to_primitive
@@ -63,6 +80,11 @@ from .field_cipher import FieldCipher, FieldCipherError, WrongDataKey
 # Schema version 1 (PRAGMA user_version): every personal payload sealed (field_cipher.py), proposals, authorizations
 # and audit events carry their owner, and accounts are found by the email's blind index. A database from before has
 # user_version 0 and is upgraded by sqlite_migration.migrate, which bootstrap runs before any store is used.
+# A table or index added later without touching existing rows (user_memory, ADR-048) keeps the version: every
+# CREATE is IF NOT EXISTS and runs each time a current file is opened, so an existing database gains it empty.
+# That is additive initialization, not a downgrade guarantee: an older binary still opens such a file but does not
+# know user_memory, so its erasure and reset would leave memory behind. Never run an older binary on a database
+# that holds memory (docs/SECURITY.md, "No downgrade").
 SCHEMA_VERSION = 1
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals (
@@ -145,6 +167,27 @@ CREATE TABLE IF NOT EXISTS sessions (
     payload     TEXT NOT NULL,
     revoked_at  TEXT
 );
+CREATE TABLE IF NOT EXISTS user_memory (
+    sequence  INTEGER PRIMARY KEY,
+    memory_id TEXT NOT NULL UNIQUE,
+    chain_id  TEXT NOT NULL,
+    version   INTEGER NOT NULL,
+    user_id   TEXT NOT NULL,
+    type      TEXT NOT NULL,
+    payload   TEXT NOT NULL,
+    UNIQUE (chain_id, version)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS user_memory_one_chain ON user_memory (user_id, type) WHERE version = 1;
+CREATE TABLE IF NOT EXISTS memory_state (
+    user_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS memory_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    payload     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS memory_proposals_by_user ON memory_proposals (user_id);
 CREATE TABLE IF NOT EXISTS meta (
     name  TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -188,6 +231,9 @@ _RESET_SQL: dict[str, tuple[str, str]] = {
     "investment_links": ("SELECT COUNT(*) FROM investment_links", "DELETE FROM investment_links"),
     "investment_snapshots": ("SELECT COUNT(*) FROM investment_snapshots", "DELETE FROM investment_snapshots"),
     "investment_documents": ("SELECT COUNT(*) FROM investment_documents", "DELETE FROM investment_documents"),
+    "user_memory": ("SELECT COUNT(*) FROM user_memory", "DELETE FROM user_memory"),
+    "memory_state": ("SELECT COUNT(*) FROM memory_state", "DELETE FROM memory_state"),
+    "memory_proposals": ("SELECT COUNT(*) FROM memory_proposals", "DELETE FROM memory_proposals"),
 }
 # Bookkeeping, not data: a reset keeps it (the key check stays valid, since a reset does not change the key).
 _KEPT_ON_RESET = frozenset({"meta"})
@@ -701,6 +747,84 @@ def _receipt_from(payload: dict) -> StoredReceipt:
     )
 
 
+def _memory_aad(user_id: str, memory_id: str) -> str:
+    return f"user_memory|{user_id}|{memory_id}"
+
+
+def _open_declaration(cipher: FieldCipher, row: tuple) -> Declaration:
+    """A stored version; its clear columns must say what the sealed payload says, or the row was edited around us."""
+    memory_id, chain_id, version, user_id, type_, payload = row
+    declaration = parse_declaration(json.loads(cipher.open(payload, _memory_aad(user_id, memory_id))), user_id)
+    if (declaration.memory_id, declaration.chain_id, declaration.version, declaration.type.value) != (memory_id, chain_id, version, type_):
+        raise FieldCipherError("a user_memory row does not match its sealed payload")
+    return declaration
+
+
+def _append_memory(conn: sqlite3.Connection, cipher: FieldCipher, declarations: Sequence[Declaration], expected_version: int) -> bool:
+    """MemoryStore.append inside the caller's transaction, so a later step can add the audit and the proposal to it."""
+    check_appended(declarations, expected_version)
+    first = declarations[0]
+    if any(conn.execute("SELECT 1 FROM user_memory WHERE memory_id = ?", (d.memory_id,)).fetchone() for d in declarations):
+        raise IdCollision("generated identifier collision")
+    if conn.execute("SELECT 1 FROM user_memory WHERE chain_id = ? AND user_id != ?", (first.chain_id, first.user_id)).fetchone():
+        raise IdCollision("generated identifier collision")
+    row = conn.execute("SELECT MAX(version) FROM user_memory WHERE user_id = ? AND chain_id = ?", (first.user_id, first.chain_id)).fetchone()
+    if (row[0] or 0) != expected_version:
+        return False
+    if expected_version == 0 and conn.execute(
+        "SELECT 1 FROM user_memory WHERE user_id = ? AND type = ?", (first.user_id, first.type.value)
+    ).fetchone():
+        return False  # the user already has a chain of this type
+    conn.executemany(
+        "INSERT INTO user_memory (memory_id, chain_id, version, user_id, type, payload) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (d.memory_id, d.chain_id, d.version, d.user_id, d.type.value,
+             cipher.seal(json.dumps(declaration_record(d)), _memory_aad(d.user_id, d.memory_id)))
+            for d in declarations
+        ],
+    )
+    return True
+
+
+class SqliteMemoryStore:
+    """Declared memory (ADR-048), sealed with the data key; ids, owner, version and type stay in clear for lookups and
+    for the uniqueness of a chain per user and type, which the database enforces as well."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def for_user(self, user_id: str) -> tuple[Declaration, ...]:
+        rows = self._db.fetchall(
+            "SELECT memory_id, chain_id, version, user_id, type, payload FROM user_memory m WHERE user_id = ? "
+            "ORDER BY (SELECT MIN(sequence) FROM user_memory c WHERE c.chain_id = m.chain_id), version",
+            (user_id,),
+        )
+        return tuple(_open_declaration(self._cipher, row) for row in rows)
+
+    def chain(self, user_id: str, chain_id: str) -> tuple[Declaration, ...]:
+        rows = self._db.fetchall(
+            "SELECT memory_id, chain_id, version, user_id, type, payload FROM user_memory WHERE user_id = ? AND chain_id = ? ORDER BY version",
+            (user_id, chain_id),
+        )
+        return tuple(_open_declaration(self._cipher, row) for row in rows)
+
+    def chain_of_type(self, user_id: str, type: MemoryType) -> tuple[Declaration, ...]:
+        rows = self._db.fetchall(
+            "SELECT memory_id, chain_id, version, user_id, type, payload FROM user_memory WHERE user_id = ? AND type = ? ORDER BY version",
+            (user_id, type.value),
+        )
+        return tuple(_open_declaration(self._cipher, row) for row in rows)
+
+    def append(self, declarations: Sequence[Declaration], expected_version: int) -> bool:
+        with _account_transaction(self._db) as conn:
+            return _append_memory(conn, self._cipher, declarations, expected_version)
+
+    def delete_chain(self, user_id: str, chain_id: str) -> int:
+        with self._db.lock:
+            return self._db.connection.execute("DELETE FROM user_memory WHERE user_id = ? AND chain_id = ?", (user_id, chain_id)).rowcount
+
+
 class SqliteConnectionStore:
     """Connections and their latest answers (ADR-047). The payload, which holds the secret (an MCP token or a bank
     link), is sealed with the data key like every personal column; ids and the owner stay in clear for lookups."""
@@ -830,6 +954,18 @@ SEALED_COLUMNS: tuple[SealedColumn, ...] = (
     SealedColumn(
         "connection_results", "SELECT rowid, user_id, connection_id, tool, payload FROM connection_results ORDER BY rowid",
         "UPDATE connection_results SET payload = ? WHERE rowid = ?", lambda r: _aad("connection_results", r[1], f"{r[2]}|{r[3]}"),
+    ),
+    SealedColumn(
+        "user_memory", "SELECT rowid, user_id, memory_id, payload FROM user_memory ORDER BY rowid",
+        "UPDATE user_memory SET payload = ? WHERE rowid = ?", lambda r: _memory_aad(r[1], r[2]),
+    ),
+    SealedColumn(
+        "memory_state", "SELECT rowid, user_id, user_id, payload FROM memory_state ORDER BY rowid",
+        "UPDATE memory_state SET payload = ? WHERE rowid = ?", lambda r: _aad("memory_state", r[1], r[2]),
+    ),
+    SealedColumn(
+        "memory_proposals", "SELECT rowid, user_id, proposal_id, payload FROM memory_proposals ORDER BY rowid",
+        "UPDATE memory_proposals SET payload = ? WHERE rowid = ?", lambda r: _aad("memory_proposals", r[1], r[2]),
     ),
     SealedColumn(
         "user_profiles", "SELECT rowid, user_id, payload FROM user_profiles ORDER BY rowid",
@@ -1430,6 +1566,220 @@ class SqliteInvestmentStore:
         return removed
 
 
+def _account_exists(conn: sqlite3.Connection, user_id: str) -> bool:
+    """Checked inside every memory write: a request authenticated before its account was deleted recreates nothing,
+    and a shared persona, which has no account row, is never writable."""
+    return conn.execute("SELECT 1 FROM user_accounts WHERE user_id = ?", (user_id,)).fetchone() is not None
+
+
+def _memory_state(conn: sqlite3.Connection, cipher: FieldCipher, user_id: str) -> MemoryState:
+    row = conn.execute("SELECT payload FROM memory_state WHERE user_id = ?", (user_id,)).fetchone()
+    if row is None:
+        return MemoryState(user_id)
+    return parse_state(json.loads(cipher.open(row[0], _aad("memory_state", user_id, user_id))), user_id)
+
+
+def _put_memory_state(conn: sqlite3.Connection, cipher: FieldCipher, state: MemoryState) -> None:
+    conn.execute(
+        "INSERT INTO memory_state (user_id, payload) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET payload = excluded.payload",
+        (state.user_id, cipher.seal(json.dumps(state_record(state)), _aad("memory_state", state.user_id, state.user_id))),
+    )
+
+
+def _memory_proposal(conn: sqlite3.Connection, cipher: FieldCipher, user_id: str, proposal_id: str) -> MemoryProposal | None:
+    row = conn.execute("SELECT payload FROM memory_proposals WHERE proposal_id = ? AND user_id = ?", (proposal_id, user_id)).fetchone()
+    if row is None:
+        return None
+    proposal = parse_proposal(json.loads(cipher.open(row[0], _aad("memory_proposals", user_id, proposal_id))), user_id)
+    if proposal.proposal_id != proposal_id:
+        raise FieldCipherError("a memory_proposals row does not match its sealed payload")
+    return proposal
+
+
+def _put_memory_proposal(conn: sqlite3.Connection, cipher: FieldCipher, proposal: MemoryProposal, *, insert: bool) -> None:
+    payload = cipher.seal(json.dumps(proposal_record(proposal)), _aad("memory_proposals", proposal.user_id, proposal.proposal_id))
+    if insert:
+        conn.execute("INSERT INTO memory_proposals (proposal_id, user_id, payload) VALUES (?, ?, ?)", (proposal.proposal_id, proposal.user_id, payload))
+    elif conn.execute(
+        "UPDATE memory_proposals SET payload = ? WHERE proposal_id = ? AND user_id = ?", (payload, proposal.proposal_id, proposal.user_id)
+    ).rowcount != 1:
+        raise RuntimeError("proposal changed during a memory write")
+
+
+def _invalidate_memory_proposals(conn: sqlite3.Connection, cipher: FieldCipher, user_id: str) -> int:
+    count = 0
+    for (proposal_id,) in conn.execute("SELECT proposal_id FROM memory_proposals WHERE user_id = ? ORDER BY proposal_id", (user_id,)).fetchall():
+        proposal = _memory_proposal(conn, cipher, user_id, proposal_id)
+        if proposal is not None and proposal.state is ProposalState.PENDING:
+            _put_memory_proposal(conn, cipher, replace(proposal, state=ProposalState.INVALIDATED), insert=False)
+            count += 1
+    return count
+
+
+def _check_memory_events(conn: sqlite3.Connection, owner: str, events: Sequence[AuditDraft]) -> None:
+    if any(event.user_id != owner for event in events):
+        raise ValueError("memory event ownership mismatch")
+    SqliteAccountWrites._check_events(conn, events)
+
+
+class SqliteMemoryWrites:
+    """MemoryWrites in one SQLite transaction each. Raw connection only: the store and audit-log methods take
+    db.lock, which the transaction already holds (the lock is not reentrant)."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher) -> None:
+        self._db = db
+        self._cipher = cipher
+
+    def state(self, user_id: str) -> MemoryState:
+        with self._db.lock:
+            return _memory_state(self._db.connection, self._cipher, user_id)
+
+    def proposal(self, user_id: str, proposal_id: str) -> MemoryProposal | None:
+        with self._db.lock:
+            return _memory_proposal(self._db.connection, self._cipher, user_id, proposal_id)
+
+    def set_consent(self, user_id: str, requested: Consent, event: AuditDraft) -> MemoryWriteResult:
+        with _account_transaction(self._db) as conn:
+            before = _memory_state(conn, self._cipher, user_id)
+            if not _account_exists(conn, user_id):
+                return MemoryWriteResult(WriteOutcome.NOT_WRITABLE, before)
+            after = with_consent(before, requested)
+            if after == before:
+                return MemoryWriteResult(WriteOutcome.DONE, before, changed=False)
+            invalidated = 0
+            if after.consent is Consent.REVOKED:
+                invalidated = _invalidate_memory_proposals(conn, self._cipher, user_id)
+            _put_memory_state(conn, self._cipher, after)
+            consent_event = replace(event, detail=consent_detail(before, after))
+            _check_memory_events(conn, user_id, (consent_event,))
+            _append_audit(conn, self._cipher, consent_event)
+            return MemoryWriteResult(WriteOutcome.DONE, after, changed=True, invalidated_proposals=invalidated)
+
+    def prepare(self, proposal: MemoryProposal) -> MemoryWriteResult:
+        with _account_transaction(self._db) as conn:
+            state = _memory_state(conn, self._cipher, proposal.user_id)
+            outcome = decide_preparation(writable=_account_exists(conn, proposal.user_id), state=state, proposal=proposal)
+            if outcome is WriteOutcome.DONE:
+                if proposal.state is not ProposalState.PENDING or conn.execute(
+                    "SELECT 1 FROM memory_proposals WHERE proposal_id = ?", (proposal.proposal_id,)
+                ).fetchone():
+                    raise IdCollision("generated identifier collision")
+                _put_memory_proposal(conn, self._cipher, proposal, insert=True)
+            return MemoryWriteResult(outcome, state)
+
+    def confirm(
+        self, user_id: str, proposal_id: str | None, declarations: Sequence[Declaration], expected_version: int,
+        now: datetime, event: AuditDraft,
+    ) -> MemoryWriteResult:
+        check_confirmation(user_id, declarations, expected_version, event)
+        with _account_transaction(self._db) as conn:
+            state = _memory_state(conn, self._cipher, user_id)
+            proposal = _memory_proposal(conn, self._cipher, user_id, proposal_id) if proposal_id is not None else None
+            row = conn.execute(
+                "SELECT chain_id, MAX(version) FROM user_memory WHERE user_id = ? AND type = ? GROUP BY chain_id",
+                (user_id, declarations[0].type.value),
+            ).fetchone()
+            chain_id, head = (row[0], row[1]) if row else (None, 0)
+            outcome = decide_confirmation(
+                user_id=user_id, writable=_account_exists(conn, user_id), state=state, proposal_id=proposal_id, proposal=proposal,
+                chain_id=chain_id, head_version=head, batch_chain_id=declarations[0].chain_id, expected_version=expected_version, now=now,
+            )
+            if outcome is not WriteOutcome.DONE:
+                return MemoryWriteResult(outcome, state)
+            if proposal is not None:
+                _put_memory_proposal(conn, self._cipher, replace(proposal, state=ProposalState.CONSUMED), insert=False)
+            if not _append_memory(conn, self._cipher, declarations, expected_version):
+                raise RuntimeError("memory chain changed during its confirmation")
+            after = with_memory_change(state)
+            _put_memory_state(conn, self._cipher, after)
+            confirmed = confirmation_event(event, proposal_id, declarations, expected_version, after)
+            _check_memory_events(conn, user_id, (confirmed,))
+            _append_audit(conn, self._cipher, confirmed)
+            return MemoryWriteResult(WriteOutcome.DONE, after)
+
+    def delete_chain(self, user_id: str, chain_id: str, event: AuditDraft) -> MemoryWriteResult:
+        with _account_transaction(self._db) as conn:
+            state = _memory_state(conn, self._cipher, user_id)
+            if not _account_exists(conn, user_id):
+                return MemoryWriteResult(WriteOutcome.NOT_WRITABLE, state)
+            deleted = conn.execute("DELETE FROM user_memory WHERE user_id = ? AND chain_id = ?", (user_id, chain_id)).rowcount
+            if not deleted:
+                return MemoryWriteResult(WriteOutcome.NOT_FOUND, state)
+            invalidated = _invalidate_memory_proposals(conn, self._cipher, user_id)
+            after = with_memory_change(state)
+            _put_memory_state(conn, self._cipher, after)
+            detail = deletion_detail(chain_id=chain_id, deleted_versions=deleted, invalidated_proposals=invalidated, revision=after.memory_revision)
+            deletion = replace(event, detail=detail)
+            _check_memory_events(conn, user_id, (deletion,))
+            _append_audit(conn, self._cipher, deletion)
+            return MemoryWriteResult(WriteOutcome.DONE, after, deleted_versions=deleted, invalidated_proposals=invalidated)
+
+
+def _import_token(conn: sqlite3.Connection, user_id: str) -> str:
+    """StatementImportWrites.token over the sealed rows themselves: a rewrite seals with a fresh nonce, so any change of
+    a statement, a transaction's content, a declaration or the memory state changes it, and nothing is opened."""
+    digest = hashlib.sha256()
+    for sql in _IMPORT_TOKEN_SQL:
+        for row in conn.execute(sql, (user_id,)):
+            digest.update(repr(row).encode())
+        digest.update(b"|")
+    return digest.hexdigest()
+
+
+_IMPORT_TOKEN_SQL = (
+    "SELECT statement_id, payload FROM statements WHERE user_id = ? ORDER BY statement_id",
+    "SELECT txn_id, payload FROM transactions WHERE user_id = ? ORDER BY txn_id",
+    "SELECT memory_id, payload FROM user_memory WHERE user_id = ? ORDER BY memory_id",
+    "SELECT payload FROM memory_state WHERE user_id = ?",
+)
+
+
+class SqliteStatementImportWrites:
+    """StatementImportWrites in one SQLite transaction; raw connection only (db.lock is already held). With accounts,
+    the owner's account row is read in that transaction, before the token: an erasure commits either before it (the
+    import ends OWNER_GONE) or after the import's whole commit (and erases it)."""
+
+    def __init__(self, db: SqliteDatabase, cipher: FieldCipher, *, accounts: bool = False, personas: frozenset[str] = frozenset()) -> None:
+        self._db = db
+        self._cipher = cipher
+        self._accounts = accounts
+        self._personas = personas  # the shared demo personas this server enables: they import without an account
+
+    def token(self, user_id: str) -> str:
+        with self._db.lock:
+            return _import_token(self._db.connection, user_id)
+
+    def commit(
+        self, user_id: str, token: str, statements: Sequence[StoredStatement], transactions: Sequence[PostedTransaction],
+        events: Sequence[AuditDraft],
+    ) -> ImportCommit:
+        check_import_batch(user_id, statements, transactions, events)
+        with _account_transaction(self._db) as conn:
+            if self._accounts and user_id not in self._personas and not _account_exists(conn, user_id):
+                return ImportCommit.OWNER_GONE
+            if _import_token(conn, user_id) != token:
+                return ImportCommit.CHANGED
+            SqliteAccountWrites._check_events(conn, events)
+            for stored in statements:
+                payload = self._cipher.seal(json.dumps(to_primitive(stored)), _statement_aad(user_id, stored.statement_id))
+                try:
+                    conn.execute("INSERT INTO statements (statement_id, user_id, payload) VALUES (?, ?, ?)", (stored.statement_id, user_id, payload))
+                except sqlite3.IntegrityError as error:
+                    raise IdCollision("generated identifier collision") from error
+            for p in transactions:
+                payload = self._cipher.seal(json.dumps(to_primitive(p)), _transaction_aad(user_id, p.transaction.txn_id))
+                try:
+                    conn.execute(
+                        "INSERT INTO transactions (txn_id, user_id, posted_on, payload) VALUES (?, ?, ?, ?)",
+                        (p.transaction.txn_id, user_id, p.transaction.date.isoformat(), payload),
+                    )
+                except sqlite3.IntegrityError as error:
+                    raise IdCollision("generated identifier collision") from error
+            for event in events:
+                _append_audit(conn, self._cipher, event)
+            return ImportCommit.COMMITTED
+
+
 # Literal statements per table that holds a user's rows (no SQL built from strings, ASVS V1). Whoever adds a table
 # with a user_id must add it here: tests/security/test_account_deletion.py scans every table for the deleted user.
 _ERASE_SQL: dict[str, str] = {
@@ -1438,6 +1788,9 @@ _ERASE_SQL: dict[str, str] = {
     "receipts": "DELETE FROM receipts WHERE user_id = ?",
     "connections": "DELETE FROM connections WHERE user_id = ?",
     "connection_results": "DELETE FROM connection_results WHERE user_id = ?",
+    "user_memory": "DELETE FROM user_memory WHERE user_id = ?",
+    "memory_state": "DELETE FROM memory_state WHERE user_id = ?",
+    "memory_proposals": "DELETE FROM memory_proposals WHERE user_id = ?",
     "savings_rules": "DELETE FROM savings_rules WHERE user_id = ?",
     "proposals": "DELETE FROM proposals WHERE user_id = ?",
     "authorizations": "DELETE FROM authorizations WHERE user_id = ?",
