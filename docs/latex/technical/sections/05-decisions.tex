@@ -93,7 +93,7 @@ does not ship, so in Docker receipts are read from PDFs.
 \field{Decision} About 70 cards (35 concepts, Spanish and English) written by the team in its own words, each citing
 its public sources. A \code{KnowledgeBase} port with a BM25 adapter (offline, default) and a ChromaDB adapter with
 multilingual embeddings. The T0 tool \code{search_financial_concepts}, on the \code{EXPLAIN} intent only. Card numbers
-are facts, \code{NOT_ADVICE} must be mentioned, and card text is untrusted data. Defining an ETF is allowed;
+are facts, \code{EDUCATIONAL_NOT_ADVICE} must be mentioned, and card text is untrusted data. Defining an ETF is allowed;
 advice on what to invest in stays out of scope.
 \field{Consequences} An optional \code{rag} extra and \code{chroma} container. A recall@3 gate in
 \code{tests/rag_eval} (both indexes reach 1.0 on 48 questions in Spanish and English). Card content is a team responsibility.

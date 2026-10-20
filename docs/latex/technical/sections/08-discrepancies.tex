@@ -26,9 +26,11 @@ follows the code. The differences found while writing it:
   \item \textbf{Live mode and connectors.} \code{docs/PRIVACY.md} says \code{mode} is \code{live} as soon as any
     provider sends data out, and lists MCP servers and Fintoc among those providers. In the code
     (\code{Settings.mode}), \code{NL_CONNECTORS=live} does not make the mode live, and \code{GET /health} has no
-    connectors field; only \code{GET /v1/connections} reports the connector mode.
-  \item \textbf{Attack test S24.} \code{tests/security/test_education_attacks.py} holds eight S24 tests (concept-card
-    injection, \code{NOT_ADVICE}), but the attack table in \code{docs/SECURITY.md} has no S24 row.
+    connectors field; only \code{GET /v1/connections} reports the connector mode. \emph{Pull request \#58, not merged
+    at this commit, counts live connectors as live mode and adds a \code{connectors} field to \code{/health}.}
+  \item \textbf{Attack test S24.} \code{tests/security/test_education_attacks.py} holds eight S24 tests (11 cases:
+    concept-card injection and the \code{EDUCATIONAL_NOT_ADVICE} warning), but the attack table in
+    \code{docs/SECURITY.md} has no S24 row. \emph{Pull request \#58 adds it.}
   \item \textbf{Suitability gaps.} The ``Not in this plan'' paragraph of ADR-033 in \code{docs/DECISIONS.md} describes
     UG01--UG03 as later work that needs a \code{params_version} decision. They are closed in the code without one,
     because no amount changed, and \code{docs/SECURITY.md} records them as closed.

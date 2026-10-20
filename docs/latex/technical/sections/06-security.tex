@@ -190,8 +190,9 @@ with \code{keep_account} true, recorded as \code{DEMO_DATA_RESET}. The fixture a
 \subsection{Evidence}
 
 \code{make test-security} runs the attack tests S01--S24, S30--S32 and S35--S38; \code{docs/SECURITY.md} lists each
-with its expected behaviour and audit event, except S24 (concept cards, \cref{sec:discrepancies}). The newer ones cover
-concept-card injection and the \code{NOT_ADVICE} warning (S24), Fintual goal names, credentials and imported
+with its expected behaviour and audit event, except S24 (concept cards), whose row pull request \#58 adds
+(\cref{sec:discrepancies}). The newer ones cover
+concept-card injection and the \code{EDUCATIONAL_NOT_ADVICE} warning (S24), Fintual goal names, credentials and imported
 statements (S30--S32), and connected servers: false read-only labels, injected answers, SSRF and token leaks
 (S35--S38). Receipts have their own attack tests in \code{tests/security/test_receipts.py}. The suitability suite
 (\code{make test-suitability}) now passes 24 checks with no expected failures, UG01--UG03 included. Option B adds \code{tests/adapters/test_data_key.py} (key sources, deployed refusals, wrong key,

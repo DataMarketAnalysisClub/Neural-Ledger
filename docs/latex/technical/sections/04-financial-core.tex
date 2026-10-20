@@ -233,7 +233,7 @@ confidence of at least 0.5, otherwise the charge is \code{uncategorized}. A cate
 tools called in the same turn (\cref{alg:verify}). A failed reply is replaced by \code{narration}, a deterministic text
 built from the same facts, and the failure is audited as \code{VERIFICATION_FAILED}. The same check covers the
 newer read tools. A concept card declares every number its body states, and the envelope turns each into a fact. Its
-\code{NOT_ADVICE} warning must be mentioned (ADR-040). Figures from investments are facts with the warning
+\code{EDUCATIONAL_NOT_ADVICE} warning must be mentioned (ADR-040). Figures from investments are facts with the warning
 \code{INVESTMENTS_AS_REPORTED}, or \code{INVESTMENTS_FROM_STATEMENT} for imported documents. A connected service's
 numbers are facts in the currency their object names, or else in the unit \code{external}, which the verifier never
 accepts as money. They carry the warning \code{EXTERNAL_DATA}.

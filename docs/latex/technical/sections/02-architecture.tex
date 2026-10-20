@@ -61,7 +61,7 @@ two so that a demo never runs in the wrong one.
     \toprule
     Setting & Values & Effect \\
     \midrule
-    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, \code{NL_PII_DETECTOR=azure}, or \code{NL_INVESTMENTS=fintual}. \code{NL_CONNECTORS=live} does not count (\cref{sec:discrepancies}). Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
+    providers (\code{mode}) & offline, live & \emph{Live} as soon as any setting sends data to a provider: \code{NL_LLM} other than \code{scripted}, \code{jev} in \code{NL_DECISION_CHAIN} or \code{NL_CLASSIFIER}, \code{NL_PII_DETECTOR=azure}, or \code{NL_INVESTMENTS=fintual}. \code{NL_CONNECTORS=live} does not count yet: pull request \#58 adds it (\cref{sec:discrepancies}). Live mode refuses the development HMAC secret and, with SQLite, a missing data key. \\
     \code{NL_AUTH} & demo, accounts & \emph{demo}: the \code{X-User-Id} header names a persona, profiles are read-only, no auth routes (local runs and tests only). \emph{accounts}: sign-up, sign-in and an HttpOnly session cookie; the header is rejected. \\
     \code{NL_PERSISTENCE} & memory, sqlite & In-process stores, or one SQLite file at \code{NL_SQLITE_PATH}. \\
     \code{NL_DEPLOYMENT} & local, deployed & \emph{deployed} refuses to start without a data key from a secret or the environment, with a key on the data volume, while the old \code{<db>.key} exists, or with the development HMAC secret (\cref{sec:keys}). \\
@@ -121,7 +121,7 @@ adds \code{X-Content-Type-Options: nosniff} and \code{Cache-Control: no-store} t
     api & any other \code{/v1/*} & 300 & 900 \\
     \bottomrule
   \end{tabular}
-  \caption{Rate limits per minute (\texttt{DEFAULT\_LIMITS} in \texttt{rate\_limit.py}); the first matching budget applies, and over it the answer is 429 with \texttt{Retry-After}.}\label{tab:rates}
+  \caption{Rate limits per minute (\texttt{DEFAULT\_LIMITS} in \texttt{rate\_limit.py}); the first matching budget applies, and over it the answer is 429 with \texttt{Retry-After}. Connection calls fall under \emph{api}; pull request \#58 gives every \texttt{POST /v1/connections*} its own budget of 10 per caller and 30 per IP.}\label{tab:rates}
 \end{table}
 
 \subsection{A chat turn}\label{sec:chat}

@@ -45,8 +45,9 @@ still runs the old configuration (R24). Finally, data export, consent and opposi
 \textbf{Version 1.1} reviews four features merged since (ADR-039, ADR-040, ADR-044, ADR-047). They bring new
 third-party text, a provider token with full access, and outbound calls to addresses users choose. The agent stays
 read-only towards all of them, and every new store is sealed and erased with the account. The new risks are R25--R31.
-The largest are that a connected server may lie about a tool being read-only (R25), and that
-\code{NL_CONNECTORS=live} is not reported as live mode (R28).
+The largest is that a connected server may lie about a tool being read-only (R25). Pull request \#58 (open)
+fixes two others: it reports \code{NL_CONNECTORS=live} as live mode (R28) and gives connection calls their own rate
+budget (R29).
 
 % ------------------------------------------------------------------------------------------------
 \section{Scope and method}\label{sec:scope}
@@ -283,7 +284,7 @@ Demo personas are reset, not deleted, and the reset is recorded as \code{DEMO_DA
     Deletion & B intact, nothing of A left, chain verifies, forged tombstones fail & G03, \code{test_account_deletion.py} \\
     Audit integrity & Edited event detected & C10, \code{test_audit_chain_detects_tampering} \\
     Secrets in the repository & No \code{.env}, API key, card number or real statement tracked & C07 \\
-    Concept cards & Injected card text reaches no T1 or T2 tool; numbers outside the card and a missing \code{NOT_ADVICE} fail verification & S24 \\
+    Concept cards & Injected card text reaches no T1 or T2 tool; numbers outside the card and a missing \code{EDUCATIONAL_NOT_ADVICE} fail verification & S24 \\
     Investments & Goal names untrusted and never narrated; credentials never leak; link and unlink T3; only verified documents kept; personas cannot import & S30--S32 \\
     Connections & False read-only labels, injected answers, SSRF targets and token hunts & S35--S38, \code{test_mcp_http.py} \\
     Suitability report & Plans state the permitted profile and why; superseded plans refused; off-track goals warned & UG01--UG03, \code{tests/suitability} \\
@@ -346,9 +347,9 @@ server. The register is our own analysis of the code and of the option B change.
   R25 & A connected MCP server lies: a tool labelled read-only and argument-free moves money or changes the user's account there & M & H & Only the user's sync calls tools, with empty arguments; write verbs refused; labels re-checked each sync; off in deployed mode & Accepted with a warning to users; C \\
   R26 & DNS rebinding: an address that resolves to a public IP when checked and to a private one when the client connects & L & M & Public-address check, no redirects, 10\,s, 1\,MB; marked \code{shortcut:} in the adapter & Open; C: pin the checked address in the connection \\
   R27 & A stolen Fintual token reads the whole account: the API has no read-only scope and no revocation & L & H & Sealed and bound to user and adapter; never returned, logged or prompted; deployed mode refuses \code{fintual} & Open; C \\
-  R28 & \code{NL_CONNECTORS=live} sends tokens to user-chosen servers and to Fintoc, but \code{/health} still reports \code{offline} & M & M & Deployed mode keeps connectors off unless \code{NL_CONNECTORS_LIVE} is set & Open; C: count connectors in \code{Settings.mode} \\
-  R29 & Connection syncs are limited only by the general 300 per minute budget, and each one calls an outside server & M & L & 10\,s timeout and 1\,MB cap per call & Open; C: own budget, as for investment syncs \\
-  R30 & A concept card states a wrong definition; the verifier checks numbers, not meaning & L & M & Team-written cards with cited sources; card tests; eval gate; \code{NOT_ADVICE} warning & Open; B: review cards \\
+  R28 & \code{NL_CONNECTORS=live} sends tokens to user-chosen servers and to Fintoc, but \code{/health} still reports \code{offline} & M & M & Deployed mode keeps connectors off unless \code{NL_CONNECTORS_LIVE} is set & Fix in PR \#58 (open); C \\
+  R29 & Connection syncs are limited only by the general 300 per minute budget, and each one calls an outside server & M & L & 10\,s timeout and 1\,MB cap per call & Fix in PR \#58 (open): 10 per caller, 30 per IP; C \\
+  R30 & A concept card states a wrong definition; the verifier checks numbers, not meaning & L & M & Team-written cards with cited sources; card tests; eval gate; \code{EDUCATIONAL_NOT_ADVICE} warning & Open; B: review cards \\
   R31 & The first Fintoc sync has no previous balance, so it cannot be reconciled & H & L & Stored unverified (\code{NO_SUMMARY}) and not posted; later syncs reconcile & Accepted; A \\
 \end{longtable}
 }
@@ -378,8 +379,9 @@ their data. And the sandbox rule is explicit and recorded. What remains, in orde
     abuse budget for sign-up.
   \item \textbf{Compliance} (R23, R16). Build export, consent and opposition, write the impact assessment, and document
     transfer safeguards before any use with real users.
-  \item \textbf{Connections} (R25, R26, R28, R29). Count live connectors in \code{/health}, pin the address that was
-    checked, give syncs their own rate budget, and keep live connectors off the public demo.
+  \item \textbf{Connections} (R25, R26, R28, R29). Merge pull request \#58, which counts live connectors in
+    \code{/health} and gives connection calls their own rate budget; pin the address that was checked; and keep live
+    connectors off the public demo.
 \end{enumerate}
 
 \section{Conclusion}
