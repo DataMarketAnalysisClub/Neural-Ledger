@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Trash } from "@phosphor-icons/react";
+import { DownloadSimple, Trash } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accountsApi, type UserProfile } from "@/api/accounts";
 import { usePersona } from "@/api/hooks";
 import { Button, EmptyState, ErrorState, Loading, Notice, PageHeader, Section, StatusBadge, describeError } from "@/components/ui";
 import { t, tDynamic } from "@/i18n";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { MemorySection } from "@/features/memory/MemorySection";
 
 function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
   const { identity } = usePersona();
@@ -39,6 +40,45 @@ function ProfileSettings({ profile }: { readonly profile: UserProfile }) {
 
 const fieldClass = "h-10 w-full rounded-control border border-control bg-surface px-3 text-sm text-ink focus:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25";
 
+/** G02: fetch the caller's copy and save it as a JSON file. Rejects if the copy could not be fetched. */
+async function downloadData(): Promise<void> {
+  const data = await accountsApi.exportData();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `neural-ledger-data-${data.exported_at.slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** G02: download a copy of everything stored about the user. Two steps: the button asks to confirm, since the file holds personal data. */
+function DownloadData() {
+  const [open, setOpen] = useState(false);
+  const download = useMutation({ mutationFn: downloadData, onSuccess: () => setOpen(false) });
+
+  return (
+    <Section id="download-data" title={t("profile.download.title")} className="mt-10 max-w-3xl border-t border-line pt-10">
+      <p className="max-w-prose text-sm text-ink-2">{t("profile.download.description")}</p>
+      {download.isSuccess && <div className="mt-4"><Notice tone="positive" title={t("profile.download.done")} /></div>}
+      {!open ? (
+        <Button variant="secondary" className="mt-5" onClick={() => { setOpen(true); download.reset(); }}>
+          <DownloadSimple aria-hidden className="size-4" />
+          {t("profile.download.start")}
+        </Button>
+      ) : (
+        <div className="mt-5 max-w-prose space-y-4">
+          <Notice tone="warning" title={t("profile.download.confirmTitle")}>{t("profile.download.confirmDetail")}</Notice>
+          {download.isError && <Notice tone="danger" title={describeError(download.error)} />}
+          <div className="flex flex-wrap gap-3">
+            <Button variant="primary" disabled={download.isPending} busy={download.isPending} onClick={() => download.mutate()}>{t("profile.download.submit")}</Button>
+            <Button type="button" variant="quiet" onClick={() => setOpen(false)}>{t("profile.download.cancel")}</Button>
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 /**
  * G03: delete the account, or reset a shared demo persona (which is never deleted). Two steps: the button opens a
  * form that asks for the confirmation word and, for an account, the password. The server checks both again.
@@ -49,12 +89,18 @@ function DeleteAccount({ persona }: { readonly persona: boolean }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [password, setPassword] = useState("");
+  const [backup, setBackup] = useState(false);
   const remove = useMutation({
-    mutationFn: () => auth.deleteAccount(persona ? { confirm } : { confirm, password }),
+    // The backup first: if the copy cannot be saved, nothing is deleted.
+    mutationFn: async () => {
+      if (backup) await downloadData();
+      return auth.deleteAccount(persona ? { confirm } : { confirm, password });
+    },
     onSuccess: (result) => {
       setOpen(false);
       setConfirm("");
       setPassword("");
+      setBackup(false);
       if (result.status === "DELETED") navigate("/signin", { replace: true });
     },
   });
@@ -88,12 +134,17 @@ function DeleteAccount({ persona }: { readonly persona: boolean }) {
               <input id="delete-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={fieldClass} />
             </div>
           )}
+          <div className="flex items-start gap-2.5">
+            <input id="delete-backup" type="checkbox" checked={backup} onChange={(event) => setBackup(event.target.checked)}
+              className="mt-0.5 size-4 flex-none accent-accent" />
+            <label htmlFor="delete-backup" className="text-sm text-ink">{t("profile.deletion.backup")}</label>
+          </div>
           {remove.isError && <Notice tone="danger" title={describeError(remove.error)} />}
           <div className="flex flex-wrap gap-3">
             <Button type="submit" variant="danger" disabled={!ready || remove.isPending} busy={remove.isPending}>
               {t(persona ? "profile.deletion.resetSubmit" : "profile.deletion.submit")}
             </Button>
-            <Button type="button" variant="quiet" onClick={() => { setOpen(false); setConfirm(""); setPassword(""); }}>{t("profile.deletion.cancel")}</Button>
+            <Button type="button" variant="quiet" onClick={() => { setOpen(false); setConfirm(""); setPassword(""); setBackup(false); }}>{t("profile.deletion.cancel")}</Button>
           </div>
         </form>
       )}
@@ -158,6 +209,8 @@ export function ProfilePage() {
         </Section>
       )}
 
+      {auth.mode === "accounts" && auth.me && <DownloadData key={`download-${record.user_id}`} />}
+      {auth.mode === "accounts" && auth.me && <MemorySection key={`memory-${record.user_id}`} persona={readOnly} />}
       {auth.mode === "accounts" && auth.me && <DeleteAccount key={record.user_id} persona={readOnly} />}
     </>
   );

@@ -27,14 +27,32 @@ export interface AuditEvent {
     | "ACTION_FAILED"
     | "ACTION_BLOCKED"
     | "STATEMENT_IMPORTED"
+    | "DOCUMENT_ROUTED"
+    | "RECEIPT_IMPORTED"
+    | "EXPENSE_LOGGED"
+    | "RECEIPT_CORRECTED"
+    | "CONNECTION_ADDED"
+    | "CONNECTION_UPDATED"
+    | "CONNECTION_SYNCED"
+    | "CONNECTION_REMOVED"
     | "CATEGORY_CHANGED"
     | "PROFILE_UPDATED"
+    | "DATA_EXPORTED"
     | "USER_REGISTERED"
     | "SESSION_STARTED"
     | "SESSION_ENDED"
     | "ACCOUNT_DELETED"
     | "DEMO_DATA_RESET"
-    | "ERASED";
+    | "MEMORY_CONSENT_CHANGED"
+    | "MEMORY_CONFIRMED"
+    | "MEMORY_DELETED"
+    | "MEMORY_EVIDENCE_CHANGED"
+    | "ERASED"
+    | "INVESTMENTS_LINKED"
+    | "INVESTMENTS_SYNCED"
+    | "INVESTMENTS_UNLINKED"
+    | "INVESTMENT_DOCUMENT_IMPORTED"
+    | "INVESTMENT_DOCUMENTS_REMOVED";
   user_intent?: string | null;
   intent_confidence?: number | null;
   tool_requested?: string | null;

@@ -20,7 +20,11 @@ from neural_ledger.adapters.outbound.persistence.sqlite import SqliteDatabase, S
 from neural_ledger.bootstrap.container import build
 from neural_ledger.domain.actions.terms import ActionTerms, ActionType, Frequency, Proposal, ProposalStatus
 from neural_ledger.domain.audit.events import Actor, AuditDraft, AuditKind, erasure_detail, seal, tombstone, verify_chain
+from neural_ledger.domain.memory.catalog import ChatOrigin, Declaration, SalaryNet, Source
+from neural_ledger.domain.memory.proposals import ReadAs
+from neural_ledger.domain.shared.month import Month
 from tests.conftest import TEST_CIPHER, make_settings
+from tests.receipt_samples import boleta_pdf
 from tests.statement_samples import santander_xlsx
 
 pytestmark = pytest.mark.security
@@ -44,15 +48,21 @@ def _signup(new_client, email: str, name: str):
     response = client.post("/v1/auth/signup", json={"email": email, "password": PASSWORD, "display_name": name, "sandbox_acknowledged": True})
     assert response.status_code == 201, response.text
     assert client.post("/v1/statements", content=santander_xlsx()).json()["status"] == "OK"
+    assert client.post("/v1/documents", content=boleta_pdf()).json()["status"] == "OK"  # a receipt too (ADR-039)
     return client, response.json()["user_id"]
 
 
 def _give_actions(adapters, user_id: str) -> None:
-    """A proposal, an authorization and a rule, written straight to the stores (a new account has no plan to propose)."""
+    """A proposal, a rule and a declared salary, written straight to the stores (a new account has no plan to propose)."""
     terms = ActionTerms(ActionType.CREATE_SAVINGS_RULE, 50_000, "CLP", Frequency.MONTHLY, "checking", "sandbox_savings", date(2026, 11, 1))
     now = adapters.clock.now()
     adapters.actions_repo.add_proposal(Proposal(f"prop_{user_id}", "s1", user_id, terms, "snap", now, now + timedelta(minutes=10), ProposalStatus.PENDING))
     adapters.bank.create_savings_rule(user_id, terms, f"auth_{user_id}", f"exec_{user_id}")
+    salary = Declaration(
+        f"mem_{user_id}", f"chn_{user_id}", 1, user_id, SalaryNet(1_200_000, Month.parse("2026-11")), now, Source.CHAT,
+        ChatOrigin(f"s_{user_id}", f"msg_{user_id}"), f"evt_mem_{user_id}",
+    )
+    assert adapters.memory_store.append((salary,), 0)
 
 
 @pytest.fixture(params=["memory", "sqlite"])
@@ -62,6 +72,9 @@ def two_accounts(request, tmp_path):
     b, user_b = _signup(new_client, EMAIL_B, NAME_B)
     _give_actions(adapters, user_a)
     _give_actions(adapters, user_b)
+    for user in (user_a, user_b):  # the memory consent and a pending proposal, through the real writes (ADR-048)
+        assert services.memory.set_consent(user, "s1", {"consent": "granted"}).ok
+        assert services.memory.prepare(user, ChatOrigin("s1", f"msg_p_{user}"), (1_300_000,), Month.parse("2026-12"), ReadAs.NEXT_OCCURRENCE).ok
     return request.param, tmp_path, services, adapters, new_client, (a, user_a), (b, user_b)
 
 
@@ -93,6 +106,10 @@ def test_deleting_a_leaves_b_intact_and_ends_every_session_of_a(two_accounts, co
     body = response.json()
     assert body["status"] == "DELETED" and body["erased"]["user_accounts"] == 1 and body["erased"]["sessions"] == 2
     assert body["erased"]["statements"] >= 1 and body["erased"]["savings_rules"] == 1 and body["audit_events_erased"] >= 4
+    assert body["erased"]["receipts"] == 1 and body["erased"]["user_memory"] == 1
+    assert body["erased"]["memory_state"] == 1 and body["erased"]["memory_proposals"] == 1
+    assert not adapters.memory_writes.state(user_a).granted and adapters.memory_writes.state(user_b).granted
+    assert adapters.memory_store.for_user(user_a) == () and len(adapters.memory_store.for_user(user_b)) == 1
     assert "Max-Age=0" in response.headers["set-cookie"]
     assert second.get("/v1/me").status_code == 401  # the other session of A ends too
     a.cookies.clear()
@@ -171,7 +188,9 @@ def test_a_demo_persona_is_reset_not_deleted(two_accounts):
     assert visitor.get("/v1/state").status_code == 200 and other.get("/v1/me").json()["user_id"] == "camila"  # sessions stay
     assert visitor.get("/v1/audit").json()["events"] == []
     assert services.audit.verify().ok
+    assert response.json()["erased"]["user_memory"] == 1 and adapters.memory_store.for_user("camila") == ()
     assert b.get("/v1/statements").json()["data"] and adapters.bank.active_rules(user_b)  # accounts untouched
+    assert len(adapters.memory_store.for_user(user_b)) == 1
 
 
 def test_demo_mode_has_no_account_deletion(tmp_path):

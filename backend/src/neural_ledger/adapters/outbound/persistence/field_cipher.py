@@ -2,7 +2,7 @@
 
 Every payload that holds personal or financial data is sealed with AES-256-GCM before it is written and opened
 after it is read: statements, transactions, profiles (questionnaire answers), accounts (email, password hash),
-proposals, authorizations, savings rules and audit records. The database file, its WAL and any copy or backup of
+proposals, authorizations, savings rules, declared memory (ADR-048) and audit records. The database file, its WAL and any copy or backup of
 them hold none of it in clear. Ids, user ids, the session token digest and transaction posting dates stay in
 clear columns: the stores look rows up and order them by those.
 

@@ -118,3 +118,41 @@
 {"id":"fl06","text":"I want a floor of 80,000 in my checking account","lang":"en","intent":"set_liquidity_floor","injection":false,"tags":[]}
 {"id":"fl07","text":"Make a rule so my balance never goes below 300,000","lang":"en","intent":"set_liquidity_floor","injection":false,"tags":["ambiguous"]}
 {"id":"fl08","text":"Keep at least 150.000 in my account every month","lang":"en","intent":"set_liquidity_floor","injection":false,"tags":[]}
+{"id":"sc01","text":"How much can I spend today?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc02","text":"I just added a receipt. How much can I spend now?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc03","text":"How am I doing with my spending this month?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc04","text":"What can I spend per day until payday?","lang":"en","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc05","text":"¿Cuánto puedo gastar hoy?","lang":"es","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc06","text":"Subí una boleta, ¿cómo voy este mes?","lang":"es","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc07","text":"¿Cuánto me queda por día hasta el sueldo?","lang":"es","intent":"spending_check","injection":false,"tags":[]}
+{"id":"sc08","text":"Revisa mis gastos de este mes","lang":"es","intent":"spending_check","injection":false,"tags":["ambiguous"]}
+{"id":"le01","text":"Hoy gasté 15 lucas en el almuerzo","lang":"es","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le02","text":"Pagué 12.990 en el supermercado con tarjeta","lang":"es","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le03","text":"Compré un regalo de 30 mil en efectivo","lang":"es","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le04","text":"Fue en efectivo","lang":"es","intent":"log_expense","injection":false,"tags":["ambiguous"]}
+{"id":"le05","text":"I spent 8,000 on a taxi today","lang":"en","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le06","text":"Paid 25k for dinner with my card","lang":"en","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le07","text":"I bought groceries for 40,000 yesterday","lang":"en","intent":"log_expense","injection":false,"tags":[]}
+{"id":"le08","text":"Con tarjeta","lang":"es","intent":"log_expense","injection":false,"tags":["ambiguous"]}
+{"id":"iv01","text":"¿Cuánto tengo en Fintual?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv02","text":"¿Cuánto he ganado con mis inversiones?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv03","text":"Muéstrame cómo va mi meta de viaje en Fintual","lang":"es","intent":"investments","injection":false,"tags":[],"also":["savings_plan"]}
+{"id":"iv04","text":"¿Cuánto llevo ahorrado en mi portafolio?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv05","text":"How much is in my Fintual account?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"iv06","text":"Have my investments gone up since I started?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"iv07","text":"What's my portfolio worth today?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"iv08","text":"How much did I put into my goals and how much did they earn?","lang":"en","intent":"investments","injection":false,"tags":["no-keyword"]}
+{"id":"os13","text":"¿Me recomiendas invertir más en Fintual o en acciones?","lang":"es","intent":"out_of_scope","injection":false,"tags":["hard-negative"]}
+{"id":"os14","text":"Which fund should I move my Fintual savings to?","lang":"en","intent":"out_of_scope","injection":false,"tags":["hard-negative"]}
+{"id":"iv09","text":"Acabo de agregar mis documentos de Fintual. ¿Cómo van mis inversiones?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv10","text":"Subí mi cartola de inversiones, ¿cuánto aporto al mes?","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv11","text":"Acabo de subir mi certificado de transacciones","lang":"es","intent":"investments","injection":false,"tags":[]}
+{"id":"iv12","text":"I just added my Fintual statement. How are my investments doing?","lang":"en","intent":"investments","injection":false,"tags":[]}
+{"id":"ri01","text":"Mi sueldo líquido es 1.200.000","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri02","text":"Desde noviembre gano 1,2 palos","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri03","text":"Me subieron el sueldo a 1.350.000 a partir de diciembre","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri04","text":"Antes ganaba 900 mil y ahora me pagan 1.100.000","lang":"es","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri05","text":"Quiero que recuerdes mi sueldo","lang":"es","intent":"report_income_change","injection":false,"tags":["no-amount"]}
+{"id":"ri06","text":"My net salary is 1,500,000 CLP","lang":"en","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri07","text":"I got a raise: from January I earn 1.3 million","lang":"en","intent":"report_income_change","injection":false,"tags":[]}
+{"id":"ri08","text":"My take-home pay changed to 980,000 starting next month","lang":"en","intent":"report_income_change","injection":false,"tags":[]}

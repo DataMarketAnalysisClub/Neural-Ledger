@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/connected_data.schema.json",
+  "title": "ConnectedData",
+  "description": "data of GET /v1/connections/data and of the copilot's get_connected_data tool (T0, ADR-047): the latest answer of each enabled tool of each MCP connection, as of the user's last sync. Content is the service's redacted JSON text, untrusted data; its numbers are facts with unit external (or the currency their object names) and the EXTERNAL_DATA warning applies. A bank's movements are not here: they are statements and transactions.",
+  "type": "object",
+  "required": ["connections"],
+  "properties": {
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["connection_id", "name", "host", "last_synced_at", "results"],
+        "properties": {
+          "connection_id": {"type": "string"},
+          "name": {"type": "object", "required": ["untrusted_text"], "properties": {"untrusted_text": {"type": "string"}}, "additionalProperties": false},
+          "host": {"type": "string"},
+          "last_synced_at": {"type": ["string", "null"]},
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["tool", "fetched_at", "ok", "content"],
+              "properties": {
+                "tool": {"type": "string"},
+                "fetched_at": {"type": "string"},
+                "ok": {"type": "boolean"},
+                "content": {"type": "object", "required": ["untrusted_text"], "properties": {"untrusted_text": {"type": "string", "maxLength": 4000}}, "additionalProperties": false}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

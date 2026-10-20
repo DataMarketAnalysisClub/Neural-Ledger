@@ -24,6 +24,7 @@ from ..ports import (
     AccountErasure,
     AccountWrites,
     Clock,
+    EmailDomainCheck,
     ErasureReport,
     IdGenerator,
     PasswordHasher,
@@ -32,6 +33,7 @@ from ..ports import (
     TransactionStore,
     UserAccountStore,
 )
+from ..services.memory_fence import MemoryFence
 
 
 class AccountStatus(str, Enum):
@@ -103,6 +105,8 @@ class AccountUseCases:
         transactions: TransactionStore | None = None,
         erasure: AccountErasure | None = None,
         forget: Sequence[Forgettable] = (),
+        email_checks: Sequence[EmailDomainCheck] = (),
+        fence: MemoryFence | None = None,
     ) -> None:
         if not demo_personas <= frozenset(DEMO_PERSONAS):
             raise ValueError("demo sessions open only the allowlisted personas")
@@ -110,6 +114,8 @@ class AccountUseCases:
         self._transactions = transactions  # only to tell an account with imported statements from an empty one
         self._erasure = erasure
         self._forget = tuple(forget)
+        self._fence = fence or MemoryFence()  # the memory's: no chat reply is published between erasure and forgetting
+        self._email_checks = tuple(email_checks)  # disposable providers, domains that take no mail (adapters/outbound/email)
         self._accounts = accounts
         self._sessions = sessions
         self._writes = writes
@@ -131,6 +137,9 @@ class AccountUseCases:
             draft = UserProfile("", display_name, language)
         except InvalidInput as error:
             return AccountOutcome(AccountStatus.INVALID_INPUT, field=error.field, message=error.message)
+        for check in self._email_checks:
+            if (refusal := check.refusal(normalized)) is not None:
+                return AccountOutcome(AccountStatus.INVALID_INPUT, field="email", message=refusal)
         if self._accounts.by_email(normalized) is not None:
             return EMAIL_TAKEN
         password_hash = self._hasher.hash(password)
@@ -242,9 +251,10 @@ class AccountUseCases:
             event_id=self._ids.new("evt"), timestamp=self._clock.now(), session_id=ERASED_SESSION,
             user_id=None, actor=Actor.USER, kind=kind,
         )
-        report = self._erasure.erase(user_id, keep_account=keep_account, event=event)
-        for store in self._forget:
-            store.forget(user_id)
+        with self._fence.held(user_id):
+            report = self._erasure.erase(user_id, keep_account=keep_account, event=event)
+            for store in self._forget:
+                store.forget(user_id)
         return report
 
     def _new_session(self, user_id: str, now: datetime) -> tuple[str, Session]:

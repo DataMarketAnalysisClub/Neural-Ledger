@@ -165,8 +165,14 @@ flowchart LR
 | `StatementReader` | Bank statement file → `BankStatement` | `OcrStatementReader` (ocr_tabular + one `Bank` per layout; offline) | more banks |
 | `PersonalDataDetector` | Personal data the redaction rules miss in imported statements; its spans can only add masking (ADR-028) | `NullDetector` (`none`: the domain rules alone, offline), `AzureLanguageDetector` (`azure`, off by default) | another detector: one class + one `DETECTORS` entry in `container.py` |
 | `StatementStore` | Imported statements, once per user and statement | memory, SQLite | Postgres |
+| `ReceiptReader` | A document's text for routing, and a receipt's fields from its print and its SII stamp (ADR-039) | `ReceiptFileReader` (text-layer PDFs with `pdf`; photos with `ocr`; the stamp with `receipts`) | another layout or OCR engine: one adapter |
+| `ReceiptStore` | Receipts, once per user and receipt | memory, SQLite | Postgres |
 | `TransactionClassifier` | Spending category guess per statement charge (gated by the domain) | `SklearnTextClassifier` with naive Bayes (`ml` extra; offline, trained from package data) | other methods: one registry entry in `container.py` |
 | `TransactionStore` | Transaction ledger built from verified statements, once per user and transaction | memory, SQLite | Postgres |
+| `InvestmentProvider` | Reads an investment account the user links, read-only: sign in once, list goals (ADR-044) | `FixtureInvestmentProvider` (`fixture`: synthetic, offline), `FintualInvestmentProvider` (`fintual`: the documented API; refused when deployed) | another institution: one class + one `INVESTMENT_PROVIDERS` entry in `container.py`; open finance from 2027 |
+| `InvestmentStore` | The sealed link (token, email), the synced snapshots and the verified documents the user imported, each write with its audit event | memory, SQLite | Postgres |
+| `InvestmentDocumentReader` | The rows of a statement an investment provider issues, never the holder's name or RUT (ADR-044, step 2) | `FintualDocumentReader` (Fintual's Investment Statement and Certificado de transacciones; text-layer PDFs with `pdf`, scans with `ocr`) | another provider's layout: one adapter |
+| `KnowledgeBase` | Concept cards that explain financial terms; `search(query, lang, k)` returns scored passages for the T0 tool `search_financial_concepts` on `EXPLAIN` (ADR-040) | `LexicalKnowledgeBase` (offline, default), `ChromaKnowledgeBase` (`rag` extra, multilingual) | another vector store: one adapter and one `KNOWLEDGE_BASES` entry |
 | `Clock`, `IdGenerator` | Testability | system/fixed, uuid/sequential | — |
 
 ### 5.4 One chat turn

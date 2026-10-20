@@ -6,11 +6,31 @@
 3. The language model picks tools from the registry (only tiers allowed this turn).
 4. The reply is verified against the facts returned by the tools. If it fails, it is
    replaced by deterministic narration and the failure is audited.
+
+Memory (ADR-048 §6): a turn that calls a memory tool, or that sees such a turn in its history, is stamped with the
+consent generation and memory revision it read. Once either moves (revoked, a declaration confirmed or deleted),
+those entries never reach a model again. Dependency propagates: every model request made after memory-derived data
+entered the turn is dependent, and so is every tool call it asked for and every result, fact, card and word built on
+them; nothing tells an amount the model chose from one it copied from memory, so none of them is assumed independent.
+Calls a model asked for before memory entered the turn are independent and keep working.
+
+A turn has two linearization points, both ordered against every memory change by the user's MemoryFence:
+- dispatch: before each dependent model request, the counters are checked inside the fence (MemoryUseCases.authorized).
+  A change ordered before that check stops the turn there: the request is never sent. A change after it is a change
+  during the call: the request may already be on its way and cannot be recalled, and its answer is never published.
+  A dependent tool call is not executed once its memory moved either (a plain check before it: a call already
+  executed is never rolled back, and none is invented).
+- publication: the reply is built whole (narration, verification), then the counters are checked and the history
+  written in one step inside the fence (MemoryUseCases.publish_if_current). A change after it comes after the reply:
+  the reply carries memory_dependency, and a client that knows newer counters hides all of it.
+When memory moved, the reply is MEMORY_CHANGED plus what the independent tools found: no dependent text, fact, card or
+action, and nothing dependent is stored, not even unstamped. The user's own message is kept.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 from ...domain.actions.terms import Proposal
 from ...domain.agent.policy import AgentPolicy, Gate, max_tier_for
@@ -22,6 +42,7 @@ from ...domain.shared.envelope import Caveat, Fact
 from ..conversation import (
     AssistantEntry,
     Entry,
+    MemoryStamp,
     ModelRequest,
     ToolResultEntry,
     TurnContext,
@@ -41,8 +62,10 @@ from ..services.prompts import SYSTEM_PROMPT, context_block, repair_note
 from ..services.tools import ToolContext, ToolOutcome, ToolRegistry
 from .actions import ActionOutcome
 from .financial import FinancialUseCases
+from .memory import MemoryUseCases
 
 MAX_MESSAGE_CHARS = 4000
+RECENT_USER_MESSAGES = 3  # how far back an amount the user said still counts for an expense (with this message: 4)
 
 
 @dataclass(frozen=True)
@@ -62,6 +85,13 @@ class ChatReply:
     pending_proposal: Proposal | None
     actions: tuple[ActionOutcome, ...]
     blocked_reason: str | None
+    pending_expense: dict | None = None  # an expense prepared from what the user said, for them to confirm (ADR-039)
+    pending_memory_proposal: dict | None = None  # a salary prepared from this message, for the user to confirm (ADR-048)
+    memory_dependency: dict | None = None  # the memory counters this reply relied on; a client drops it when they move
+
+
+def _dependency(stamp: MemoryStamp | None) -> dict | None:
+    return None if stamp is None else {"consent_generation": stamp[0], "memory_revision": stamp[1]}
 
 
 class ChatUseCase:
@@ -76,7 +106,9 @@ class ChatUseCase:
         clock: Clock,
         ids: IdGenerator,
         policy: AgentPolicy,
+        memory: MemoryUseCases | None = None,
     ) -> None:
+        self._memory = memory
         self._decisions = decisions
         self._llm = language_model
         self._registry = registry
@@ -104,38 +136,65 @@ class ChatUseCase:
             )
         )
 
-    def _short_reply(self, session_id: str, user_id: str, user_text: str, reply: str, cls: Classification, *, blocked: str | None = None) -> ChatReply:
-        self._conversations.append(user_id, session_id, (UserEntry(user_text), AssistantEntry(reply)), self._policy.history_limit)
+    def _short_reply(
+        self, session_id: str, user_id: str, user: UserEntry, reply: str, cls: Classification, *, blocked: str | None = None
+    ) -> ChatReply:
+        self._conversations.append(user_id, session_id, (user, AssistantEntry(reply)), self._policy.history_limit)
         return ChatReply(
             session_id, reply, cls.intent.value, cls.confidence, cls.gate.value, cls.answered_by, None,
             (), (), (), None, False, None, (), blocked,
         )
 
+    def _stamp(self, user_id: str) -> MemoryStamp | None:
+        """The memory counters a memory-derived entry stays valid under. Every actual change of the consent moves the
+        generation, so equality alone says whether an entry still holds (even one that said memory was off)."""
+        if self._memory is None:
+            return None
+        state = self._memory.consent(user_id)
+        return (state.consent_generation, state.memory_revision)
+
+    @staticmethod
+    def _without_stale(history: tuple[Entry, ...], current: MemoryStamp | None) -> tuple[Entry, ...]:
+        """History as a model may see it: the user's own messages always; a memory-derived assistant or tool entry only
+        under the counters it was stamped with. A turn's calls and results share a stamp, so pairs are kept whole."""
+        return tuple(
+            e for e in history
+            if isinstance(e, UserEntry) or e.memory_stamp is None or e.memory_stamp == current
+        )
+
     def handle(self, session_id: str, user_id: str, message: str) -> ChatReply:
         text = message.strip()[:MAX_MESSAGE_CHARS]
+        user = UserEntry(text, self._ids.new("msg"))  # the real message's id, before any tool can refer to it
         cls = self._decisions.classify(text)
         self._record(session_id, user_id, AuditKind.DECISION, cls, detail=f"answered_by={cls.answered_by}")
 
         if cls.injection_flagged:
             self._record(session_id, user_id, AuditKind.INJECTION_FLAGGED, cls, blocked_reason=BlockReason.INJECTION_SUSPECTED.value)
-            return self._short_reply(session_id, user_id, text, narration.REFUSAL_INJECTION, cls, blocked=BlockReason.INJECTION_SUSPECTED.value)
+            return self._short_reply(session_id, user_id, user, narration.REFUSAL_INJECTION, cls, blocked=BlockReason.INJECTION_SUSPECTED.value)
         if cls.intent is Intent.OUT_OF_SCOPE and cls.gate is Gate.PROCEED:
             self._record(session_id, user_id, AuditKind.OUT_OF_SCOPE, cls)
-            return self._short_reply(session_id, user_id, text, narration.REFUSAL_SCOPE, cls)
+            return self._short_reply(session_id, user_id, user, narration.REFUSAL_SCOPE, cls)
         if cls.gate is Gate.CLARIFY:
             self._record(session_id, user_id, AuditKind.CLARIFICATION_REQUESTED, cls)
-            return self._short_reply(session_id, user_id, text, narration.CLARIFY, cls)
+            return self._short_reply(session_id, user_id, user, narration.CLARIFY, cls)
 
         max_tier = max_tier_for(cls.gate)
         allow_stateful = cls.gate is Gate.PROCEED
         as_of, currency = self._financial.context(user_id)
-        ctx = ToolContext(session_id, user_id, cls.intent.value, round(cls.confidence, 4), cls.checks, text)
+        current = self._stamp(user_id)
+        history = self._without_stale(self._conversations.history(user_id, session_id), current)
+        # A reply that sees memory-derived context derives from it too: it inherits the stamp.
+        turn_stamp: MemoryStamp | None = current if any(not isinstance(e, UserEntry) and e.memory_stamp for e in history) else None
+        stale = False
+        said = [e.text for e in history if isinstance(e, UserEntry)][-RECENT_USER_MESSAGES:]
+        ctx = ToolContext(
+            session_id, user_id, cls.intent.value, round(cls.confidence, 4), cls.checks, text, "\n".join([*said, text]), user.message_id or ""
+        )
         turn_context = TurnContext(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         system = SYSTEM_PROMPT + context_block(cls.intent.value, cls.confidence, cls.gate.value, max_tier.value, as_of, currency)
         tools = self._registry.specs(max_tier, allow_stateful)
 
-        history = self._conversations.history(user_id, session_id)
-        entries: list[Entry] = [*history, UserEntry(text)]
+        entries: list[Entry] = [*history, user]
         outcomes: list[ToolOutcome] = []
         final_text: str | None = None
         model_name: str | None = None
@@ -151,7 +210,12 @@ class ChatUseCase:
                 executions_succeeded=sum(1 for o in outcomes if o.executed),
             )
 
+        dependent: list[bool] = []  # per outcome: asked for by a request that saw memory, or a memory read itself
         for _ in range(self._policy.max_tool_rounds):
+            seen = turn_stamp is not None  # this request carries memory-derived context
+            if turn_stamp is not None and not self._memory_authorized(user_id, turn_stamp):
+                stale = True  # the dispatch boundary: memory moved, so this request is never sent
+                break
             request = ModelRequest(system, tuple(entries), tools, turn_context)
             try:
                 turn = self._llm.respond(request)
@@ -178,9 +242,25 @@ class ChatUseCase:
                         continue
                 break
             for call in turn.tool_calls:
+                reads = self._registry.reads_memory(call.name)
+                if reads:
+                    before = self._stamp(user_id)  # read before the tool: a change after it is caught
+                    if turn_stamp is not None and before != turn_stamp:
+                        stale = True
+                        break
+                    turn_stamp = turn_stamp or before
+                elif seen and self._stamp(user_id) != turn_stamp:
+                    stale = True  # its arguments may come from memory that moved: not executed
+                    break
                 outcome = self._registry.invoke(call, ctx, max_tier=max_tier, allow_stateful=allow_stateful)
                 outcomes.append(outcome)
+                dependent.append(seen or reads)
                 entries.append(ToolResultEntry(call.call_id, call.name, outcome.payload, outcome.blocked_reason is not None))
+            if stale:
+                break
+
+        if stale:
+            return self._stale_reply(session_id, user_id, user, cls, outcomes, dependent, currency, model_name)
 
         facts = tuple(f for o in outcomes for f in o.facts)
         caveats = tuple(c for o in outcomes for c in o.warnings)
@@ -198,7 +278,7 @@ class ChatUseCase:
             final_text = deterministic or narration.NO_RESULT
             fallback = True
             verification = check(final_text)
-        if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.SET_LIQUIDITY_FLOOR, Intent.EXECUTE_ACTION):
+        if cls.gate is Gate.READ_ONLY and cls.intent in (Intent.SAVINGS_PLAN, Intent.SET_LIQUIDITY_FLOOR, Intent.LOG_EXPENSE, Intent.REPORT_INCOME_CHANGE, Intent.EXECUTE_ACTION):
             final_text = f"{final_text} {narration.READ_ONLY_NOTE}"
 
         turn_entries = [e for i, e in enumerate(entries) if i >= len(history) and i not in discarded]
@@ -206,9 +286,21 @@ class ChatUseCase:
             turn_entries[-1] = AssistantEntry(final_text)
         else:
             turn_entries.append(AssistantEntry(final_text))
-        self._conversations.append(user_id, session_id, turn_entries, self._policy.history_limit)
+        if turn_stamp is None:
+            self._conversations.append(user_id, session_id, turn_entries, self._policy.history_limit)
+        else:
+            stamped = [e if isinstance(e, UserEntry) else replace(e, memory_stamp=turn_stamp) for e in turn_entries]
+
+            def publish() -> None:
+                self._conversations.append(user_id, session_id, stamped, self._policy.history_limit)
+
+            # The publication boundary: the reply is built whole; it is stored, and returned, only if memory still holds.
+            if not self._memory_publish(user_id, turn_stamp, publish):
+                return self._stale_reply(session_id, user_id, user, cls, outcomes, dependent, currency, model_name)
 
         proposals = [o.proposal for o in outcomes if o.proposal is not None]
+        expenses = [o.payload.get("data") for o in outcomes if o.name == "propose_expense" and o.payload.get("status") == "OK"]
+        incomes = [o.payload.get("data") for o in outcomes if o.name == "propose_income_change" and o.payload.get("status") == "OK"]
         blocked = next((o.blocked_reason for o in outcomes if o.blocked_reason), None)
         return ChatReply(
             session_id=session_id,
@@ -226,4 +318,40 @@ class ChatUseCase:
             pending_proposal=proposals[-1] if proposals else None,
             actions=tuple(o.action for o in outcomes if o.action is not None),
             blocked_reason=blocked,
+            pending_expense=expenses[-1] if expenses else None,
+            pending_memory_proposal=incomes[-1] if incomes else None,
+            memory_dependency=_dependency(turn_stamp),
+        )
+
+    def _memory_authorized(self, user_id: str, stamp: MemoryStamp) -> bool:
+        assert self._memory is not None  # a stamp exists only with memory
+        return self._memory.authorized(user_id, stamp)
+
+    def _memory_publish(self, user_id: str, stamp: MemoryStamp, publish: Callable[[], None]) -> bool:
+        assert self._memory is not None
+        return self._memory.publish_if_current(user_id, stamp, publish)
+
+    def _stale_reply(
+        self, session_id: str, user_id: str, user: UserEntry, cls: Classification, outcomes: list[ToolOutcome],
+        dependent: list[bool], currency: str, model_name: str | None,
+    ) -> ChatReply:
+        """The reply when memory moved under the turn: MEMORY_CHANGED and what the independent tools found, narrated
+        deterministically. Nothing dependent leaves: not its results, facts, cards, actions or tool names, and not the
+        model's text (it may repeat any of them). Only the user's message and this reply are stored, unstamped, since
+        neither derives from memory."""
+        kept = [o for o, derived in zip(outcomes, dependent, strict=True) if not derived]
+        self._record(session_id, user_id, AuditKind.VERIFICATION_FAILED, cls, detail="memory changed during the turn: reply replaced", model_version=model_name)
+        text = " ".join(t for t in (narration.narrate([(o.name, o.payload) for o in kept], currency) if kept else "", narration.MEMORY_CHANGED) if t)
+        facts = tuple(f for o in kept for f in o.facts)
+        caveats = tuple(c for o in kept for c in o.warnings)
+        self._conversations.append(user_id, session_id, (user, AssistantEntry(text)), self._policy.history_limit)
+        proposals = [o.proposal for o in kept if o.proposal is not None]
+        expenses = [o.payload.get("data") for o in kept if o.name == "propose_expense" and o.payload.get("status") == "OK"]
+        return ChatReply(
+            session_id=session_id, text=text, intent=cls.intent.value, intent_confidence=cls.confidence, gate=cls.gate.value,
+            decision_model=cls.answered_by, language_model=model_name, tools_called=tuple(o.name for o in kept), facts=facts,
+            warnings=caveats, verification=verify_explanation(text, facts, caveats, money_units=frozenset({currency})), fallback_used=True,
+            pending_proposal=proposals[-1] if proposals else None, actions=tuple(o.action for o in kept if o.action is not None),
+            blocked_reason=next((o.blocked_reason for o in kept if o.blocked_reason), None),
+            pending_expense=expenses[-1] if expenses else None,
         )

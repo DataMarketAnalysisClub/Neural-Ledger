@@ -1,12 +1,14 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { ArrowLeft, Info, ShieldWarning, UploadSimple } from "@phosphor-icons/react";
+import { ArrowLeft, Info, SealCheck, ShieldWarning, UploadSimple } from "@phosphor-icons/react";
 import {
   useImportStatement,
   usePersona,
+  useReceipts,
   useSetCategory,
   useStatement,
   useStatements,
   useTransactions,
+  type Receipts,
   type Statement,
   type StatementImport,
   type Statements,
@@ -25,7 +27,7 @@ import { t, tDynamic } from "@/i18n";
 const MAX_BYTES = 15 * 1024 * 1024;
 
 type Summary = Statements[number];
-type Tab = "statements" | "transactions";
+type Tab = "statements" | "transactions" | "receipts";
 
 /**
  * Bank statement import, the statements read back and the transaction ledger they build. Every amount is shown as the
@@ -59,8 +61,8 @@ function StatementsBody() {
       <section aria-label={t("statements.tabs.label")}>
         <fieldset className="mb-6">
           <legend className="sr-only">{t("statements.tabs.label")}</legend>
-          <div role="radiogroup" className="inline-grid grid-cols-2 gap-1 rounded-control bg-canvas p-1">
-            {(["statements", "transactions"] as const).map((value) => (
+          <div role="radiogroup" className="inline-grid grid-cols-3 gap-1 rounded-control bg-canvas p-1">
+            {(["statements", "transactions", "receipts"] as const).map((value) => (
               <label
                 key={value}
                 className={cn(
@@ -76,6 +78,8 @@ function StatementsBody() {
         </fieldset>
         {tab === "transactions" ? (
           <TransactionsView />
+        ) : tab === "receipts" ? (
+          <ReceiptsView />
         ) : openId ? (
           <StatementDetail statementId={openId} onBack={() => setOpenId(null)} />
         ) : (
@@ -395,6 +399,88 @@ function CardObligations({ obligations: o, currency }: { obligations: NonNullabl
         )}
       </div>
     </Section>
+  );
+}
+
+// ---- Receipts -------------------------------------------------------------------------------------
+
+type ReceiptState = "counted" | "matched" | "outside" | "unverified";
+
+function receiptState(r: Receipts[number]): ReceiptState {
+  if (!r.verified) return "unverified";
+  if (r.matched_transaction) return "matched";
+  return r.counted ? "counted" : "outside";
+}
+
+const RECEIPT_TONE = { counted: "positive", matched: "neutral", outside: "neutral", unverified: "warning" } as const;
+
+/** Receipts added on the copilot (ADR-039), as the API keeps them: personal data removed, the store's name untrusted. */
+function ReceiptsView() {
+  const receipts = useReceipts();
+  if (receipts.isError) return <ErrorState error={receipts.error} onRetry={() => void receipts.refetch()} />;
+  if (receipts.isPending) return <Loading />;
+  const rows = (receipts.data.data ?? []) as Receipts;
+  if (rows.length === 0)
+    return (
+      <EmptyState title={t("statements.receipts.empty")}>
+        <p>{t("statements.receipts.emptyDetail")}</p>
+      </EmptyState>
+    );
+  return (
+    <div>
+      <ScrollBox label={t("statements.receipts.caption")}>
+        <table className="w-full min-w-[720px] text-sm">
+          <caption className="sr-only">{t("statements.receipts.caption")}</caption>
+          <thead className={stickyHead}>
+            <tr className="border-b border-line text-left text-xs text-ink-3">
+              <th scope="col" className={th}>{t("statements.receipts.date")}</th>
+              <th scope="col" className={th}>{t("statements.receipts.store")}</th>
+              <th scope="col" className={th}>{t("statements.receipts.category")}</th>
+              <th scope="col" className={th}>{t("statements.receipts.status")}</th>
+              <th scope="col" className={cn(th, "text-right")}>{t("statements.receipts.total")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...rows].reverse().map((r) => {
+              const state = receiptState(r);
+              return (
+                <tr key={r.receipt_id} className="border-b border-line last:border-0">
+                  <td className="px-5 py-3 whitespace-nowrap text-ink-2">{r.issued_on ? formatDate(r.issued_on) : "—"}</td>
+                  <th scope="row" className="max-w-[320px] px-5 py-3 text-left font-normal text-ink">
+                    {r.issuer.untrusted_text ? (
+                      <span className="line-clamp-2 break-words" title={redactedPlainText(r.issuer.untrusted_text)}>
+                        <RedactedText text={r.issuer.untrusted_text} />
+                      </span>
+                    ) : (
+                      <span className="text-ink-3">{t("statements.receipts.unknownStore")}</span>
+                    )}
+                    {r.stamped && (
+                      <span className="mt-0.5 flex items-center gap-1 text-xs text-ink-3">
+                        <SealCheck aria-hidden className="size-3.5" />
+                        {t("statements.receipts.stamped")}
+                      </span>
+                    )}
+                    {(r.source === "manual" || r.payment !== "unknown") && (
+                      <span className="mt-0.5 block text-xs text-ink-3">
+                        {[r.source === "manual" ? t("statements.receipts.manual") : null, r.payment !== "unknown" ? t(`statements.receipts.payments.${r.payment}`) : null]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </th>
+                  <td className="px-5 py-3 text-ink-2">{tDynamic("statements.categories", r.category)}</td>
+                  <td className="px-5 py-3">
+                    <StatusBadge tone={RECEIPT_TONE[state]}>{t(`statements.receipts.states.${state}`)}</StatusBadge>
+                  </td>
+                  <td className="num px-5 py-3 text-right whitespace-nowrap text-ink">{r.total !== null ? formatMoney(r.total, r.currency) : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </ScrollBox>
+      <UntrustedNote />
+    </div>
   );
 }
 

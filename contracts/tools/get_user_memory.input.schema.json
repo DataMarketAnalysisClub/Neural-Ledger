@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-tier": "T0",
+  "x-owner": "B",
+  "description": "Read what the user has declared about themselves (today: their net salary and from which month), whether their statements support it, and whether the forecast uses it (today it never does: it is saved and checked only). Typed values only, no text. Empty without the user's memory consent. A declared salary is what the user said, not a credited salary.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

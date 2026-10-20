@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/receipts.schema.json",
+  "title": "Receipts",
+  "description": "data of GET /v1/receipts (ADR-039): the user's receipts in import order, personal data removed.",
+  "type": "array",
+  "items": {"$ref": "document_ingest.schema.json#/$defs/receipt"}
+}

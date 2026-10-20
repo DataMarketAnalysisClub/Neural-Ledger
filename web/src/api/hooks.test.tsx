@@ -3,7 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/features/auth/AuthProvider";
-import { PersonaProvider, useImportStatement, usePersona, useSetCategory, useStatements, useTransactions } from "./hooks";
+import {
+  PersonaProvider, useImportStatement, useMemoryConsent, useMemoryCounters, useNoteMemoryCounters, usePersona, useSetCategory, useStatements,
+  useTransactions,
+} from "./hooks";
 
 /** A stand-in for the HTTP API: it records every request and keeps statements per owner, as the backend does. */
 interface Sent {
@@ -251,5 +254,37 @@ describe("PersonaProvider sessions", () => {
     expect(session()).toMatch(/^ui-diego-/);
     await userEvent.click(screen.getByText("switch"));
     expect(session()).toBe(second); // back to Camila's current conversation, not a new one
+  });
+});
+
+describe("memory counters (ADR-048 §6)", () => {
+  function Counters() {
+    const consent = useMemoryConsent();
+    const known = useMemoryCounters();
+    const note = useNoteMemoryCounters();
+    return (
+      <div>
+        <p>known {known ? `${known.consent_generation}/${known.memory_revision}` : "none"}</p>
+        <button type="button" onClick={() => void consent.refetch()}>refetch</button>
+        <button type="button" onClick={() => note({ consent_generation: 1, memory_revision: 1 })}>late reply</button>
+      </div>
+    );
+  }
+
+  it("only grow: a consent response or a reply that arrives late never takes them back", async () => {
+    mode = "demo";
+    // The second read answers with what an older, slower request saw: it must not undo the first.
+    const answers = [{ consent: "revoked", consent_generation: 2, memory_revision: 3 }, { consent: "granted", consent_generation: 1, memory_revision: 1 }];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      new URL(String(input), "http://localhost").pathname === "/api/v1/memory/consent" ? reply(200, answers.shift()) : serve(input, init),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><AuthProvider><PersonaProvider><Counters /></PersonaProvider></AuthProvider></QueryClientProvider>);
+    await waitFor(() => expect(screen.getByText("known 2/3")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "refetch" }));
+    await waitFor(() => expect(answers).toHaveLength(0));
+    await userEvent.click(screen.getByRole("button", { name: "late reply" }));
+    expect(screen.getByText("known 2/3")).toBeInTheDocument();
   });
 });

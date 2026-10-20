@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/document_ingest.schema.json",
+  "title": "DocumentIngest",
+  "description": "data of POST /v1/documents (ADR-039): a file dropped on the copilot, routed to the statement import, read as a receipt or imported as an investment document (ADR-044, investment), with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.",
+  "type": "object",
+  "required": ["kind", "steps", "statement", "receipt", "spending"],
+  "properties": {
+    "kind": {"enum": ["statement", "receipt", "investment"]},
+    "steps": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/step"}},
+    "statement": {
+      "description": "The statement import (as POST /v1/statements answers it) when kind is statement, else null.",
+      "oneOf": [{"$ref": "statement_import.schema.json"}, {"type": "null"}]
+    },
+    "receipt": {"oneOf": [{"$ref": "#/$defs/receipt"}, {"type": "null"}]},
+    "spending": {"oneOf": [{"$ref": "#/$defs/spending_check"}, {"type": "null"}], "description": "Null when the user has no financial model yet."},
+    "investment": {
+      "description": "The investment document import (ADR-044) when kind is investment, else null. Nothing of it is posted to the ledger or counted as spending.",
+      "oneOf": [{"$ref": "investment_document_import.schema.json"}, {"type": "null"}]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["key", "status", "value", "by", "confidence"],
+      "properties": {
+        "key": {"enum": ["read", "route", "verify", "redact", "duplicate", "categorize", "match", "spending", "investments"]},
+        "status": {"enum": ["done", "warning", "skipped", "failed"]},
+        "value": {"type": ["string", "null"], "description": "A label or a number as text (pdf, receipt, stamp, groceries, outside, 27719, holdings), never prose."},
+        "by": {"type": ["string", "null"], "description": "The rule or model that answered (rules, format, jev:..., naive_bayes@...)."},
+        "confidence": {"type": ["number", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "receipt": {
+      "type": "object",
+      "required": ["receipt_id", "issuer", "issued_on", "total", "currency", "folio", "stamped", "source", "category", "classifier", "verified", "issues", "matched_transaction", "duplicate", "counted", "corrected", "payment"],
+      "properties": {
+        "receipt_id": {"type": "string"},
+        "issuer": {
+          "type": "object",
+          "required": ["untrusted_text"],
+          "properties": {"untrusted_text": {"type": "string"}},
+          "additionalProperties": false
+        },
+        "issued_on": {"type": ["string", "null"], "format": "date"},
+        "total": {"type": ["integer", "null"], "minimum": 0},
+        "currency": {"const": "CLP"},
+        "folio": {"type": ["string", "null"]},
+        "stamped": {"type": "boolean", "description": "The SII stamp (timbre electrónico) was decoded and confirms the print."},
+        "source": {"enum": ["text", "ocr", "manual"], "description": "manual: an expense the user told the copilot about and confirmed."},
+        "payment": {"enum": ["cash", "card", "unknown"], "description": "Cash is never matched with a statement charge."},
+        "category": {"type": "string"},
+        "classifier": {"type": "string"},
+        "verified": {"type": "boolean", "description": "Only a verified receipt is counted."},
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {"enum": ["TOTAL_MISSING", "DATE_MISSING", "DATE_IN_FUTURE", "TAX_MISMATCH", "STAMP_MISMATCH"]},
+              "message": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "matched_transaction": {"type": ["string", "null"], "description": "The statement charge that already records this purchase: the receipt is then counted once, as that charge."},
+        "duplicate": {"type": "boolean"},
+        "corrected": {"type": "boolean", "description": "The user typed or confirmed its total or date in the app."},
+        "counted": {"type": "boolean", "description": "Part of this cycle's logged spending: verified, not on a statement, dated inside the cycle. A receipt from an earlier cycle is kept but does not change today's figure."}
+      },
+      "additionalProperties": false
+    },
+    "spending_check": {
+      "type": "object",
+      "required": ["cycle", "window_start", "window_end", "projected", "today", "days_left", "assumed", "logged", "logged_items", "left", "per_day", "overspend", "protected_surplus", "surplus_after", "categories"],
+      "properties": {
+        "cycle": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"},
+        "window_start": {"type": "string", "format": "date"},
+        "window_end": {"type": "string", "format": "date", "description": "The eve of the next payday: the cycle runs from window_start (payday) to here."},
+        "projected": {"type": "boolean", "description": "The forecast projects this cycle, so an overspend lowers the protected surplus; false for a cycle before the forecast's first one."},
+        "today": {"type": "string", "format": "date"},
+        "days_left": {"type": "integer", "minimum": 1},
+        "assumed": {"type": "integer", "description": "Conservative (P80) variable spending the forecast counts on for the cycle, CLP."},
+        "logged": {"type": "integer", "minimum": 0},
+        "logged_items": {"type": "integer", "minimum": 0},
+        "left": {"type": "integer", "description": "assumed - logged; negative once spending passed the assumption."},
+        "per_day": {"type": "integer", "minimum": 0, "description": "left // days_left, rounded down; 0 once nothing is left."},
+        "overspend": {"type": "integer", "minimum": 0},
+        "protected_surplus": {"type": "integer"},
+        "surplus_after": {"type": "integer", "description": "protected_surplus - overspend in a projected cycle (else protected_surplus); negative means a conservative month breaches the floor."},
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "assumed", "logged"],
+            "properties": {"category": {"type": "string"}, "assumed": {"type": "integer"}, "logged": {"type": "integer"}},
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

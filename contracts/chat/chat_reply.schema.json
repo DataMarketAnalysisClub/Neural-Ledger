@@ -8,7 +8,7 @@
   "properties": {
     "session_id": {"type": "string"},
     "text": {"type": "string"},
-    "intent": {"enum": ["afford_purchase", "forecast", "protected_surplus", "savings_plan", "set_liquidity_floor", "execute_action", "explain", "out_of_scope", "smalltalk"]},
+    "intent": {"enum": ["afford_purchase", "forecast", "protected_surplus", "spending_check", "log_expense", "report_income_change", "savings_plan", "set_liquidity_floor", "execute_action", "explain", "investments", "out_of_scope", "smalltalk"]},
     "intent_confidence": {"type": "number"},
     "gate": {"enum": ["proceed", "clarify", "read_only"]},
     "decision_model": {"type": ["string", "null"]},
@@ -26,6 +26,15 @@
     },
     "fallback_used": {"type": "boolean", "description": "True when the text is the deterministic narration (offline mode, or the model's explanation failed verification)."},
     "pending_proposal": {"type": ["object", "null"]},
+    "pending_expense": {"oneOf": [{"$ref": "../outputs/expense_proposal.schema.json"}, {"type": "null"}], "description": "An expense the copilot prepared from what the user said (ADR-039). The UI shows it for the user to check, complete (cash or card, category) and confirm; confirming calls POST /v1/expenses/{proposal_id}/confirm. Nothing is stored before."},
+    "pending_memory_proposal": {"oneOf": [{"$ref": "../memory/income_proposal.schema.json"}, {"type": "null"}], "description": "A net salary the copilot read from this message (ADR-048). The UI shows the memory card for the user to select or type the amount, check the pay month and confirm with POST /v1/memory/proposals/{proposal_id}/confirm. Nothing is saved before; confirming moves no money and does not change the projections."},
+    "memory_dependency": {
+      "oneOf": [
+        {"type": "object", "required": ["consent_generation", "memory_revision"], "properties": {"consent_generation": {"type": "integer", "minimum": 0}, "memory_revision": {"type": "integer", "minimum": 0}}, "additionalProperties": false},
+        {"type": "null"}
+      ],
+      "description": "Present when the reply relied on the user's memory: the counters it read (memory_consent), current when the reply was published. The counters only grow: once a client has seen either one larger (from GET or PUT /v1/memory/consent or another reply), the whole reply is obsolete and the client hides it: text, facts, cards and actions. A reply whose memory moved during its turn is never published: it comes back as MEMORY_CHANGED, without this field."
+    },
     "actions": {"type": "array", "items": {"$ref": "../actions/action_outcome.schema.json"}},
     "blocked_reason": {"type": ["string", "null"]}
   }

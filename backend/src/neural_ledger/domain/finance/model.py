@@ -19,6 +19,12 @@ from ..shared.month import Month
 from ..shared.numbers import round_half_up
 
 
+class Scenario(str, Enum):
+    TYPICAL = "typical"
+    CONSERVATIVE = "conservative"
+    STRESS = "stress"
+
+
 class CommitmentType(str, Enum):
     INSTALLMENT = "installment"
     RENT = "rent"
@@ -50,12 +56,38 @@ class Commitment:
 
 
 @dataclass(frozen=True, slots=True)
+class IncomeStep:
+    """Income from a projected cycle on, until the next step (ADR-049 §8)."""
+
+    start: Month
+    typical: int
+    conservative: int
+
+
+@dataclass(frozen=True, slots=True)
 class IncomeModel:
     type: IncomeType
-    typical: int  # contracted net or P50
-    conservative: int  # contracted net (lower of contract and recent credits) or P20
-    cv: Fraction  # coefficient of variation of monthly income
+    typical: int  # contracted net or P50: what was observed
+    conservative: int  # contracted net (lower of contract and recent credits) or P20: what was observed
+    cv: Fraction  # coefficient of variation of monthly income, always the observed one
     method: str  # "contracted" | "percentile"
+    # Per-cycle income where a declared salary applies (ADR-049), in start order; empty = the observed income in
+    # every cycle. A step lasts until the next one, so the calendar covers any horizon, a credit's full term included.
+    monthly: tuple[IncomeStep, ...] = ()
+
+    def __post_init__(self) -> None:
+        starts = [step.start for step in self.monthly]
+        if starts != sorted(set(starts)):
+            raise ValueError("income steps must have increasing, distinct starts")
+
+    def for_month(self, scenario: Scenario, month: Month) -> int:
+        """The income of one projected cycle; stress uses the conservative income (its shock is separate)."""
+        typical, conservative = self.typical, self.conservative
+        for step in self.monthly:
+            if step.start > month:
+                break
+            typical, conservative = step.typical, step.conservative
+        return typical if scenario is Scenario.TYPICAL else conservative
 
 
 @dataclass(frozen=True, slots=True)

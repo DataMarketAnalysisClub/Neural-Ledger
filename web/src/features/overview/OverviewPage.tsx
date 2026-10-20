@@ -9,6 +9,7 @@ import { Button, ErrorState, Loading, Money, PageHeader, Section, Surface, cn } 
 import { formatMoney, formatMonth } from "@/lib/format";
 import { t } from "@/i18n";
 import { GuidePanel, type GuideStep } from "./OverviewGuide";
+import { SpendingToday } from "./SpendingToday";
 
 export function OverviewPage() {
   const [guideStep, setGuideStep] = useState<number | null>(null);
@@ -103,6 +104,10 @@ export function OverviewPage() {
             facts={surplus.data!.facts}
           />
         </Surface>
+      </div>
+
+      <div className="mt-8">
+        <SpendingToday currency={currency} />
       </div>
 
       <div className="mt-12 grid gap-12 xl:grid-cols-[1fr_300px]">

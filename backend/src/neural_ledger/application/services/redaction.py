@@ -55,6 +55,11 @@ class StatementRedactor:
         report = RedactionReport(REDACTION_VERSION, self._detector.name, degraded, tuple((c, counts[c]) for c in Placeholder if counts[c]))
         return replace(statement, account_ref=mask_account(statement.account_ref), lines=lines), report
 
+    def redact_text(self, text: str) -> tuple[str, bool]:
+        """One text (a receipt's store name, ADR-039) through the same two layers; True when only the rules ran."""
+        detected, degraded = self._detect([text])
+        return apply(text, merge_spans((*find_spans(text), *detected[0]))), degraded
+
     def _detect(self, texts: Sequence[str]) -> tuple[list[tuple[Span, ...]], bool]:
         """The detector's spans per text, or none at all (degraded) when it cannot give a usable answer."""
         try:

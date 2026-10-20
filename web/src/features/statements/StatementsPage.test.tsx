@@ -49,6 +49,27 @@ const txn = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 let transactions: unknown[];
+let receipts: unknown[];
+const receipt = (over: Record<string, unknown> = {}) => ({
+  receipt_id: "rcpt_1",
+  issuer: { untrusted_text: "SUPERMERCADO [PERSON]" },
+  issued_on: "2026-10-16",
+  total: 12990,
+  currency: "CLP",
+  folio: "4471",
+  stamped: true,
+  source: "text",
+  category: "groceries",
+  classifier: "naive_bayes@x",
+  verified: true,
+  issues: [],
+  matched_transaction: null,
+  duplicate: false,
+  counted: true,
+  corrected: false,
+  payment: "unknown",
+  ...over,
+});
 let savings: unknown[];
 let auth: { mode: "demo" | "accounts"; me: { user_id: string; data_source: string; expires_at: string } | null } | null;
 
@@ -67,6 +88,7 @@ vi.mock("@/api/hooks", () => ({
     }),
   useImportStatement: () => importer,
   useSetCategory: () => setCategory,
+  useReceipts: () => ready(receipts),
 }));
 
 beforeEach(() => {
@@ -74,6 +96,7 @@ beforeEach(() => {
   importer = { mutate, reset: vi.fn(), isPending: false, isError: false, error: null, data: undefined };
   setCategory = { mutate: vi.fn(), isPending: false, isError: false, error: null };
   transactions = [txn()];
+  receipts = [];
   savings = [];
   auth = null;
 });
@@ -250,5 +273,32 @@ describe("StatementsPage", () => {
     setCategory = { ...setCategory, isPending: false, isError: true, error: new ApiError(422, { status: "INVALID_INPUT", field: "category", allowed: ["income", "movement"], message: "a income can take only these categories" }) };
     rerender(<StatementsPage />);
     expect(screen.getByRole("alert")).toHaveTextContent("a income can take only these categories");
+  });
+
+  it("lists the receipts added on the copilot, newest first, with whether each one counts", async () => {
+    receipts = [
+      receipt(),
+      receipt({ receipt_id: "rcpt_2", issuer: { untrusted_text: "" }, issued_on: "2022-04-25", total: 30000, stamped: false, counted: false, category: "uncategorized" }),
+      receipt({ receipt_id: "rcpt_3", verified: false, counted: false, issues: [{ code: "STAMP_MISMATCH", message: "x" }] }),
+      receipt({ receipt_id: "rcpt_4", issuer: { untrusted_text: "taxi" }, source: "manual", payment: "cash", stamped: false, category: "transport" }),
+    ];
+    render(<StatementsPage />);
+    await userEvent.click(screen.getByRole("radio", { name: "Receipts" }));
+    const rows = within(screen.getByRole("table", { name: "Receipts you added on the copilot" })).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toHaveTextContent("Told to the copilot · Cash");
+    expect(rows[1]).toHaveTextContent("Not verified: not counted");
+    expect(rows[2]).toHaveTextContent("Store not readable");
+    expect(rows[2]).toHaveTextContent("From another pay cycle");
+    expect(rows[3]).toHaveTextContent("Groceries");
+    expect(rows[3]).toHaveTextContent("Counted this cycle");
+    expect(rows[3]).toHaveTextContent("SII stamp");
+    expect(within(rows[3]!).getByText("Name hidden", { exact: false })).toBeInTheDocument();
+  });
+
+  it("says where receipts come from when there are none", async () => {
+    render(<StatementsPage />);
+    await userEvent.click(screen.getByRole("radio", { name: "Receipts" }));
+    expect(screen.getByText("No receipts yet.")).toBeInTheDocument();
   });
 });

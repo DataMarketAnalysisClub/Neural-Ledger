@@ -40,14 +40,35 @@ class AuditKind(str, Enum):
     ACTION_FAILED = "ACTION_FAILED"
     ACTION_BLOCKED = "ACTION_BLOCKED"
     STATEMENT_IMPORTED = "STATEMENT_IMPORTED"
+    DOCUMENT_ROUTED = "DOCUMENT_ROUTED"  # a file dropped on the copilot was routed: statement, receipt or unknown (ADR-039)
+    RECEIPT_IMPORTED = "RECEIPT_IMPORTED"
+    EXPENSE_LOGGED = "EXPENSE_LOGGED"  # the user confirmed an expense they told the copilot about (ADR-039)
+    RECEIPT_CORRECTED = "RECEIPT_CORRECTED"  # the user typed a receipt's total or date the reader could not read (ADR-039)
+    CONNECTION_ADDED = "CONNECTION_ADDED"  # the user connected an MCP server or their bank, with consent (ADR-047)
+    CONNECTION_UPDATED = "CONNECTION_UPDATED"  # the user changed which read-only tools a connection may call
+    CONNECTION_SYNCED = "CONNECTION_SYNCED"  # the user's sync read the connection; detail has counts and codes, never content
+    CONNECTION_REMOVED = "CONNECTION_REMOVED"  # the user disconnected; its stored results and secret are gone
     CATEGORY_CHANGED = "CATEGORY_CHANGED"  # the user set a transaction's category (ADR-023)
     PROFILE_UPDATED = "PROFILE_UPDATED"
+    DATA_EXPORTED = "DATA_EXPORTED"  # the user downloaded a copy of their data (G02); the copy is never logged
     USER_REGISTERED = "USER_REGISTERED"
     SESSION_STARTED = "SESSION_STARTED"
     SESSION_ENDED = "SESSION_ENDED"
     ACCOUNT_DELETED = "ACCOUNT_DELETED"  # the user deleted their account; detail commits to the events it erased
     DEMO_DATA_RESET = "DEMO_DATA_RESET"  # a shared demo persona's stored data was reset; same commitment
+    MEMORY_CONSENT_CHANGED = "MEMORY_CONSENT_CHANGED"  # the user granted or revoked the memory consent (ADR-048 §6)
+    MEMORY_CONFIRMED = "MEMORY_CONFIRMED"  # the user confirmed a declaration (one version, or a base and a change)
+    MEMORY_DELETED = "MEMORY_DELETED"  # the user deleted a memory chain, every version of it
+    MEMORY_EVIDENCE_CHANGED = "MEMORY_EVIDENCE_CHANGED"  # an import changed what the statements say about a declaration
     ERASED = "ERASED"  # a tombstone: an erased event's place in the chain, content gone
+    # An investment account at another institution (ADR-044): linked, read again, or unlinked by the user, or one of
+    # its statements imported or deleted. The detail names the provider and counts only: never the email, the token,
+    # a goal name or an amount.
+    INVESTMENTS_LINKED = "INVESTMENTS_LINKED"
+    INVESTMENTS_SYNCED = "INVESTMENTS_SYNCED"
+    INVESTMENTS_UNLINKED = "INVESTMENTS_UNLINKED"
+    INVESTMENT_DOCUMENT_IMPORTED = "INVESTMENT_DOCUMENT_IMPORTED"
+    INVESTMENT_DOCUMENTS_REMOVED = "INVESTMENT_DOCUMENTS_REMOVED"
 
 
 class Actor(str, Enum):

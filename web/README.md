@@ -30,7 +30,7 @@ cd web && npm run dev
 | `npm run contracts` | Regenerates `src/contracts/` from `../contracts` (commit the result; CI checks it is current) |
 | `npm run lint` / `npm run typecheck` | ESLint and TypeScript |
 | `npm test` | Vitest: formatting, API error mapping, the confirmation receipt, redaction chips, statement import and identity-scoped statement queries, accounts sessions and profile, axe accessibility checks |
-| `npm run e2e` | Playwright against a running stack. The demo specs (`demo-arc`, `overview`, `statements`) need a demo-mode API; the accounts specs (`signup`, `statements-accounts`) skip unless `/health` reports `auth: "accounts"`, so run each set against its own stack |
+| `npm run e2e` | Playwright against a running stack. The demo specs (`demo-arc`, `overview`, `statements`) need a demo-mode API; the accounts specs (`signup`, `statements-accounts`, `memory-accounts`) skip unless `/health` reports `auth: "accounts"`, so run each set against its own stack |
 | `npm run build` | Production bundle in `dist/` |
 
 ## Rules
@@ -93,3 +93,5 @@ Bodies follow the generated contracts. Signup (201), signin (200) and demo-sessi
 ### Development mock
 
 `VITE_ACCOUNTS_MOCK=true npm run dev` replaces the API with an in-memory, **development-only** transport for UI walkthroughs without a backend. It accepts only synthetic `.invalid` email addresses, resets on reload, sets no cookie and is not authentication: it proves nothing about cookie security, which only the real accounts backend provides. It never supplies financial figures: financial reads answer `INSUFFICIENT_DATA`, demo personas get a fixed conservative capacity for the Profile illustration only, and any route it does not serve answers 404. It stores no statements, so with the mock `/statements` shows a notice instead of the import screen. Its `OK` envelopes carry request-time `as_of` and `mock:accounts:` snapshot ids, which are synthetic markers, not forecast hashes or audit provenance. It mirrors the two error shapes above and scores the five `pq-0.1` questions only to stand in for the server; the UI never calculates tolerance or money.
+
+`VITE_INVESTMENT_LINKING=on npm run dev` enables the Fintual linking form in the Investments page's *Real-time connection* tab, which otherwise says what linking is for, is marked *In development* and shows the form disabled (ADR-044: Fintual refuses third-party reads, so users import their statements in the *Statements* tab instead). It is for working on that flow against the API's sandbox fixture; never ship it on.
