@@ -123,7 +123,7 @@ class BankStatement:
     summary: StatementSummary | None = None
     daily_balances: tuple[DailyBalance, ...] = ()
     statement_number: str | None = None
-    source: str = "text"  # text | ocr | xlsx
+    source: str = "text"  # text | ocr | xlsx | api (a bank aggregator, ADR-047)
     account_type: AccountType = AccountType.CHECKING
     # A movements export the bank has not closed (a card's unbilled movements): checked and stored,
     # never posted, because the next export and the billed statement repeat its lines.

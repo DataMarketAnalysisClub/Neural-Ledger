@@ -19,3 +19,12 @@ def sanitize(text: str) -> str:
 
 def wrap_untrusted(text: str) -> dict[str, str]:
     return {"untrusted_text": sanitize(text)}
+
+
+MAX_PASSAGE_LENGTH = 1_500  # retrieved concept cards (ADR-040): longer than a merchant name, still bounded
+
+
+def wrap_passage(text: str) -> dict[str, str]:
+    """Retrieved card text: data the model may quote, never instructions it follows. Keeps line breaks."""
+    cleaned = "".join(ch for ch in text if ch == "\n" or unicodedata.category(ch)[0] != "C")
+    return {"untrusted_text": cleaned[:MAX_PASSAGE_LENGTH]}

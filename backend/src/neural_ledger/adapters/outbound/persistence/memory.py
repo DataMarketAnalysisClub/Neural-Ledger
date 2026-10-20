@@ -12,6 +12,9 @@ from ....application.conversation import Entry
 from ....application.ports import ErasureReport, IdCollision, UserProfileStore
 from ....domain.actions.terms import Authorization, Proposal, SavingsRule
 from ....domain.audit.events import ERASURE_KINDS, GENESIS_HASH, AuditDraft, AuditEvent, erasure_detail, seal, tombstone
+from ....domain.connections.model import Connection, ConnectionSnapshot
+from ....domain.investments.documents import MAX_DOCUMENTS, StoredInvestmentDocument
+from ....domain.investments.model import MAX_SNAPSHOTS, InvestmentLink, InvestmentSnapshot
 from ....domain.ledger.categorization import PostedTransaction
 from ....domain.receipts.model import StoredReceipt
 from ....domain.statements.model import StoredStatement
@@ -61,6 +64,50 @@ class InMemoryStatementStore:
 
     def for_user(self, user_id: str) -> tuple[StoredStatement, ...]:
         return tuple(s for (owner, _), s in self._statements.items() if owner == user_id)
+
+
+class InMemoryConnectionStore:
+    """Connections with their secret and latest answers (ADR-047). Not sealed: memory never outlives the process."""
+
+    def __init__(self) -> None:
+        self._connections: dict[tuple[str, str], tuple[Connection, str | None]] = {}
+        self._results: dict[tuple[str, str], tuple[ConnectionSnapshot, ...]] = {}
+        self._lock = threading.Lock()
+
+    def add(self, connection: Connection, secret: str | None) -> None:
+        with self._lock:
+            self._connections[(connection.user_id, connection.connection_id)] = (connection, secret)
+
+    def get(self, user_id: str, connection_id: str) -> Connection | None:
+        found = self._connections.get((user_id, connection_id))
+        return found[0] if found else None
+
+    def for_user(self, user_id: str) -> tuple[Connection, ...]:
+        return tuple(c for (owner, _), (c, _s) in list(self._connections.items()) if owner == user_id)
+
+    def update(self, connection: Connection) -> bool:
+        key = (connection.user_id, connection.connection_id)
+        with self._lock:
+            if key not in self._connections:
+                return False
+            self._connections[key] = (connection, self._connections[key][1])
+            return True
+
+    def secret(self, user_id: str, connection_id: str) -> str | None:
+        found = self._connections.get((user_id, connection_id))
+        return found[1] if found else None
+
+    def put_results(self, user_id: str, connection_id: str, results: Sequence[ConnectionSnapshot]) -> None:
+        with self._lock:
+            self._results[(user_id, connection_id)] = tuple(results)
+
+    def results(self, user_id: str, connection_id: str) -> tuple[ConnectionSnapshot, ...]:
+        return self._results.get((user_id, connection_id), ())
+
+    def remove(self, user_id: str, connection_id: str) -> bool:
+        with self._lock:
+            self._results.pop((user_id, connection_id), None)
+            return self._connections.pop((user_id, connection_id), None) is not None
 
 
 class InMemoryReceiptStore:
@@ -337,6 +384,98 @@ def _check_transaction_change(expected: PostedTransaction, updated: PostedTransa
         raise ValueError("transaction ownership mismatch")
 
 
+def _check_investment_write(
+    expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+) -> None:
+    owner = link.user_id
+    if (expected is not None and expected.user_id != owner) or (snapshot is not None and snapshot.user_id != owner) or any(e.user_id != owner for e in events):
+        raise ValueError("investment ownership mismatch")
+
+
+class InMemoryInvestmentStore:
+    """Investment links, synced snapshots and imported documents (ADR-044). A write and its audit events land together
+    or not at all."""
+
+    def __init__(self, audit: InMemoryAuditLog) -> None:
+        self._audit = audit
+        self._lock = threading.Lock()
+        self._links: dict[str, InvestmentLink] = {}
+        self._snapshots: dict[str, list[InvestmentSnapshot]] = {}
+        self._documents: dict[str, list[StoredInvestmentDocument]] = {}
+
+    def link(self, user_id: str) -> InvestmentLink | None:
+        with self._lock:
+            return self._links.get(user_id)
+
+    def latest(self, user_id: str) -> InvestmentSnapshot | None:
+        with self._lock:
+            snapshots = self._snapshots.get(user_id)
+            return snapshots[-1] if snapshots else None
+
+    def save(
+        self, expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+    ) -> bool:
+        _check_investment_write(expected, link, snapshot, events)
+        with self._audit._lock, self._lock:
+            if self._links.get(link.user_id) != expected:
+                return False
+            self._publish(events)
+            self._links[link.user_id] = link
+            if snapshot is not None:
+                self._snapshots[link.user_id] = [*self._snapshots.get(link.user_id, []), snapshot][-MAX_SNAPSHOTS:]
+            return True
+
+    def remove(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with self._audit._lock, self._lock:
+            if user_id not in self._links:
+                return 0
+            self._publish(events)
+            del self._links[user_id]
+            return 1 + len(self._snapshots.pop(user_id, []))
+
+    def add_document(self, document: StoredInvestmentDocument, events: Sequence[AuditDraft]) -> bool:
+        if any(e.user_id != document.user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with self._audit._lock, self._lock:
+            kept = self._documents.get(document.user_id, [])
+            if any(d.document_id == document.document_id for d in kept):
+                return False
+            self._publish(events)
+            self._documents[document.user_id] = [*kept, document][-MAX_DOCUMENTS:]
+            return True
+
+    def documents(self, user_id: str) -> tuple[StoredInvestmentDocument, ...]:
+        with self._lock:
+            return tuple(self._documents.get(user_id, ()))
+
+    def remove_documents(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        if any(e.user_id != user_id for e in events):
+            raise ValueError("investment ownership mismatch")
+        with self._audit._lock, self._lock:
+            if not self._documents.get(user_id):
+                return 0
+            self._publish(events)
+            return len(self._documents.pop(user_id))
+
+    def drop(self, user_id: str) -> dict[str, int]:
+        """Every row of the user, per table name of the SQLite adapter. The caller holds the lock (account erasure)."""
+        links = int(self._links.pop(user_id, None) is not None)
+        return {
+            "investment_links": links,
+            "investment_snapshots": len(self._snapshots.pop(user_id, [])),
+            "investment_documents": len(self._documents.pop(user_id, [])),
+        }
+
+    def _publish(self, events: Sequence[AuditDraft]) -> None:
+        existing = {event.draft.event_id for event in self._audit._events}
+        ids = [event.event_id for event in events]
+        if len(set(ids)) != len(ids) or existing.intersection(ids):
+            raise IdCollision("generated identifier collision")
+        self._audit.append_all(events)
+
+
 class InMemoryAccountWrites:
     def __init__(
         self, accounts: InMemoryUserAccountStore, sessions: InMemorySessionStore,
@@ -452,22 +591,32 @@ class InMemoryAccountErasure:
         self, accounts: InMemoryUserAccountStore | None, sessions: InMemorySessionStore | None, profiles: UserProfileStore,
         audit: InMemoryAuditLog, statements: InMemoryStatementStore, transactions: InMemoryTransactionStore,
         rules: InMemorySavingsRuleStore, actions: InMemoryActionRepository, receipts: InMemoryReceiptStore | None = None,
+        investments: InMemoryInvestmentStore | None = None,
+        connections: InMemoryConnectionStore | None = None,
     ) -> None:
         self._accounts, self._sessions, self._audit = accounts, sessions, audit
         self._profiles = profiles._inner if isinstance(profiles, PersonaOverlayProfileStore) else profiles
         self._statements, self._transactions, self._rules, self._actions = statements, transactions, rules, actions
         self._receipts = receipts or InMemoryReceiptStore()
+        self._investments = investments or InMemoryInvestmentStore(audit)
+        self._connections = connections or InMemoryConnectionStore()
 
     def erase(self, user_id: str, *, keep_account: bool, event: AuditDraft) -> ErasureReport:
-        with self._audit._lock, self._statements._lock, self._transactions._lock, self._receipts._lock, self._rules._lock, self._actions._lock:
+        with (
+            self._audit._lock, self._statements._lock, self._transactions._lock, self._receipts._lock, self._connections._lock,
+            self._rules._lock, self._actions._lock, self._investments._lock,
+        ):
             if event.event_id in {e.draft.event_id for e in self._audit._events}:
                 raise IdCollision("generated identifier collision")
             counts = {
                 "statements": _drop(self._statements._statements, lambda key, _: key[0] == user_id),
                 "transactions": _drop(self._transactions._transactions, lambda key, _: key[0] == user_id),
                 "receipts": _drop(self._receipts._receipts, lambda key, _: key[0] == user_id),
+                "connections": _drop(self._connections._connections, lambda key, _: key[0] == user_id),
+                "connection_results": _drop(self._connections._results, lambda key, _: key[0] == user_id),
                 "proposals": _drop(self._actions._proposals, lambda _, p: p.user_id == user_id),
                 "authorizations": _drop(self._actions._authorizations, lambda _, a: a.user_id == user_id),
+                **self._investments.drop(user_id),
             }
             kept = [r for r in self._rules._rules if r.user_id != user_id]
             counts["savings_rules"], self._rules._rules = len(self._rules._rules) - len(kept), kept

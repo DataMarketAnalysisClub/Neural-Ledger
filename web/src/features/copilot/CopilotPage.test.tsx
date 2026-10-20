@@ -246,6 +246,26 @@ describe("CopilotPage", () => {
     expect(chat.mutate).toHaveBeenCalledWith("I just added a document. How much can I spend now?", expect.anything());
   });
 
+  it("asks about investments, not spending, after a Fintual document (ADR-044)", async () => {
+    const steps = [
+      { key: "read", status: "done", value: "pdf", by: null, confidence: null },
+      { key: "route", status: "done", value: "investment", by: "rules", confidence: 1 },
+      { key: "verify", status: "done", value: "verified", by: null, confidence: null },
+      { key: "duplicate", status: "done", value: "new", by: null, confidence: null },
+      { key: "investments", status: "done", value: "holdings", by: null, confidence: null },
+    ];
+    ingest = { ...idle(), mutate: vi.fn((_input: unknown, options?: { onSuccess?: (e: unknown) => void }) => options?.onSuccess?.({ data: { kind: "investment", steps, receipt: null } })) };
+    chat = { ...idle(), mutate: vi.fn() };
+    render(<MemoryRouter><CopilotPage /></MemoryRouter>);
+
+    await userEvent.upload(screen.getByLabelText("Add a receipt or a statement", { selector: "input" }), new File(["%PDF"], "cartola-fintual.pdf", { type: "application/pdf" }));
+
+    const log = screen.getByRole("log");
+    expect(log).toHaveTextContent("Recognized it: an investment document");
+    expect(log).toHaveTextContent("Updated what it knows of your investments: your investment statement");
+    expect(chat.mutate).toHaveBeenCalledWith("I just added my investment documents. How are my investments doing?", expect.anything());
+  });
+
   it("refuses a file over 15 MB before sending it", async () => {
     render(<MemoryRouter><CopilotPage /></MemoryRouter>);
     const big = new File(["x"], "scan.jpg", { type: "image/jpeg" });

@@ -54,3 +54,21 @@ def test_false_execution_claim_fails_only_without_success():
     text = "I've created the savings rule."
     assert not verify_explanation(text, FACTS, ()).ok
     assert verify_explanation(text, FACTS, (), executions_succeeded=1).ok
+
+
+def test_claims_of_moving_money_fail_and_honest_sentences_about_money_pass():
+    claims = (
+        "I moved 20,000 CLP for you.", "I've transferred 20,000 CLP.", "I invested 20,000 CLP in your goal.", "I have deposited 20,000 CLP.",
+        "He transferido 20,000 CLP.", "Listo, invertí 20,000 CLP.", "Moví 20,000 CLP a tu meta.", "Deposité 20,000 CLP.",
+    )
+    for text in claims:
+        assert [i.kind for i in verify_explanation(text, FACTS, ()).issues] == ["FALSE_EXECUTION_CLAIM"], text
+    honest = (
+        "You deposited a net 20,000 CLP, so that is a gain so far.",
+        "I've sent you a proposal for 20,000 CLP to confirm in the app.",
+        "Nothing moves until you confirm.",
+        "Has invertido 20,000 CLP en tu meta.",
+        "Your investments moved up this month.",
+    )
+    for text in honest:
+        assert verify_explanation(text, FACTS, ()).ok, text

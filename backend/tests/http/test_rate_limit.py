@@ -102,6 +102,15 @@ def test_defaults_cover_uploads_chat_and_sign_in():
     assert all(rule.path_prefix.startswith("/v1/") for rule in DEFAULT_LIMITS)
 
 
+def test_every_call_to_an_outside_service_has_its_own_budget():
+    rules = {rule.name: rule for rule in DEFAULT_LIMITS}
+    for path in ("/v1/connections", "/v1/connections/bank", "/v1/connections/conn_1/sync", "/v1/investments/sync"):
+        rule = next(r for r in DEFAULT_LIMITS if r.matches("POST", path))
+        assert rule.name != "api" and rule.per_caller <= 10, path
+    assert next(r for r in DEFAULT_LIMITS if r.matches("GET", "/v1/connections")).name == "api"
+    assert rules["connections"].per_ip <= 30
+
+
 def test_rate_limit_can_be_turned_off_only_explicitly():
     assert Settings().rate_limit and Settings.from_env({}).rate_limit
     assert not Settings.from_env({"NL_RATE_LIMIT": "off"}).rate_limit

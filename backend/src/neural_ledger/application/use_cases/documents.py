@@ -4,8 +4,10 @@
          ─► route: a spreadsheet is a statement; else the printed words (domain rules); else the decision chain
             (Jev first when configured) on the REDACTED text, accepted only above MIN_ROUTE_CONFIDENCE
          ├─ statement ─► StatementUseCases.import_statement (unchanged: redact, reconcile, post, audit)
-         └─ receipt ───► read (print + SII stamp) ─► check (domain) ─► redact the store's name ─► categorize
-                         (classifier port, gated by the domain) ─► store once ─► match to a statement charge
+         ├─ receipt ───► read (print + SII stamp) ─► check (domain) ─► redact the store's name ─► categorize
+         │               (classifier port, gated by the domain) ─► store once ─► match to a statement charge
+         └─ investment ► InvestmentUseCases.import_document (ADR-044): a fund manager's statement or transactions
+                         certificate, read, checked and kept for get_investments; a signed-in account only
          ─► spending check-in: what is left of the cycle's conservative assumption, per day (FinancialUseCases)
 
 Every step is returned as a workflow step for the UI and audited. Models only route a document and guess a
@@ -66,6 +68,7 @@ from ..ports import (
 )
 from ..services.redaction import StatementRedactor
 from .financial import FinancialUseCases
+from .investments import InvestmentDocumentImport, InvestmentUseCases
 from .statements import ALLOWED_FILES, LOW_CONFIDENCE, MAX_STATEMENT_BYTES, StatementImport, StatementUseCases
 
 logger = logging.getLogger(__name__)
@@ -134,11 +137,12 @@ class ExpenseProposal:
 
 @dataclass(frozen=True, slots=True)
 class DocumentIngest:
-    kind: str  # statement | receipt | unknown
+    kind: str  # statement | receipt | investment | unknown
     steps: tuple[WorkflowStep, ...]
     statement: StatementImport | None
     receipt: ReceiptView | None
     spending: SpendingCheck | None
+    investment: InvestmentDocumentImport | None = None  # a fund manager's document (ADR-044)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +168,10 @@ class DocumentUseCases:
         clock: Clock,
         ids: IdGenerator,
         snapshots: SnapshotStore,
+        *,
+        investments: InvestmentUseCases | None = None,
     ) -> None:
+        self._investments = investments
         self._snapshots = snapshots
         self._reader = reader
         self._redactor = redactor
@@ -180,9 +187,13 @@ class DocumentUseCases:
 
     # ---- the workflow ---------------------------------------------------------------------------
 
-    def ingest(self, user_id: str, content: bytes, session_id: str = "documents", kind: str | None = None) -> Envelope[DocumentIngest]:
-        """`kind` is the user's own answer ("receipt" or "statement") when the file could not be recognized: it
-        replaces the routing, nothing else. Reading, checks and redaction are the same."""
+    def ingest(
+        self, user_id: str, content: bytes, session_id: str = "documents", kind: str | None = None, *, investments: bool = False
+    ) -> Envelope[DocumentIngest]:
+        """`kind` is the user's own answer ("receipt", "statement" or "investment") when the file could not be
+        recognized, or where they dropped it: it replaces the routing, nothing else. Reading, checks and redaction are
+        the same. `investments` says whether this user may import investment documents: a signed-in account, never a
+        demo persona that visitors share (ADR-044)."""
         if not content:
             return Envelope.invalid("file", ALLOWED_FILES, params_version=RECEIPTS_VERSION, message="the file is empty")
         if len(content) > MAX_DOCUMENT_BYTES:
@@ -195,11 +206,16 @@ class DocumentUseCases:
             return Envelope.insufficient(("document_reader",), params_version=RECEIPTS_VERSION, message=str(exc))
 
         if kind is not None:
-            if kind not in (DocumentKind.RECEIPT.value, DocumentKind.STATEMENT.value):
-                return Envelope.invalid("kind", ("receipt", "statement"), params_version=RECEIPTS_VERSION, message="kind must be receipt or statement")
+            if kind not in (DocumentKind.RECEIPT.value, DocumentKind.STATEMENT.value, DocumentKind.INVESTMENT.value):
+                return Envelope.invalid(
+                    "kind", ("receipt", "statement", "investment"), params_version=RECEIPTS_VERSION, message="kind must be receipt, statement or investment"
+                )
             routed, by, confidence = DocumentKind(kind), "user", 1.0
         else:
             routed, by, confidence = self._route(peeked.format, peeked.text)
+        if routed is DocumentKind.INVESTMENT and not investments:
+            message = "investment statements are imported from a signed-in account, not a shared demo profile"
+            return Envelope.invalid("kind", ("receipt", "statement"), params_version=RECEIPTS_VERSION, message=message)
         result = self._run(user_id, content, session_id, peeked, routed, by, confidence)
         if result.ok and result.data is not None:
             self._snapshots.put(LATEST_DOCUMENT, user_id, result)  # what get_latest_document tells the copilot
@@ -215,6 +231,8 @@ class DocumentUseCases:
             return self._statement(user_id, content, session_id, steps)
         if kind is DocumentKind.RECEIPT:
             return self._receipt(user_id, content, session_id, steps)
+        if kind is DocumentKind.INVESTMENT:
+            return self._investment(user_id, content, session_id, steps)
         message = "this does not look like a bank statement or a receipt; try a clearer photo or the bank's own export"
         return Envelope.invalid("file", ("statement", "receipt"), params_version=RECEIPTS_VERSION, message=message)
 
@@ -263,6 +281,31 @@ class DocumentUseCases:
             data=data,
             facts=(*result.facts, *(spending.facts if spending.ok else ())),
             warnings=(*result.warnings, *(w for w in spending.warnings if w not in result.warnings)),
+        )
+
+    def _investment(self, user_id: str, content: bytes, session_id: str, steps: list[WorkflowStep]) -> Envelope[DocumentIngest]:
+        """A fund manager's document: read, checked and kept by the investments use case; nothing here is posted to
+        the ledger or counted as spending (contributions already left the bank account on its statement)."""
+        if self._investments is None:
+            return Envelope.insufficient(("document_reader",), params_version=RECEIPTS_VERSION, message="investment statements cannot be read here")
+        result = self._investments.import_document(user_id, session_id, content)
+        if not result.ok or result.data is None:
+            return replace(result, data=None)  # type: ignore[arg-type]
+        imported = result.data
+        document = imported.document
+        kept = document.verified and not imported.duplicate
+        steps.append(WorkflowStep("verify", "done" if document.verified else "warning", "verified" if document.verified else "unverified"))
+        if document.kind == "movements":  # goal names are the only text kept, and they are redacted
+            steps.append(WorkflowStep("redact", "done", None, self._redactor.detector if self._redactor.detector != "none" else "rules"))
+        steps.append(WorkflowStep("duplicate", "warning" if imported.duplicate else "done", "duplicate" if imported.duplicate else "new"))
+        steps.append(WorkflowStep("investments", "done" if kept else "skipped", document.kind))
+        return Envelope.success(
+            DocumentIngest("investment", tuple(steps), None, None, None, imported),
+            params_version=result.params_version,
+            snapshot_id=result.snapshot_id or document.document_id,
+            as_of=result.as_of or self._clock.now().isoformat(),
+            facts=result.facts,
+            warnings=result.warnings,
         )
 
     def _receipt(self, user_id: str, content: bytes, session_id: str, steps: list[WorkflowStep]) -> Envelope[DocumentIngest]:

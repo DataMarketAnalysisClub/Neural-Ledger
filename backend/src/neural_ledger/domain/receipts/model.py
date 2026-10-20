@@ -32,6 +32,7 @@ MATCH_WINDOW_DAYS = 3
 class DocumentKind(str, Enum):
     STATEMENT = "statement"
     RECEIPT = "receipt"
+    INVESTMENT = "investment"  # a fund manager's statement or transactions certificate (ADR-044)
     UNKNOWN = "unknown"
 
 
@@ -44,6 +45,7 @@ DOCUMENT_KIND_QUESTION = ChoiceQuestion(
     notes=(
         "A bank statement (cartola) or a credit card statement: many dated movements, balances, a period",
         "A receipt for one purchase (boleta, boleta electrónica, ticket, comprobante de venta): a store, items and one total",
+        "An investment fund statement or transactions certificate (Fintual, an administradora general de fondos): fund shares, contributions, withdrawals",
         "Anything else: an invoice to a company, an ID, a letter, a photo without a financial document",
     ),
 )
@@ -55,6 +57,12 @@ _RECEIPT_MARKS = re.compile(
 )
 # A TOTAL (as OCR may read it) followed by an amount: one purchase, when nothing says it is a statement.
 _TOTAL_AMOUNT = re.compile(r"\btota\s?[l1I\]|](?![a-z]).{0,40}?\d", re.I | re.S)
+# A fund manager's document: fund shares, contributions and withdrawals, never bank movements or a purchase. Banks
+# print "cuotas" for installments too, so only words a fund manager prints count (ADR-044).
+_INVESTMENT_MARKS = re.compile(
+    r"(administradora general de fondos|investment statement|certificado de transacciones|net asset value|fund shares|"
+    r"\brescates?\b|fondos? mutuos?)", re.I
+)
 _STATEMENT_MARKS = re.compile(
     r"(cartola|estado de cuenta|saldo inicial|saldo final|saldo anterior|saldo disponible|cupo (?:total|utilizado)|"
     r"cheques y cargos|dep[oó]sitos y abonos|per[ií]odo (?:facturado|de facturaci[oó]n)|monto (?:total )?facturado|"
@@ -66,6 +74,9 @@ def kind_by_rules(text: str) -> DocumentKind | None:
     """The kind when the printed words leave no doubt, else None (a decision model may answer)."""
     receipt = len(_RECEIPT_MARKS.findall(text))
     statement = len(_STATEMENT_MARKS.findall(text))
+    investment = len(_INVESTMENT_MARKS.findall(text))
+    if investment >= 2 and investment > receipt + statement:  # first: a fund statement prints a "Total $..." line too
+        return DocumentKind.INVESTMENT
     if receipt > 2 * statement:
         return DocumentKind.RECEIPT
     if statement > 2 * receipt:

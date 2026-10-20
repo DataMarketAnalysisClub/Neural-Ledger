@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-ledger.local/contracts/outputs/investment_document.schema.json",
+  "title": "InvestmentDocument",
+  "description": "An investment document the user imported (ADR-044), without its rows: Fintual's investment statement (holdings: the balance of every fund and series on one day) or its transactions certificate (movements: every contribution and withdrawal). Only a verified document is kept and used; issues say why one is not.",
+  "type": "object",
+  "required": ["document_id", "provider", "kind", "as_of", "imported_at", "rows", "verified", "issues"],
+  "properties": {
+    "document_id": {"type": "string", "pattern": "^invdoc_[0-9a-f]{16}$"},
+    "provider": {"enum": ["fintual"]},
+    "kind": {"enum": ["holdings", "movements"]},
+    "as_of": {"type": ["string", "null"], "format": "date", "description": "The statement's day, or the certificate's last movement; null when it could not be read."},
+    "imported_at": {"type": ["string", "null"], "format": "date-time", "description": "Null for a document that was not kept."},
+    "rows": {"type": "integer", "minimum": 0},
+    "verified": {"type": "boolean", "description": "It adds up; only a verified document is kept and used."},
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"enum": ["NO_ROWS", "DATE_MISSING", "DATE_OUT_OF_RANGE", "OUT_OF_RANGE", "TOTAL_MISMATCH", "BALANCE_MISMATCH", "SHARES_DO_NOT_CHAIN", "PESOS_MISMATCH", "INTERNAL_UNBALANCED"]},
+          "message": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

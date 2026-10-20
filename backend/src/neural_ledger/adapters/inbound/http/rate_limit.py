@@ -48,6 +48,11 @@ DEFAULT_LIMITS: tuple[Limit, ...] = (
     Limit("chat", "/v1/chat", per_caller=20, per_ip=60, method="POST"),
     Limit("auth", "/v1/auth/", per_caller=10, per_ip=10, method="POST"),
     Limit("account", "/v1/account", per_caller=5, per_ip=10, method="DELETE"),  # checks a password: as strict as sign-in
+    # Sends a password to the investment provider: as strict as sign-in, so the API is no oracle for its credentials.
+    Limit("investment_link", "/v1/investments/link", per_caller=5, per_ip=10, method="POST"),
+    Limit("investment_sync", "/v1/investments/sync", per_caller=10, per_ip=30, method="POST"),  # each one calls the provider
+    # Adding a connection lists the server's tools, and a sync or a bank link calls the server or Fintoc (ADR-047).
+    Limit("connections", "/v1/connections", per_caller=10, per_ip=30, method="POST"),
     Limit("api", "/v1/", per_caller=300, per_ip=900),
 )
 

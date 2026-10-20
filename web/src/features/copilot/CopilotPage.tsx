@@ -198,7 +198,8 @@ function Conversation() {
       {
         onSuccess: (envelope) => {
           updateDocument(id, { name: file.name, file, result: envelope.data ?? undefined });
-          send(t("copilot.documents.followUp"));
+          // A fund statement changes what the copilot knows of the user's investments, not what they can spend (ADR-044).
+          send(t(envelope.data?.kind === "investment" ? "copilot.documents.investmentFollowUp" : "copilot.documents.followUp"));
         },
         onError: (error) => updateDocument(id, { name: file.name, file, error }),
       },

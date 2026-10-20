@@ -14,6 +14,7 @@
     {"code":"RATE_ASSUMED","source":"purchase","trigger":"Offer rate omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"FIRST_INSTALLMENT_ASSUMED","source":"financial","trigger":"First installment month omitted","must_mention":true,"reaches_tool_envelope":true},
     {"code":"PROFILE_CAPPED","source":"financial","trigger":"Requested profile exceeds permitted","must_mention":true,"reaches_tool_envelope":true},
+    {"code":"GOAL_OFF_TRACK","source":"plan","trigger":"A goal due within near_term_goal_months is not complete by its deadline at the planned rate (H3, UG03); names the goal, changes no amount","must_mention":true,"reaches_tool_envelope":true},
     {"code":"SPENDING_ABOVE_FORECAST","source":"spending","trigger":"Logged spending this cycle is past the conservative (P80) assumption; the extra comes out of the protected surplus","must_mention":true,"reaches_tool_envelope":true},
     {"code":"SPENDING_BREACHES_FLOOR","source":"spending","trigger":"The overspend is larger than the protected surplus: a conservative month drops below the floor","must_mention":true,"reaches_tool_envelope":true}
   ],

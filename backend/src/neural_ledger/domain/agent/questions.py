@@ -21,6 +21,7 @@ class Intent(str, Enum):
     SET_LIQUIDITY_FLOOR = "set_liquidity_floor"
     EXECUTE_ACTION = "execute_action"
     EXPLAIN = "explain"
+    INVESTMENTS = "investments"
     OUT_OF_SCOPE = "out_of_scope"
     SMALLTALK = "smalltalk"
 
@@ -75,7 +76,8 @@ INTENT_QUESTION = ChoiceQuestion(
         "Asks to set or change the minimum balance (floor, piso, saldo mínimo) the account must keep every month",
         "Tells the assistant to carry out or confirm an action it proposed, such as creating a rule or moving money",
         "Asks what a term means, or how or why the assistant produced an answer",
-        "Asks about something other than the user's own cash flow: investing, taxes, general knowledge, writing",
+        "Asks about the user's own investments held at a provider such as Fintual: balances, deposits, gains, goals",
+        "Asks for advice on what to invest in (stocks, crypto, funds), about taxes, general knowledge or writing",
         "Greeting, thanks, farewell or chit-chat with no request",
     ),
 )

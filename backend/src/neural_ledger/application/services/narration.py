@@ -7,8 +7,12 @@ output always passes the verifier (tests/application/test_narration.py checks th
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+from ...domain.agent.verification import verify_explanation
+from ...domain.shared.envelope import Fact
 
 Payload = Mapping[str, Any]
 
@@ -17,8 +21,12 @@ REFUSAL_INJECTION = (
     "confirm in the app, within fixed limits. This request was logged."
 )
 REFUSAL_SCOPE = (
-    "I can't help with investments, crypto or tax advice. I can check whether a purchase fits your "
-    "future commitments, show what is really available, and set up a savings rule."
+    "I can't give investment, crypto or tax advice. I can check whether a purchase fits your "
+    "future commitments, show what is really available, set up a savings rule, and describe the investment statements you import."
+)
+NOT_LINKED = (
+    "I don't have your investments yet. Download your investment statement and your transactions certificate from Fintual "
+    "and drop them in the Investments section; then I can tell you what you hold, what you put in and how it has done."
 )
 CLARIFY = "Just to be sure: do you want to check a purchase, see your forecast, or set up a savings rule?"
 READ_ONLY_NOTE = "I'm in read-only mode right now, so I can analyze but not prepare or execute actions."
@@ -26,11 +34,33 @@ GREETING = (
     "Hi! I can check whether a purchase fits your future commitments, show your cash-flow forecast, "
     "and help you set up a savings rule."
 )
-EXPLAIN = (
-    "A cuota is one installment of a purchase paid over several months, like buy-now-pay-later. "
-    "Your protected surplus is the money that could leave your account today without any month in the "
-    "conservative forecast falling below your minimum balance."
-)
+# Explanations come from the concept cards (ADR-040): the top passage, then this sentence in the card's language.
+NOT_ADVICE_SENTENCE = {
+    "es": "Esto es información general, no es una recomendación para tu situación.",
+    "en": "This is general information, not a recommendation for your situation.",
+}
+_NO_CARD = {
+    "es": (
+        "No tengo una ficha que explique ese término, así que no lo voy a explicar de memoria. Sí puedo revisar si "
+        "una compra calza con tus compromisos futuros, mostrarte tu proyección y lo que realmente tienes disponible, "
+        "o preparar una regla de ahorro."
+    ),
+    "en": (
+        "I don't have a card that explains that term, so I won't explain it from memory. I can check whether a "
+        "purchase fits your future commitments, show your forecast and what is really available, or set up a savings rule."
+    ),
+}
+_NO_CARDS_NOW = {
+    "es": "Mis fichas de conceptos no están disponibles en este momento, así que no lo voy a explicar de memoria.",
+    "en": "My concept cards are not available right now, so I won't explain it from memory.",
+}
+MAX_PASSAGE_SENTENCES = 2
+
+
+def no_concept_card(lang: str = "en", unavailable: bool = False) -> str:
+    """What the copilot says when no concept card explains the question: never a definition from memory."""
+    table = _NO_CARDS_NOW if unavailable else _NO_CARD
+    return table.get(lang, table["en"])
 NO_RESULT = "I couldn't get a result for that. Could you rephrase?"
 
 _BLOCK_SENTENCES = {
@@ -38,6 +68,7 @@ _BLOCK_SENTENCES = {
     "AUTHORIZATION_REPLAYED": "That authorization was already used.",
     "AUTHORIZATION_TAMPERED": "The stored terms no longer match what you confirmed.",
     "AUTHORIZATION_NOT_FOUND": "There is no confirmed authorization for that.",
+    "AUTHORIZATION_MISMATCH": "The requested terms don't match what you authorized.",
     "WRONG_OWNER": "That authorization belongs to someone else.",
     "UNKNOWN_DESTINATION": "That destination is not allowed.",
     "UNKNOWN_SOURCE": "That source account is not allowed.",
@@ -53,6 +84,7 @@ _BLOCK_SENTENCES = {
     "PROPOSAL_EXPIRED": "That proposal expired; ask me to prepare it again.",
     "PROPOSAL_NOT_PENDING": "That proposal was already handled.",
     "TERMS_CHANGED": "The terms shown don't match the proposal.",
+    "PLAN_SUPERSEDED": "Your financial state changed since that plan was computed, so I need to compute it again before proposing it.",
     "AUDIT_UNAVAILABLE": "The audit log is unavailable, so nothing can be executed.",
 }
 
@@ -100,12 +132,18 @@ def _narrate_one(name: str, payload: Payload, cur: str) -> list[str]:
         return [_BLOCK_SENTENCES.get(reason, "I can't do that.") + " The attempt was logged."]
     if status == "INVALID_INPUT":
         return [f"I couldn't use that input ({payload.get('field')}): {payload.get('message')}"]
+    if status == "INSUFFICIENT_DATA" and name == "get_investments" and payload.get("missing") == ["investment_account"]:
+        return [NOT_LINKED]
+    if status == "INSUFFICIENT_DATA" and name == "search_financial_concepts":
+        return [no_concept_card("en", unavailable="knowledge_base" in payload.get("missing", ()))]
     if status == "INSUFFICIENT_DATA":
-        missing = ", ".join(payload.get("missing", ())) or "some data"
+        missing =", ".join(payload.get("missing", ())) or "some data"
         return [f"I don't have enough data to answer that yet (missing: {missing}), so I won't guess."]
     handler = _HANDLERS.get(name)
     if handler is None:
         return []
+    if name in _SAYS_ITS_OWN_CAVEATS:
+        return handler(payload, cur)
     return handler(payload, cur) + _caveat_sentences(payload)
 
 
@@ -269,7 +307,8 @@ def _action(p: Payload, cur: str) -> list[str]:
         return ["The sandbox could not complete the action, so nothing was executed. Please confirm again to retry."]
     if status == "BLOCKED":
         reason = outcome.get("reason", "")
-        if reason == "AUTHORIZATION_MISMATCH":
+        # Malformed requested terms are also a mismatch, but carry no amounts to compare.
+        if reason == "AUTHORIZATION_MISMATCH" and outcome.get("authorized_amount") is not None and outcome.get("requested_amount") is not None:
             first = (
                 f"You authorized {_money(outcome['authorized_amount'], cur)}, but the request was for "
                 f"{_money(outcome['requested_amount'], cur)}."
@@ -291,6 +330,16 @@ def _audit(p: Payload, cur: str) -> list[str]:
 
 def _profile(p: Payload, cur: str) -> list[str]:
     return [f"Profile loaded for {p['data']['display_name']['untrusted_text']}."]
+
+
+def _connected(p: Payload, cur: str) -> list[str]:
+    """Hosts and dates only: the answers are the services' untrusted text, and their figures are theirs (ADR-047)."""
+    sources = p["data"]["connections"]
+    read = [s for s in sources if any(r["ok"] for r in s["results"])]
+    if not read:
+        return ["Your connected services have no data yet: sync them from the Connections screen first."]
+    parts = [f"{s['host']} (synced {str(s['last_synced_at'])[:10]})" for s in read]
+    return [f"I read what you last synced from {', '.join(parts)}."]  # the EXTERNAL_DATA warning follows, said once
 
 
 def _spending(p: Payload, cur: str) -> list[str]:
@@ -342,6 +391,8 @@ def _spending(p: Payload, cur: str) -> list[str]:
 
 def _document(p: Payload, cur: str) -> list[str]:
     d = p["data"]
+    if d["kind"] == "investment":
+        return _investment_document(d["investment"])
     if d["kind"] == "receipt":
         r = d["receipt"]
         if r["total"] is None:
@@ -379,6 +430,94 @@ def _expense(p: Payload, cur: str) -> list[str]:
     return [f"I prepared the expense: {_money(d['amount'], cur)} on {d['spent_on']}{how}{kind}. Check it and confirm it in the card below; nothing is saved until you do."]
 
 
+def _investment_document(imported: Payload) -> list[str]:
+    """What changed with the document the user dropped. An unverified or repeated one is said by its warning."""
+    document = imported["document"]
+    if not document["verified"] or imported["duplicate"]:
+        return []
+    what = "investment statement" if document["kind"] == "holdings" else "transactions certificate"
+    text = [f"I read your Fintual {what} and updated what I know about your investments."]
+    overview = imported.get("overview")
+    return text + (_statement_figures(overview) if overview else [])
+
+
+def _statement_figures(d: Payload) -> list[str]:
+    """The imported documents' figures. Goal names are never repeated (S30), and fund names are a checked pattern."""
+    money = d["currency"]
+    text = []
+    if d["total_value"] is not None:
+        count = f"{len(d['funds'])} fund" + ("" if len(d["funds"]) == 1 else "s")
+        text.append(f"According to the Fintual statement you imported, on {d['as_of']} your investments were worth {_money(d['total_value'], money)} across {count}.")
+    c = d["contributions"]
+    if c is not None:
+        out = f"withdrew {_money(c['withdrawn'], money)}" if c["withdrawn"] else "withdrew nothing"
+        text.append(
+            f"From {c['first_day']} to {c['last_day']} you contributed {_money(c['contributed'], money)} and {out}, "
+            f"so you put in a net {_money(c['net_contributed'], money)}."
+        )
+        text.append(
+            f"That is about {_money(c['monthly_average'], money)} a month on average, with contributions in {c['active_months']} of those {c['months']} months."
+        )
+    if d["total_gain"] is not None:
+        kind = "a gain" if d["total_gain"] >= 0 else "a loss"
+        share = f" ({abs(d['gain_pct']):.1f}% of what you put in)" if d["gain_pct"] is not None else ""
+        text.append(f"So far that is {kind} of {_money(d['total_gain'], money)}{share}.")
+    valued = [g for g in d["goals"] if g["value"] is not None]
+    if len(valued) > 1:
+        largest = max(valued, key=lambda g: (g["value"], g["goal_id"]))
+        text.append(f"Your largest goal holds {_money(largest['value'], money)}.")
+    return text
+
+
+def _investments(p: Payload, cur: str) -> list[str]:
+    """Figures from the payload, which its facts carry. Goal names are never repeated: they are the user's text at the
+    provider, and this reply is stored as the assistant's own words, where untrusted text would lose its wrapper (S30).
+    The app shows the names next to the reply."""
+    d = p["data"]
+    if d["source"] == "statement":
+        return _statement_figures(d)
+    money = d["currency"]
+    goals = d["goals"]
+    count = f"{len(goals)} goal" + ("" if len(goals) == 1 else "s")
+    text = [f"Your linked Fintual account holds {_money(d['total_value'], money)} across {count}, as of the sync on {d['as_of']}."]
+    if d["total_gain"] is not None:
+        kind = "a gain" if d["total_gain"] >= 0 else "a loss"
+        text.append(f"You have deposited a net {_money(d['total_deposited'], money)}, so that is {kind} of {_money(d['total_gain'], money)} so far.")
+    elif goals:
+        text.append("Fintual does not report the deposits of every goal, so I can't tell the gain so far.")
+    if len(goals) > 1:
+        largest = max(goals, key=lambda g: (g["value"], g["goal_id"]))
+        text.append(f"The largest of them holds {_money(largest['value'], money)}.")
+    return text
+
+
+_MARKDOWN = re.compile(r"\*\*|__|`|^\s*(?:#+|[-*>]|\d+[.)])\s+", re.M)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[\"'(¿¡A-ZÁÉÍÓÚÑ])")
+
+
+def _passage_sentences(text: str) -> list[str]:
+    """The passage as plain sentences: headings dropped, Markdown marks removed, whitespace collapsed."""
+    lines = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+    plain = re.sub(r"\s+", " ", " ".join(_MARKDOWN.sub("", line).strip() for line in lines)).strip()
+    return [s for s in _SENTENCE_END.split(plain) if s]
+
+
+def _concepts(p: Payload, cur: str) -> list[str]:
+    """The top passage, deterministically: its title, its first sentences and the not-advice sentence.
+
+    Card text is untrusted data: it is quoted, never obeyed. A sentence with a figure that is not a fact of the
+    payload is left out, so the narration always passes the verifier.
+    """
+    top = p["data"]["concepts"][0]
+    lang = top["lang"] if top["lang"] in NOT_ADVICE_SENTENCE else "en"
+    facts = tuple(Fact(**f) for f in p.get("facts", ()))
+    sentences = _passage_sentences(top["passage"]["untrusted_text"])
+    kept = [s for s in sentences if verify_explanation(s, facts, (), money_units=frozenset({cur})).ok]
+    body = " ".join(kept[:MAX_PASSAGE_SENTENCES])
+    title = " ".join(str(top["title"]).split())
+    return [f"{title}: {body}" if body else f"{title}.", NOT_ADVICE_SENTENCE[lang]]
+
+
 def _fact(payload: Payload, key: str) -> Any:
     for fact in payload.get("facts", ()):
         if fact["key"] == key:
@@ -403,6 +542,10 @@ _HANDLERS = {
     "get_audit_events": _audit,
     "get_user_profile": _profile,
     "get_spending_status": _spending,
+    "get_connected_data": _connected,
     "get_latest_document": _document,
     "propose_expense": _expense,
+    "get_investments": _investments,
+    "search_financial_concepts": _concepts,
 }
+_SAYS_ITS_OWN_CAVEATS = {"search_financial_concepts"}  # the not-advice sentence, in the card's language
