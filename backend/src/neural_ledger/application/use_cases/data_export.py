@@ -2,7 +2,7 @@
 
 HTTP only: the agent has no tool for it, since the copy holds personal data the copilot never needs. It reads the
 same stores the account deletion empties, so what can be downloaded is what a deletion erases. Never in the copy:
-the password hash, session tokens and connection secrets.
+the password hash, session tokens, connection secrets and the investment access token.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from ..ports import (
     Clock,
     ConnectionStore,
     IdGenerator,
+    InvestmentStore,
     ReceiptStore,
     SandboxBank,
     StatementStore,
@@ -37,6 +38,7 @@ class DataExport:
         receipts: ReceiptStore,
         connections: ConnectionStore,
         bank: SandboxBank,
+        investments: InvestmentStore,
         audit: AuditLog,
         clock: Clock,
         ids: IdGenerator,
@@ -48,6 +50,7 @@ class DataExport:
         self._receipts = receipts
         self._connections = connections
         self._bank = bank
+        self._investments = investments
         self._audit = audit
         self._clock = clock
         self._ids = ids
@@ -61,6 +64,7 @@ class DataExport:
         ))
         account = self._accounts.get(user_id)  # None for a demo persona: it has no account
         connections = self._connections.for_user(user_id)
+        link = self._investments.link(user_id)
         return {
             "format": EXPORT_FORMAT,
             "exported_at": now.isoformat(),
@@ -76,5 +80,10 @@ class DataExport:
                 {**to_primitive(c), "results": to_primitive(self._connections.results(user_id, c.connection_id))} for c in connections
             ],
             "savings_rules": to_primitive(self._bank.active_rules(user_id)),
+            "investments": {
+                "link": None if link is None else {k: v for k, v in to_primitive(link).items() if k != "token"},
+                "latest_snapshot": to_primitive(self._investments.latest(user_id)),
+                "documents": to_primitive(self._investments.documents(user_id)),
+            },
             "audit_events": [to_primitive(e.to_record()) for e in self._audit.events() if e.draft.user_id == user_id],
         }

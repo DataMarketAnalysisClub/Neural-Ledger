@@ -23,7 +23,8 @@ function Page() {
 }
 
 const exported = { format: "neural-ledger-export-1", exported_at: "2026-10-20T12:00:00+00:00", user_id: "usr_ana", account: null, profile: null,
-  statements: [], transactions: [], receipts: [], connections: [], savings_rules: [], audit_events: [] };
+  statements: [], transactions: [], receipts: [], connections: [], savings_rules: [],
+  investments: { link: null, latest_snapshot: null, documents: [] }, audit_events: [] };
 
 function serve(user_id: string, data_source: string, deletion: () => Response, exporting = () => new Response(JSON.stringify(exported), { status: 200 })) {
   let signedIn = true;

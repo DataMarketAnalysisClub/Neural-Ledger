@@ -16,6 +16,7 @@ export interface ChatReply {
     | "set_liquidity_floor"
     | "execute_action"
     | "explain"
+    | "investments"
     | "out_of_scope"
     | "smalltalk";
   intent_confidence: number;

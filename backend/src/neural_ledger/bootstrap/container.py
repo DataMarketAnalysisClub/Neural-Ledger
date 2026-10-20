@@ -18,6 +18,9 @@ from ..adapters.outbound.decision.rules import RulesDecisionModel
 from ..adapters.outbound.email.domains import DisposableEmailBlocklist, DnsEmailDomainCheck
 from ..adapters.outbound.fixtures.ledger_source import LedgerModelSource
 from ..adapters.outbound.fixtures.persona_source import PersonaFixtureSource
+from ..adapters.outbound.investments.fintual import FintualInvestmentProvider
+from ..adapters.outbound.investments.fintual_documents import FintualDocumentReader
+from ..adapters.outbound.investments.fixture import FixtureInvestmentProvider
 from ..adapters.outbound.knowledge.corpus_loader import load_cards
 from ..adapters.outbound.knowledge.lexical import LexicalKnowledgeBase
 from ..adapters.outbound.llm.anthropic import AnthropicLanguageModel
@@ -31,6 +34,7 @@ from ..adapters.outbound.persistence.memory import (
     InMemoryAuditLog,
     InMemoryConnectionStore,
     InMemoryConversationStore,
+    InMemoryInvestmentStore,
     InMemoryReceiptStore,
     InMemorySavingsRuleStore,
     InMemorySessionStore,
@@ -49,6 +53,7 @@ from ..adapters.outbound.persistence.sqlite import (
     SqliteAuditLog,
     SqliteConnectionStore,
     SqliteDatabase,
+    SqliteInvestmentStore,
     SqliteReceiptStore,
     SqliteSavingsRuleStore,
     SqliteSessionStore,
@@ -75,6 +80,7 @@ from ..application.ports import (
     BankFeed,
     Clock,
     EmailDomainCheck,
+    InvestmentProvider,
     KnowledgeBase,
     McpClient,
     PersonalDataDetector,
@@ -97,6 +103,7 @@ from ..application.use_cases.data_export import DataExport
 from ..application.use_cases.documents import DocumentUseCases
 from ..application.use_cases.education import EducationUseCases
 from ..application.use_cases.financial import FinancialUseCases
+from ..application.use_cases.investments import InvestmentUseCases
 from ..application.use_cases.ledger import LedgerUseCases
 from ..application.use_cases.profile import ProfileEditing, ProfileUseCases
 from ..application.use_cases.statements import StatementUseCases
@@ -139,6 +146,14 @@ KNOWLEDGE_BASES: dict[str, Callable[[Settings, tuple[ConceptCard, ...]], Knowled
 DETECTORS: dict[str, Callable[[Settings], PersonalDataDetector]] = {
     "none": lambda s: NullDetector(),  # rules only: CI, docker compose, the recorded demo
     "azure": lambda s: AzureLanguageDetector(s.azure_language_endpoint or "", s.azure_language_api_key or ""),
+}
+
+# Investment account providers, by NL_INVESTMENTS (ADR-044). fixture links a synthetic account with no network;
+# fintual is the provider's API, which receives the email and password a user types to link an account. The public
+# demo holds no real accounts (ADR-038), so NL_DEPLOYMENT=deployed refuses anything but the fixture.
+INVESTMENT_PROVIDERS: dict[str, Callable[[Settings], InvestmentProvider]] = {
+    "fixture": lambda s: FixtureInvestmentProvider(),
+    "fintual": lambda s: FintualInvestmentProvider(s.fintual_base_url, diagnose=s.fintual_diagnostics),
 }
 
 
@@ -234,6 +249,10 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             f"{'live mode' if s.mode == 'live' else 'NL_DEPLOYMENT=deployed'} refuses the development default for "
             'NL_HMAC_SECRET; set a real one, e.g. python -c "import secrets; print(secrets.token_hex(32))"'
         )
+    if s.investments not in INVESTMENT_PROVIDERS:
+        raise ValueError(f"unknown NL_INVESTMENTS {s.investments!r} (known: {', '.join(INVESTMENT_PROVIDERS)})")
+    if s.investments != "fixture" and s.deployment == "deployed":
+        raise ValueError("NL_DEPLOYMENT=deployed links synthetic investment accounts only: set NL_INVESTMENTS=fixture (ADR-038, ADR-044)")
 
     clock = FixedClock(s.fixed_instant) if s.clock == "fixed" else SystemClock()
     ids = SequentialIds() if s.ids == "sequential" else UuidIds()
@@ -265,6 +284,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         transaction_store: InMemoryTransactionStore | SqliteTransactionStore = SqliteTransactionStore(db, cipher)
         transaction_writes: InMemoryTransactionWrites | SqliteTransactionWrites = SqliteTransactionWrites(db, cipher)
         writable_profiles: InMemoryUserProfileStore | SqliteUserProfileStore = SqliteUserProfileStore(db, cipher)
+        investment_store: InMemoryInvestmentStore | SqliteInvestmentStore = SqliteInvestmentStore(db, cipher)
     else:
         actions_repo, audit_log, rule_store = InMemoryActionRepository(), InMemoryAuditLog(), InMemorySavingsRuleStore()
         statement_store, transaction_store = InMemoryStatementStore(), InMemoryTransactionStore()
@@ -272,6 +292,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         connection_store = InMemoryConnectionStore()
         transaction_writes = InMemoryTransactionWrites(transaction_store, audit_log)
         writable_profiles = InMemoryUserProfileStore()
+        investment_store = InMemoryInvestmentStore(audit_log)
 
     snapshots = InMemorySnapshotStore()
     conversations = InMemoryConversationStore()
@@ -295,7 +316,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
             writes = InMemoryAccountWrites(account_store, session_store, profiles, audit_log)
             erasure = InMemoryAccountErasure(
                 account_store, session_store, profiles, audit_log, statement_store, transaction_store, rule_store, actions_repo,
-                receipt_store, connection_store,
+                receipt_store, investment_store, connection_store,
             )
         accounts = AccountUseCases(
             account_store, session_store, writes, ScryptHasher(), SecretsTokens(), clock, ids,
@@ -306,7 +327,8 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         profile_editing = ProfileEditing(profiles, writes, clock, ids, FC_0_1.version)
         # The same stores the erasure empties, so the copy holds what a deletion would erase.
         data_export = DataExport(
-            account_store, profiles, statement_store, transaction_store, receipt_store, connection_store, bank, audit_log, clock, ids,
+            account_store, profiles, statement_store, transaction_store, receipt_store, connection_store, bank, investment_store, audit_log,
+            clock, ids,
         )
 
     models = []
@@ -353,18 +375,23 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
     redactor = StatementRedactor(DETECTORS[s.pii_detector](s))  # personal data is removed at import, before anything is stored
     statements = StatementUseCases(StatementFileReader(model_dir=s.ocr_model_dir), redactor, statement_store, posting, audit_log, clock, ids)
     ledger = LedgerUseCases(transaction_store, transaction_writes, clock, ids)
+    # Investment statements the user imports (the path in use), and an account linked at the provider (ADR-044).
+    investments = InvestmentUseCases(
+        INVESTMENT_PROVIDERS[s.investments](s), investment_store, clock, ids,
+        reader=FintualDocumentReader(model_dir=s.ocr_model_dir), redactor=redactor, audit=audit_log,
+    )
     # Documents dropped on the copilot (ADR-039): routed by the domain rules, then by the decision chain (Jev when set).
     documents = DocumentUseCases(
         ReceiptFileReader(model_dir=s.ocr_model_dir), redactor, statements, receipt_store, transaction_store, classifier, models,
-        financial, audit_log, clock, ids, snapshots,
+        financial, audit_log, clock, ids, snapshots, investments=investments,
     )
     # The floor is applied per index (KB_MIN_SCORES, ThresholdKnowledgeBase) when the chain is built, so 0 here.
     education = EducationUseCases(knowledge_base, 0.0, profiles)
     mcp, bank_feed = _connectors(s, clock)
     connections = ConnectionUseCases(connection_store, mcp, bank_feed, statements, audit_log, clock, ids, s.connectors_mode)
     registry = build_registry(
-        financial, actions, profile_uc, audit_uc, documents, education, load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids,
-        PP_0_1.version, connections,
+        financial, actions, profile_uc, audit_uc, documents, investments, education,
+        load_tool_definitions(s.resolved_contracts_dir), audit_log, clock, ids, PP_0_1.version, connections,
     )
     chat = ChatUseCase(decisions, llm, registry, financial, audit_log, conversations, clock, ids, AP_0_1)
 
@@ -375,6 +402,7 @@ def build(settings: Settings | None = None) -> tuple[ApplicationServices, Adapte
         audit=audit_uc,
         statements=statements,
         ledger=ledger,
+        investments=investments,
         chat=chat,
         registry=registry,
         default_user=s.persona,

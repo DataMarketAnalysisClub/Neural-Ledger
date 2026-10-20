@@ -163,7 +163,8 @@ export async function mockRequest(
       format: "neural-ledger-export-1", exported_at: new Date().toISOString(), user_id: user.profile.user_id,
       account: persona ? null : { email: user.email, created_at: new Date().toISOString(), sample_data: false },
       profile: { ...user.profile, display_name: user.profile.display_name.untrusted_text },
-      statements: [], transactions: [], receipts: [], connections: [], savings_rules: [], audit_events: [],
+      statements: [], transactions: [], receipts: [], connections: [], savings_rules: [],
+      investments: { link: null, latest_snapshot: null, documents: [] }, audit_events: [],
     } satisfies DataExport;
   }
   // Only a read-only demo persona has financial data; a new account stays empty.

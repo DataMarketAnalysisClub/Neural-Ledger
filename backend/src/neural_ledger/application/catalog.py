@@ -25,6 +25,7 @@ from .use_cases.connections import ConnectionUseCases
 from .use_cases.documents import DocumentUseCases
 from .use_cases.education import EducationUseCases
 from .use_cases.financial import FinancialUseCases
+from .use_cases.investments import InvestmentUseCases
 from .use_cases.profile import ProfileUseCases
 
 
@@ -73,6 +74,7 @@ def build_registry(
     profiles: ProfileUseCases,
     audit_queries: AuditUseCases,
     documents: DocumentUseCases,
+    investments: InvestmentUseCases,
     education: EducationUseCases,
     definitions: Mapping[str, ToolDefinition],
     audit: AuditLog,
@@ -87,6 +89,8 @@ def build_registry(
         Tool("get_commitments", Tier.T0, lambda a, c: financial.commitments(c.user_id, _int(a, "horizon_months", 6))),
         Tool("get_user_profile", Tier.T0, lambda a, c: profiles.user_profile(c.user_id)),
         Tool("get_pending_actions", Tier.T0, lambda a, c: actions.pending(_actor(c))),
+        # The last synced snapshot of the linked investment account (ADR-044). Linking and syncing are not tools (S31).
+        Tool("get_investments", Tier.T0, lambda a, c: investments.overview(c.user_id)),
         Tool(
             "get_audit_events",
             Tier.T0,

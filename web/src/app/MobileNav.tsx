@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import * as Popover from "@radix-ui/react-popover";
-import { CalendarDots, ChartLineDown, DotsThreeCircle, Files, LinkSimple, PiggyBank, PlugsConnected, Receipt, SignOut, UserCircle, type Icon } from "@phosphor-icons/react";
+import { CalendarDots, ChartLineDown, DotsThreeCircle, Files, LinkSimple, PiggyBank, PlugsConnected, Receipt, SignOut, TrendUp, UserCircle, type Icon } from "@phosphor-icons/react";
 import { CopilotAvatar } from "@/components/CopilotAvatar";
 import { t, type MessageKey } from "@/i18n";
 import { Button, cn } from "@/components/ui";
@@ -26,6 +26,7 @@ const RIGHT: readonly Tab[] = [{ to: "/plan", label: "nav.planShort", icon: Pigg
 const MORE: readonly Tab[] = [
   { to: "/simulator", label: "nav.simulator", icon: Receipt },
   { to: "/statements", label: "nav.statements", icon: Files },
+  { to: "/investments", label: "nav.investments", icon: TrendUp },
   { to: "/connections", label: "nav.connections", icon: PlugsConnected },
   { to: "/audit", label: "nav.audit", icon: LinkSimple },
 ];

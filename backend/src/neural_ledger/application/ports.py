@@ -25,6 +25,8 @@ from ..domain.connections.bank import BankAccount, BankMovement
 from ..domain.connections.model import Connection, ConnectionSnapshot
 from ..domain.education.concepts import Passage
 from ..domain.finance.model import FinancialModel
+from ..domain.investments.documents import ReadInvestmentDocument, StoredInvestmentDocument
+from ..domain.investments.model import InvestmentLink, InvestmentSnapshot, ReportedGoal
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.privacy.redaction import Span
 from ..domain.receipts.model import ReadReceipt, StoredReceipt
@@ -56,6 +58,14 @@ class ClassifierUnavailable(PortUnavailable):
 
 class DetectorUnavailable(PortUnavailable):
     """The personal-data detector could not answer. The domain rules still redact; the import is flagged as degraded."""
+
+
+class InvestmentProviderUnavailable(PortUnavailable):
+    """The investment provider could not answer (network, HTTP 5xx, an unexpected response). Nothing is stored."""
+
+
+class InvestmentAccessRejected(Exception):
+    """The provider refused the email and password, or no longer accepts the stored access token."""
 
 
 class KnowledgeBaseUnavailable(PortUnavailable):
@@ -248,6 +258,81 @@ class TransactionWrites(Protocol):
         and IdCollision on a reused event id; any exception also leaves no writes.
         """
         ...
+
+
+@runtime_checkable
+class InvestmentProvider(Protocol):
+    """Reads an account at an investment institution (ADR-044). Read-only: it signs in and lists goals, nothing else.
+
+    The password reaches only `authenticate` and travels to the provider over HTTPS; the token it returns is what the
+    store keeps, sealed. An adapter never puts a credential in an error, a log or a return value other than the token.
+    """
+
+    name: str  # the adapter: "fintual" (the provider's API) | "fixture" (offline, synthetic)
+    provider: str  # the institution: a key of domain/investments/model.py PROVIDERS
+    synthetic: bool  # True when the goals it returns are invented sandbox data
+
+    def authenticate(self, email: str, password: str) -> str:
+        """An access token. InvestmentAccessRejected for credentials the provider refuses; InvestmentProviderUnavailable otherwise."""
+        ...
+
+    def goals(self, email: str, token: str) -> tuple[ReportedGoal, ...]:
+        """Every goal of the account, as reported now. InvestmentAccessRejected when the token is no longer accepted."""
+        ...
+
+
+@runtime_checkable
+class InvestmentStore(Protocol):
+    """A user's investment link and the snapshots synced through it, sealed at rest (G11). Each write commits with its
+    audit events or not at all, and is a compare-and-set against the link the caller read."""
+
+    def link(self, user_id: str) -> InvestmentLink | None: ...
+
+    def latest(self, user_id: str) -> InvestmentSnapshot | None:
+        """The most recent snapshot of the user, or None."""
+        ...
+
+    def save(
+        self, expected: InvestmentLink | None, link: InvestmentLink, snapshot: InvestmentSnapshot | None, events: Sequence[AuditDraft]
+    ) -> bool:
+        """Replace the user's link with `link` and append `snapshot` (when given), keeping the newest MAX_SNAPSHOTS.
+
+        False, with no writes, if the stored link no longer equals `expected` (None: no link). Raises ValueError when
+        the link, the snapshot or an event belongs to another user, and IdCollision on a reused event id."""
+        ...
+
+    def remove(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        """Delete the link and every snapshot of the user with the events. Returns the rows deleted; 0 (and no
+        events written) when nothing was linked. Imported documents stay: they are removed on their own."""
+        ...
+
+    def add_document(self, document: StoredInvestmentDocument, events: Sequence[AuditDraft]) -> bool:
+        """Store a verified document with its events, keeping the user's MAX_DOCUMENTS newest imports.
+        False, with no writes, when the user already has a document with that id. Raises ValueError when the document
+        or an event belongs to another user, and IdCollision on a reused event id."""
+        ...
+
+    def documents(self, user_id: str) -> tuple[StoredInvestmentDocument, ...]:
+        """The user's documents, oldest import first."""
+        ...
+
+    def remove_documents(self, user_id: str, events: Sequence[AuditDraft]) -> int:
+        """Delete every document of the user with the events. Returns how many; 0 (and no events written) when none."""
+        ...
+
+
+@runtime_checkable
+class InvestmentDocumentReader(Protocol):
+    """Reads a statement an investment provider issues (ADR-044): the rows only, never the holder's name or RUT.
+
+    Never decides whether the rows add up: that is domain/investments/documents `check_document`. Raises
+    StatementUnreadable for a file that is not a document it knows and StatementReaderUnavailable when an extra it
+    needs (pdfplumber, OCR) is missing.
+    """
+
+    name: str  # reported with every document it reads
+
+    def read(self, content: bytes) -> ReadInvestmentDocument: ...
 
 
 @runtime_checkable

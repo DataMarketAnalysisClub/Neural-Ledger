@@ -67,7 +67,7 @@ Text from statements and merchants is treated as data, never as instructions. Th
 ## 9. Your data and your rights
 
 - What is stored, where, for how long and who receives it: [PRIVACY.md](PRIVACY.md). Personal data is encrypted at rest. With the default settings no data leaves the server, except that at sign-up the domain of your email (the part after `@`) is looked up in DNS. When the team turns on a language model or another external provider, data goes to providers **outside Chile** (Ley 21.719 art. 27); the safeguards for those transfers are not documented yet.
-- **Download your data** at any time: Profile, Download my data. One JSON file with your account, profile and answers, statements, transactions, receipts, connections with their last answers, active savings rules and your audit events. It is offered again before you delete your account.
+- **Download your data** at any time: Profile, Download my data. One JSON file with your account, profile and answers, statements, transactions, receipts, connections with their last answers, active savings rules, investments (the link without its access token, the latest snapshot and imported documents) and your audit events. It is offered again before you delete your account.
 - **Delete your account** at any time: Profile, Delete account, with your password and the word DELETE (or your email). It deletes your account, profile, answers, statements, transactions, proposals, authorizations, savings rules and sessions at once. Your audit events are erased; the audit chain keeps only their place.
 - **What the app does not do yet**, and what to do meanwhile (write to `[contact email]`):
   - correct a statement line's amount, date or description (G04): you can change its category;
