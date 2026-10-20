@@ -20,6 +20,6 @@ When you take a loan, the rate tells you how much you repay on top of the princi
 
 There are two main forms. A fixed rate stays the same for the whole contract. A variable rate moves with a reference index plus a margin that the lender adds, so your payments can change. Some offers start with a low introductory rate that rises after a set period, so it is worth knowing which rate applies at each stage.
 
-The headline rate is not the full price. Fees, insurance and interest charged on interest can raise what you actually pay, which is why Chile uses the CAE to compare credits. Late payments often carry a higher rate. In Chile, the CMF publishes average rates and sets a legal ceiling called the tasa máxima convencional (TMC). The TMC changes over time, so current values should be checked at cmfchile.cl.
+The headline rate is not the full price. Fees, insurance and interest charged on interest can raise what you actually pay, which is why Chile uses the CAE to compare credits. Late payments often carry a higher rate. For reference rates, you can check the credit information the CMF publishes.
 
 This is general information, not a recommendation.

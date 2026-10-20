@@ -20,6 +20,6 @@ En Chile, la medida más usada es el Índice de Precios al Consumidor (IPC), que
 
 Por qué importa: si tu plata rinde menos que la inflación, pierde poder de compra aunque el saldo aumente. Afecta de forma distinta a los sueldos, los arriendos, las deudas y los ahorros. Algunos contratos chilenos, como los que se expresan en UF, se reajustan automáticamente según ella.
 
-Para comparar un precio o un saldo de otro año, primero hay que ajustarlo por inflación. Esa es la idea de los valores reales, que explica la tarjeta de real versus nominal.
+Para comparar un precio o un saldo de otro año, primero hay que ajustarlo por inflación. Esa es la idea de los valores reales, que se distinguen de los valores nominales.
 
 Esto es información general, no una recomendación.

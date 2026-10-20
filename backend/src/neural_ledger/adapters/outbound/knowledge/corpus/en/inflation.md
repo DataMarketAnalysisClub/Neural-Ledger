@@ -20,6 +20,6 @@ In Chile, the most common measure is the Índice de Precios al Consumidor (IPC),
 
 Why it matters: if your money earns less than inflation, its purchasing power falls even when the balance rises. Inflation affects wages, rents, debts and savings in different ways. Some contracts in Chile, such as those expressed in UF, adjust automatically to it.
 
-To read a price or a balance from another year, you need to adjust for inflation first. That is the idea behind real values, which the real versus nominal card explains.
+To read a price or a balance from another year, you need to adjust for inflation first. That is the idea behind real values, as opposed to nominal ones.
 
 This is general information, not a recommendation.

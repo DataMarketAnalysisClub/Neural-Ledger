@@ -13,10 +13,12 @@
   "numbers": []
 }
 ---
-El sueldo líquido es la parte de tu sueldo que realmente llega a tu cuenta después de los descuentos legales. Es la cifra con la que se arma un presupuesto.
+El sueldo líquido es la parte de tu sueldo que realmente llega a tu cuenta. Es lo que queda del sueldo bruto una vez aplicados los descuentos, y por eso es la cifra con la que conviene armar un presupuesto.
 
-El sueldo bruto es el monto que aparece en el contrato. Sobre él se descuentan la cotización previsional, que va a tu cuenta personal en la AFP; la cotización de salud, que va a Fonasa o a una Isapre; y la cotización de cesantía en la mayoría de los contratos indefinidos. Después se calcula el impuesto único de segunda categoría sobre lo que queda, con tramos progresivos. Algunas asignaciones quedan fuera de la base imponible y llegan completas.
+El sueldo bruto es el monto que aparece en el contrato de trabajo, antes de cualquier descuento. El líquido siempre es menor, y la diferencia entre ambos puede ser grande. La liquidación de sueldo es la referencia más directa para ver en tu caso cuánto se descuenta y cuánto queda.
 
-La diferencia entre bruto y líquido puede ser grande, así que presupuestar con el bruto genera una falsa sensación de disponibilidad. Las tasas, las bases y los tramos del impuesto se reajustan en el tiempo, por eso los valores vigentes se consultan en la Superintendencia de Pensiones y en el SII. La liquidación de sueldo muestra cada descuento y es la referencia más directa para cada caso.
+Presupuestar con el bruto genera una falsa sensación de disponibilidad, porque la plata que puedes gastar es la que llega, no la que figura en el contrato. Si el plan parte del bruto, los gastos pueden no cuadrar a fin de mes.
+
+Si el ingreso cambia de un mes a otro, por comisiones, bonos o turnos, el líquido también cambia. En ese caso, un promedio de varios meses da una base más estable para planificar que el mejor mes.
 
 Esto es información general, no una recomendación.

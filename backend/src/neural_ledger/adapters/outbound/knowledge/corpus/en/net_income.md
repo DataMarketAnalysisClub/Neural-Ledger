@@ -13,10 +13,12 @@
   "numbers": []
 }
 ---
-Net income is the part of your salary that actually reaches your bank account after legal deductions. In Chile it is called sueldo líquido, and it is the figure used to build a budget.
+Net income, or sueldo líquido in Chile, is the part of your salary that actually reaches your bank account. It is what remains of your gross pay once deductions are applied, and it is the figure used to build a budget.
 
-Gross income, or sueldo bruto, is the amount written in your contract. From it, the employer deducts your mandatory pension contribution, which goes to your personal account at an AFP, your health contribution, which goes to Fonasa or an Isapre, and unemployment insurance, which applies to most indefinite contracts. The single income tax (impuesto único de segunda categoría) is then calculated on what remains, using progressive rates. Some allowances sit outside the taxable base and arrive in full.
+Gross income, or sueldo bruto, is the amount written in your contract, before any deduction. Net income is always lower, and the gap between the two can be large. The payslip (liquidación de sueldo) is the most direct reference for seeing what is discounted and how much remains.
 
-The gap between gross and net can be large, so a plan built on the gross figure can make the money available look bigger than it is. Rates, bases and tax bands change over time, so current values should be checked with the Superintendencia de Pensiones and the SII. Your payslip (liquidación de sueldo) lists each deduction and is the most direct reference for your own case.
+A budget starts from net income because that is the money you can actually spend. Planning from the gross figure makes the money available look bigger than it is, and the month can end with bills that do not fit. The gross number is still useful as a reference, for example when comparing job offers.
+
+When pay varies from month to month, because of commissions, bonuses or changing hours, the take-home amount varies too. In that case, a multi-month average gives a steadier base for planning than the best month.
 
 This is general information, not a recommendation.

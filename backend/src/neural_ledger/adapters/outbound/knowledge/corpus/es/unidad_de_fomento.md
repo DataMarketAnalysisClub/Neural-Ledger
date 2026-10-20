@@ -17,7 +17,7 @@ La Unidad de Fomento (UF) es una unidad de cuenta usada en Chile cuyo valor se r
 
 Se usa, entre otros, en créditos hipotecarios y en algunos contratos de largo plazo. Un contrato en UF puede mostrar el monto en UF junto con su equivalente en pesos el día del pago.
 
-El Banco Central de Chile determina el valor de la UF cada día a partir de los datos del IPC que publica el INE, y el SII también publica la tabla diaria. Ambas fuentes muestran el valor oficial de cada día. Para saber cuánto vale hoy, revisa esas páginas en vez de confiar en una cifra antigua que viste en otro lado.
+Su valor se calcula a partir de la inflación que mide el INE, y cada día se publica en tablas oficiales, como la del SII. Para saber cuánto vale hoy, revisa esas tablas en vez de confiar en una cifra antigua que viste en otro lado.
 
 Como la UF sigue la inflación, una deuda en UF tiende a conservar su valor real, mientras que la cuota en pesos cambia con el tiempo. Ten esto en cuenta al comparar una oferta en pesos con una en UF, porque la cuota mensual puede moverse aunque las condiciones nominales parezcan iguales.
 

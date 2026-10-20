@@ -20,6 +20,6 @@ Cuando pides un crédito, la tasa indica cuánto devuelves además de lo que te 
 
 Hay dos tipos principales. La tasa fija se mantiene igual durante todo el contrato. La tasa variable se mueve con un índice de referencia más un margen que agrega la institución, así que tus cuotas pueden cambiar. Algunas ofertas parten con una tasa introductoria baja que sube después de un plazo, así que conviene saber qué tasa rige en cada etapa.
 
-La tasa que más se destaca no es el costo total. Comisiones, pólizas y el cobro de intereses sobre intereses pueden subir lo que realmente pagas, por eso en Chile los créditos se comparan con la CAE. Los atrasos suelen tener una tasa más alta. La CMF publica tasas de interés corriente promedio y fija un techo legal llamado tasa máxima convencional (TMC). La TMC cambia con el tiempo, así que sus valores vigentes deben consultarse en cmfchile.cl.
+La tasa que más se destaca no es el costo total. Comisiones, pólizas y el cobro de intereses sobre intereses pueden subir lo que realmente pagas, por eso en Chile los créditos se comparan con la CAE. Los atrasos suelen tener una tasa más alta. Para ver tasas de referencia, puedes revisar la información sobre créditos que publica la CMF.
 
 Es información general, no una recomendación.
