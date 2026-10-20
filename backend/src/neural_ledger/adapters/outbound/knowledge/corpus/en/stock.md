@@ -9,8 +9,7 @@
   "sources": [
     {"title": "Stocks, bonds, mutual funds, and diversification (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:investments-retirement/xa6995ea67a8e9fdd:risk-and-return/a/stocks-bonds-mutual-funds-and-diversification", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
     {"title": "How to buy stocks (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:investments-retirement/xa6995ea67a8e9fdd:risk-and-return/a/how-to-buy-stocks", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
-    {"title": "Stock (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Stock", "license": "reference only (own words)"},
-    {"title": "CMF Chile", "url": "https://www.cmfchile.cl", "license": "reference only (own words)"}
+    {"title": "Stock (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Stock", "license": "reference only (own words)"}
   ],
   "numbers": []
 }
@@ -19,8 +18,8 @@ A stock, also called a share or equity, is a slice of ownership in a company. Ho
 
 Dividends are never promised. A company may pay them, change the amount, or stop paying, so the income from a stock can vary. The price reflects what buyers and sellers expect from the business and from the wider market, and it can also move for reasons unrelated to the company, such as news events or changes in interest rates.
 
-The main risk is that the price falls, sometimes sharply, and may never recover. If a company fails, creditors such as lenders are paid before shareholders, so owners often recover little or nothing. Stocks tend to be more volatile than bonds, which is one reason they sit among the higher-risk investments.
+The main risk is that the price falls, sometimes sharply, and may never recover. If a company fails, creditors such as lenders usually get paid before shareholders, so owners often recover little or nothing. Stocks tend to be more volatile than bonds, which is one reason they sit among the higher-risk investments.
 
-In Chile, shares of companies listed on the stock exchange are bought and sold through brokers, and the CMF supervises the securities market. Holding a single stock concentrates your exposure in one company, which is why many people think about spreading money across several investments.
+In Chile, these products are regulated by the CMF (Comisión para el Mercado Financiero). Holding a single stock concentrates your exposure in one company, which is why many people think about spreading money across several investments.
 
 This is general information, not a recommendation.

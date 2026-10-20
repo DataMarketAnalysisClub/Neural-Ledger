@@ -8,8 +8,7 @@
   "related": ["risk_and_return", "stock", "bond", "mutual_fund", "etf"],
   "sources": [
     {"title": "Stocks, bonds, mutual funds, and diversification (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:investments-retirement/xa6995ea67a8e9fdd:risk-and-return/a/stocks-bonds-mutual-funds-and-diversification", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
-    {"title": "Diversification (finance) (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Diversification_(finance)", "license": "reference only (own words)"},
-    {"title": "CMF Chile", "url": "https://www.cmfchile.cl", "license": "reference only (own words)"}
+    {"title": "Diversification (finance) (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Diversification_(finance)", "license": "reference only (own words)"}
   ],
   "numbers": []
 }

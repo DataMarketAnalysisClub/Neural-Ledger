@@ -9,8 +9,7 @@
   "sources": [
     {"title": "Stocks, bonds, mutual funds, and diversification (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:investments-retirement/xa6995ea67a8e9fdd:risk-and-return/a/stocks-bonds-mutual-funds-and-diversification", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
     {"title": "How rising or falling interest rates might affect you (Khan Academy)", "url": "https://www.khanacademy.org/college-careers-more/financial-literacy/xa6995ea67a8e9fdd:banking/xa6995ea67a8e9fdd:interest-from-savings-to-investing/a/how-rising-or-falling-interest-rates-might-affect-you", "license": "CC BY-NC-SA (Khan Academy); reference only (own words)"},
-    {"title": "Bond (finance) (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Bond_(finance)", "license": "reference only (own words)"},
-    {"title": "CMF Chile", "url": "https://www.cmfchile.cl", "license": "reference only (own words)"}
+    {"title": "Bond (finance) (Wikipedia, English)", "url": "https://en.wikipedia.org/wiki/Bond_(finance)", "license": "reference only (own words)"}
   ],
   "numbers": []
 }
@@ -21,6 +20,6 @@ Quien tiene un bono es un acreedor y no un dueño, así que no recibe parte de l
 
 Los riesgos principales son tres. El riesgo de tasa: cuando las tasas del mercado suben, un bono antiguo con tasa fija más baja suele perder valor, y venderlo antes del vencimiento puede significar una pérdida. El riesgo de crédito: el emisor puede no pagar los intereses ni devolver el capital. El riesgo de inflación: el alza de precios puede reducir lo que valen esos pagos en términos reales.
 
-En Chile, el Estado y las empresas emiten bonos, que pueden estar expresados en pesos o en UF, una unidad reajustada por inflación. Las condiciones y las clasificaciones de riesgo cambian mucho entre emisores, así que cada bono se describe en su propio prospecto.
+En Chile, el Estado y las empresas emiten bonos en pesos o en UF, una unidad reajustada por inflación. Estos productos están regulados por la CMF (Comisión para el Mercado Financiero). Las condiciones y las clasificaciones de riesgo cambian mucho entre emisores, así que cada bono se describe en su propio prospecto.
 
 Esto es información general, no una recomendación.

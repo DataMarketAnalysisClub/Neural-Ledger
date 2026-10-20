@@ -4,22 +4,23 @@
   "lang": "en",
   "title": "Voluntary pension savings (APV)",
   "aliases": ["Ahorro Previsional Voluntario", "APV", "voluntary pension saving"],
-  "tags": ["chile", "pensions", "saving", "tax"],
+  "tags": ["chile", "pensions", "saving"],
   "related": ["afp_pension_system", "mutual_fund", "risk_and_return", "time_value_of_money"],
   "sources": [
-    {"title": "Ahorro Previsional Voluntario (APV) (Superintendencia de Pensiones)", "url": "https://www.spensiones.cl/portal/institucional/594/w3-propertyvalue-9929.html", "license": "reference only (own words)"},
-    {"title": "CMF Chile", "url": "https://www.cmfchile.cl", "license": "reference only (own words)"},
-    {"title": "Superintendencia de Pensiones", "url": "https://www.spensiones.cl", "license": "reference only (own words)"}
+    {"title": "Beneficios Tributarios y bonificación del Estado (APV y APVC) (Superintendencia de Pensiones)", "url": "https://www.spensiones.cl/portal/institucional/594/w3-article-5795.html", "license": "reference only (own words)"},
+    {"title": "¿Qué APV me conviene? (Fintual)", "url": "https://ayuda.fintual.cl/es/articles/3207271-que-apv-me-conviene", "license": "reference only (own words)"}
   ],
   "numbers": []
 }
 ---
-Voluntary pension savings, known in Chile as Ahorro Previsional Voluntario or APV, is an optional way to save for retirement on top of the mandatory pension contributions. The money goes into a dedicated account held with an institution authorized for this purpose, and it is meant to increase the pension or to cover periods without contributions.
+Voluntary pension savings, known in Chile as Ahorro Previsional Voluntario or APV, is an optional way to save for retirement on top of mandatory pension contributions. The money goes into a dedicated account held with an institution authorized for this purpose, and it is meant to increase the pension or to cover periods without contributions.
 
-APV has its own tax rules. Contributions can be exempt from tax up to a limit expressed in UF, and the tax treatment depends on the regime chosen, which determines whether the tax is applied when money goes in or when it comes out. Which option fits depends on each person's income and situation, and the rules can change.
+APV is offered under two regimes, A and B, and they differ in how the benefit works. Under regime A, contributions are not deducted from the year's taxable income, but the State gives a bonus on them. Under regime B, contributions are deducted from the year's taxable income when they are made, and withdrawals are taxed when they are made.
 
-The main risks are that the savings are invested and their value can fall, that withdrawing before retirement carries a surcharge, and that the tax benefit depends on personal circumstances and the law in force. Fees charged by the institution also reduce the balance.
+Each institution sets its own fees and conditions, so reading the contract before opening or switching an APV matters. Which option fits depends on each person's situation.
 
-Moving the balance to another APV plan is not treated as a withdrawal, but the contract of each institution sets out its own conditions, so reading it before switching matters. Check the current rules with the Superintendencia de Pensiones and the CMF.
+The main risks are that the savings are invested and their value can fall, that withdrawing before retirement can carry extra costs, and that fees reduce the balance. The rules in force can also change over time.
+
+In Chile, APV is regulated by the Superintendencia de Pensiones.
 
 This is general information, not a recommendation.
