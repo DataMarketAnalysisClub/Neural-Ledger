@@ -35,7 +35,7 @@ from ...domain.finance.permitted import (
     derive_permitted_profile,
     permitted_facts,
 )
-from ...domain.finance.plan import SavingsPlan, plan_facts, size_plan
+from ...domain.finance.plan import SavingsPlan, plan_caveats, plan_facts, size_plan
 from ...domain.finance.profile import RiskProfile, lower_profile
 from ...domain.finance.purchase import (
     PurchaseSimulation,
@@ -403,7 +403,7 @@ class FinancialUseCases:
             # UG01: the plan carries why it suits the user (tolerance, capacity and the factor that binds it).
             why = (*permitted_facts(suitability), *(f for f in capacity_facts(capacity, model.currency) if f.key in _WHY_KEYS))
             envelope = self._ok(
-                model, plan, (*plan_facts(plan, model.currency), *why), caveats, kind="plan", parts=(effective,)
+                model, plan, (*plan_facts(plan, model.currency), *why), (*caveats, *plan_caveats(plan)), kind="plan", parts=(effective,)
             )
             self._snapshots.put(envelope.snapshot_id, user_id, StoredPlan(plan, model.currency, user_id, self._origin(model)))
             return envelope

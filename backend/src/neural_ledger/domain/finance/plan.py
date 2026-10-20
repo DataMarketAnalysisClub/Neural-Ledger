@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 
-from ..shared.envelope import Fact
+from ..shared.envelope import Caveat, Fact
 from ..shared.month import Month
 from ..shared.numbers import ceil_div, floor_to, round_half_up
 from .capacity import essentials_exact
@@ -180,6 +180,24 @@ def _allocate(model, profile, amount, start, share, lowest, required, topup, goa
         requirements=tuple(requirements),
         goal_status=tuple(statuses),
         hard_rules_triggered=(),
+    )
+
+
+def plan_caveats(plan: SavingsPlan) -> tuple[Caveat, ...]:
+    """H3 as an emitted warning (UG03, ESMA GL8): a near-term goal the plan cannot finish by its deadline.
+
+    goal_status only holds near-term goals (within near_term_goal_months), so a later goal never warns. The
+    warning changes no amount: the plan is still the largest rule the profile allows. It names the goal and no
+    figure, so the explanation can repeat it word for word and the agent must mention the goal.
+    """
+    return tuple(
+        Caveat(
+            "GOAL_OFF_TRACK",
+            f"At this rate your {g.name} goal will not be complete by its deadline.",
+            (g.name,),
+        )
+        for g in plan.goal_status
+        if not g.on_track
     )
 
 
