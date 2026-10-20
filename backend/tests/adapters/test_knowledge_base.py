@@ -1,4 +1,4 @@
-"""Every KnowledgeBase keeps the port's contract (ADR-039): up to k passages, best first, scores in [0, 1], the asked
+"""Every KnowledgeBase keeps the port's contract (ADR-040): up to k passages, best first, scores in [0, 1], the asked
 language first, the other language when nothing in it matches, low scores for an unrelated question.
 
 Small synthetic cards, not the real corpus (that is tests/unit/test_concept_cards.py and tests/rag_eval). Chroma runs

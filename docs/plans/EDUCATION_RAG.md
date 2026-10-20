@@ -1,6 +1,6 @@
 # Plan: financial education by retrieval (ChromaDB)
 
-Branch `c/education-rag` (from `staging`). ADR-039. Started Oct 19, 2026; target: today.
+Branch `c/education-rag` (from `staging`). ADR-040. Started Oct 19, 2026; target: today.
 Tick a box when the item is merged into the branch.
 
 ## Goal
@@ -75,7 +75,7 @@ verifier runs, card text is untrusted data, and the answer is education, never a
 - [x] `tests/application` chat tests for EXPLAIN in es and en
 
 ### WP4 · Docs
-- [x] ADR-039 in `docs/DECISIONS.md`
+- [x] ADR-040 in `docs/DECISIONS.md`
 - [x] `docs/SCOPE.md` §5.3 ports table: `KnowledgeBase`
 - [x] `docs/ARCHITECTURE.md`: where code goes + recipe "Add a concept card"
 - [x] README: `pip install -e "backend[rag]"`, `NL_KNOWLEDGE_BASE=chroma,lexical`

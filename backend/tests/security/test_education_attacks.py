@@ -1,4 +1,4 @@
-"""S24 (ADR-039): concept cards are untrusted data, explanations are never advice, card numbers are the only numbers.
+"""S24 (ADR-040): concept cards are untrusted data, explanations are never advice, card numbers are the only numbers.
 
 The model is assumed hostile (helpers.ScriptedFakeLLM); the card text may carry injected instructions.
 """

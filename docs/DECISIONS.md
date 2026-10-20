@@ -355,7 +355,7 @@ The gate for keeping Jev first: higher coverage on unseen merchants with a wrong
 
 ## Financial education (Role B)
 
-### ADR-039 · Financial education by retrieval: concept cards, ChromaDB, definitions not advice · Built on `c/education-rag` (needs Role B review)
+### ADR-040 · Financial education by retrieval: concept cards, ChromaDB, definitions not advice · Built on `c/education-rag` (needs Role B review)
 **Context:** users ask what a term means ("¿qué es el interés compuesto?", "what is an ETF?"). The `EXPLAIN` intent answered with one fixed paragraph, so every term got the same text. Letting the model answer from memory would be unverifiable: the verifier can check that a number is a fact, not that a definition is right, and a wrong definition of a credit or investing term does harm.
 **Decision:**
 - **Team-owned cards.** The explanations come from concept cards the team writes: one Markdown file per concept and language (Spanish and English, same `id`), about 70 in all (`adapters/outbound/knowledge/corpus/`; the format and rules are in its `README.md`). Cards are written in our own words from public sources (Investopedia, CMF Educa, Banco Central, SII, Superintendencia de Pensiones), and each card lists its sources and how it used them. The repository is public, so no source text is copied.

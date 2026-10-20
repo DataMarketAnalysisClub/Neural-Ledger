@@ -1,7 +1,7 @@
 # Concept cards
 
 One file per concept and language: `corpus/<lang>/<id>.md`, `lang` in `es`, `en`. The same `id` in both languages.
-The knowledge base indexes every card; the agent quotes them to explain a term (ADR-039).
+The knowledge base indexes every card; the agent quotes them to explain a term (ADR-040).
 
 ## Format
 

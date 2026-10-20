@@ -169,7 +169,7 @@ flowchart LR
 | `ReceiptStore` | Receipts, once per user and receipt | memory, SQLite | Postgres |
 | `TransactionClassifier` | Spending category guess per statement charge (gated by the domain) | `SklearnTextClassifier` with naive Bayes (`ml` extra; offline, trained from package data) | other methods: one registry entry in `container.py` |
 | `TransactionStore` | Transaction ledger built from verified statements, once per user and transaction | memory, SQLite | Postgres |
-| `KnowledgeBase` | Concept cards that explain financial terms; `search(query, lang, k)` returns scored passages for the T0 tool `search_financial_concepts` on `EXPLAIN` (ADR-039) | `LexicalKnowledgeBase` (offline, default), `ChromaKnowledgeBase` (`rag` extra, multilingual) | another vector store: one adapter and one `KNOWLEDGE_BASES` entry |
+| `KnowledgeBase` | Concept cards that explain financial terms; `search(query, lang, k)` returns scored passages for the T0 tool `search_financial_concepts` on `EXPLAIN` (ADR-040) | `LexicalKnowledgeBase` (offline, default), `ChromaKnowledgeBase` (`rag` extra, multilingual) | another vector store: one adapter and one `KNOWLEDGE_BASES` entry |
 | `Clock`, `IdGenerator` | Testability | system/fixed, uuid/sequential | — |
 
 ### 5.4 One chat turn

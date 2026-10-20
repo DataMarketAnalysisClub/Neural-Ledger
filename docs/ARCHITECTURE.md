@@ -110,7 +110,7 @@ Existing transactions keep their category on re-import; re-categorizing the ledg
 Open issues: O-1 (re-read treated as a duplicate) and O-2 (vocabulary, training data, re-categorization).
 
 ### Add a concept card
-The copilot explains a term from a card the team wrote (ADR-039). A card is data, so adding one touches no code.
+The copilot explains a term from a card the team wrote (ADR-040). A card is data, so adding one touches no code.
 
 1. Write two files with the same `id`: `adapters/outbound/knowledge/corpus/es/<id>.md` and `.../en/<id>.md`. Follow `corpus/README.md`: JSON header (`id`, `lang`, `title`, `aliases`, `tags`, `related`, `sources`, `numbers`), then 120–280 words in your own words. The Spanish card is written in Chilean Spanish, not translated word for word.
 2. Declare every number in the body in `numbers`, with the same value. Prefer no numbers, and never a value that changes over time (today's UF or rates).

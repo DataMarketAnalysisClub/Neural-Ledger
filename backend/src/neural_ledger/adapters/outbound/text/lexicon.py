@@ -11,7 +11,7 @@ from ....domain.agent.questions import Intent
 from ....domain.agent.verification import extract_numbers
 from ....domain.shared.month import Month
 
-# Asking what an investing term means is education (ADR-039); asking what to buy or invest in is advice.
+# Asking what an investing term means is education (ADR-040); asking what to buy or invest in is advice.
 _DEFINITION = r"(?:what (?:is|are)|what's|what does|qu[eé] (?:es|son|significa)|expl[ií]ca\w*|explain|define|definici[oó]n|meaning of|significado)"
 _INVESTING_TERM = (
     r"(?:stocks?|shares?|bonds?|etfs?|mutual funds?|index funds?|crypto\w*|bitcoin|ethereum|acci[oó]n|acciones|bonos?|"
@@ -28,7 +28,7 @@ INVESTMENT_ADVICE = re.compile(rf"^(?=.*\b{_ADVICE}\b).*\b{_INVESTING_TERM}\b", 
 
 # Order = precedence when several intents match.
 INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
-    # First: "¿qué acción compro?" is advice, refused; then "¿qué es un ETF?" is a definition, explained (ADR-039).
+    # First: "¿qué acción compro?" is advice, refused; then "¿qué es un ETF?" is a definition, explained (ADR-040).
     (Intent.OUT_OF_SCOPE, INVESTMENT_ADVICE),
     (Intent.EXPLAIN, EDUCATION_QUESTION),
     (Intent.OUT_OF_SCOPE, re.compile(
@@ -43,7 +43,7 @@ INTENT_PATTERNS: tuple[tuple[Intent, re.Pattern[str]], ...] = (
         r"\b(execute|ejecut\w*|go ahead|adelante|do it|hazlo|activate|activa\w*|transfer\w*|transfi\w*|move|mueve|send|env[ií]a)\b", re.I)),
     (Intent.EXPLAIN, re.compile(
         r"\b(what is an?|what's an?|what are|qu[eé] (?:es|son)|explain (?:what|how)|expl[ií]came|define|"
-        # "what is compound interest?" is a term; "what is my balance / the forecast" is not (ADR-039).
+        # "what is compound interest?" is a term; "what is my balance / the forecast" is not (ADR-040).
         r"what (?:is|does) (?!my\b|your\b|the\b|it\b|this\b|that\b|there\b|left\b|going\b|happening\b)[a-z]+)\b", re.I)),
     (Intent.SAVINGS_PLAN, re.compile(r"\b(sav(?:e|ing|ings)|ahorr\w*|set aside|put away|guardar)\b", re.I)),
     (Intent.AFFORD_PURCHASE, re.compile(

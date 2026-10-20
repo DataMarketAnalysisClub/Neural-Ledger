@@ -47,7 +47,7 @@ def test_demo_arc(services, adapters):
 
 def test_out_of_scope_and_explain(services):
     assert "can't help with investments" in services.chat.handle("s2", USER, "Should I buy bitcoin with my trip fund?").text
-    explained = services.chat.handle("s2", USER, "What is a cuota?")  # from the concept cards (ADR-039), never from memory
+    explained = services.chat.handle("s2", USER, "What is a cuota?")  # from the concept cards (ADR-040), never from memory
     assert explained.tools_called == ("search_financial_concepts",) and explained.verification.ok
 
 

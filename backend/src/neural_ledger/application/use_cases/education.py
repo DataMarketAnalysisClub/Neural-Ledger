@@ -1,4 +1,4 @@
-"""Financial education by retrieval (ADR-039): explain a term from the team's concept cards.
+"""Financial education by retrieval (ADR-040): explain a term from the team's concept cards.
 
 Retrieval only. The cards are education, never advice: the envelope always carries the NOT_ADVICE caveat the
 verifier enforces, card numbers are its facts, and card text reaches the model wrapped as untrusted data.

@@ -1,4 +1,4 @@
-"""KnowledgeBase on ChromaDB with a multilingual embedding model (the `rag` extra), ADR-039.
+"""KnowledgeBase on ChromaDB with a multilingual embedding model (the `rag` extra), ADR-040.
 
 One document per card: title, aliases and body, embedded by `paraphrase-multilingual-MiniLM-L12-v2` (384
 dimensions), so a Spanish question finds an English card and the other way round. The model runs on ONNX

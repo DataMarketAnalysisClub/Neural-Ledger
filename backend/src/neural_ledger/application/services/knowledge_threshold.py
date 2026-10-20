@@ -1,4 +1,4 @@
-"""A relevance floor per index (ADR-039): lexical and embedding scores are on different scales.
+"""A relevance floor per index (ADR-040): lexical and embedding scores are on different scales.
 
 Each index in the chain is wrapped with its own floor before the fallback, so whichever index answers, a passage
 below that index's floor never reaches the explanation. The use case then keeps passages as they come

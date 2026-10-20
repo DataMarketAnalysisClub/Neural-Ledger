@@ -111,7 +111,7 @@ def _chroma(s: Settings, cards: tuple[ConceptCard, ...]) -> KnowledgeBase:
     return ChromaKnowledgeBase(cards, s.kb_dir, s.kb_embedding_model, url=s.kb_url)
 
 
-# Concept-card indexes for explanations, by NL_KNOWLEDGE_BASE (comma-separated, tried in order: chroma,lexical), ADR-039.
+# Concept-card indexes for explanations, by NL_KNOWLEDGE_BASE (comma-separated, tried in order: chroma,lexical), ADR-040.
 # lexical is BM25 in the standard library (offline, the default); chroma needs the `rag` extra and downloads the
 # embedding model into NL_KB_DIR at first use. To add a method, implement KnowledgeBase and add an entry here.
 KNOWLEDGE_BASES: dict[str, Callable[[Settings, tuple[ConceptCard, ...]], KnowledgeBase]] = {
@@ -139,7 +139,7 @@ class Adapters:
     knowledge_base: KnowledgeBase | None = None
 
 
-# Relevance floor per index, by NL_KNOWLEDGE_BASE name (ADR-039): scores are on different scales, so each index in the
+# Relevance floor per index, by NL_KNOWLEDGE_BASE name (ADR-040): scores are on different scales, so each index in the
 # chain is wrapped with its own floor (ThresholdKnowledgeBase) before the fallback. From the WP2 eval on the 70 cards:
 # lexical answerable min 0.573 / off-topic max 0.379; chroma answerable min 0.425 / off-topic max 0.23.
 KB_MIN_SCORES: dict[str, float] = {"lexical": 0.45, "chroma": 0.30}

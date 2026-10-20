@@ -191,7 +191,7 @@ class TransactionClassifier(Protocol):
 
 @runtime_checkable
 class KnowledgeBase(Protocol):
-    """Finds the concept cards that explain a question (ADR-039). Retrieval only: it never writes an answer.
+    """Finds the concept cards that explain a question (ADR-040). Retrieval only: it never writes an answer.
 
     Swap the method by registering another adapter in bootstrap (KNOWLEDGE_BASES); nothing else changes.
     """

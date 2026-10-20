@@ -1,4 +1,4 @@
-"""Synthetic concept cards and an in-test knowledge base for the education tests (ADR-039).
+"""Synthetic concept cards and an in-test knowledge base for the education tests (ADR-040).
 
 The cards are written for the tests, not taken from the corpus, so the tests do not change when the corpus does.
 `education_chat` builds a chat turn exactly like production, with this knowledge base in place of the real one.

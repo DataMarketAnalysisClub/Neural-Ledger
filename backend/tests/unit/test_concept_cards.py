@@ -1,4 +1,4 @@
-"""The real concept-card corpus keeps the rules of corpus/README.md (ADR-039).
+"""The real concept-card corpus keeps the rules of corpus/README.md (ADR-040).
 
 Every card loads; every id exists in Spanish and English; every number the body says is declared (the verifier
 only lets the agent say facts); no guarantee or "safe" wording; 120-280 words; sources with an https link and a

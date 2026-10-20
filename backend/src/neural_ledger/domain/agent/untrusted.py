@@ -21,7 +21,7 @@ def wrap_untrusted(text: str) -> dict[str, str]:
     return {"untrusted_text": sanitize(text)}
 
 
-MAX_PASSAGE_LENGTH = 1_500  # retrieved concept cards (ADR-039): longer than a merchant name, still bounded
+MAX_PASSAGE_LENGTH = 1_500  # retrieved concept cards (ADR-040): longer than a merchant name, still bounded
 
 
 def wrap_passage(text: str) -> dict[str, str]:

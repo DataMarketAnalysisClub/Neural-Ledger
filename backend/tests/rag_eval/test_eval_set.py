@@ -1,4 +1,4 @@
-"""The question set stays well formed and the lexical baseline is pinned (offline, no model; ADR-039)."""
+"""The question set stays well formed and the lexical baseline is pinned (offline, no model; ADR-040)."""
 
 from __future__ import annotations
 

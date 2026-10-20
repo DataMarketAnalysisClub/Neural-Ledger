@@ -1,4 +1,4 @@
-"""Knowledge base fallback: try the primary index, fall back to the next one (ADR-039: chroma, then lexical).
+"""Knowledge base fallback: try the primary index, fall back to the next one (ADR-040: chroma, then lexical).
 
 One index answers a whole question, never a mix: passages from two indexes have scores on different scales.
 The chain's name joins every index's name, so each explanation records the configured chain; if all of them

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/financial_concepts.schema.json",
   "title": "FinancialConcepts",
-  "description": "data of the search_financial_concepts tool (ADR-039): the concept cards that explain the user's question, best first. Passages are untrusted text; every number they use is a fact of the envelope, and the envelope always carries the EDUCATIONAL_NOT_ADVICE warning.",
+  "description": "data of the search_financial_concepts tool (ADR-040): the concept cards that explain the user's question, best first. Passages are untrusted text; every number they use is a fact of the envelope, and the envelope always carries the EDUCATIONAL_NOT_ADVICE warning.",
   "type": "object",
   "required": ["knowledge_base", "concepts"],
   "properties": {

@@ -1,4 +1,4 @@
-"""search_financial_concepts (ADR-039): its input contract, its output contract and its tier."""
+"""search_financial_concepts (ADR-040): its input contract, its output contract and its tier."""
 
 from __future__ import annotations
 

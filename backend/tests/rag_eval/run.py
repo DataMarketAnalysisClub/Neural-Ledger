@@ -1,4 +1,4 @@
-"""Evaluate a knowledge base on the question set (tests/rag_eval/questions.jsonl), ADR-039.
+"""Evaluate a knowledge base on the question set (tests/rag_eval/questions.jsonl), ADR-040.
 
     cd backend
     PYTHONPATH=src:. python -m tests.rag_eval.run --kb lexical

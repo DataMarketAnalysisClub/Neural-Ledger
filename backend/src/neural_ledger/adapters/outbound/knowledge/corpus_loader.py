@@ -1,4 +1,4 @@
-"""Concept cards from Markdown files (ADR-039): corpus/<lang>/<id>.md, a JSON header between `---` lines, then the body.
+"""Concept cards from Markdown files (ADR-040): corpus/<lang>/<id>.md, a JSON header between `---` lines, then the body.
 
 The format and the writing rules are in corpus/README.md. A bad card stops the load with a ValueError that
 names the file: a card that silently disappears from the index looks exactly like a question with no answer.

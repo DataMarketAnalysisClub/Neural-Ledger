@@ -1,4 +1,4 @@
-"""Concept cards and the envelope an explanation is built from (ADR-039).
+"""Concept cards and the envelope an explanation is built from (ADR-040).
 
 A concept card is a short, team-written explanation of one financial term in one language. Cards are
 education, never advice: they define a term, they never recommend a product, a security or an amount.

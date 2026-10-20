@@ -1,1 +1,1 @@
-"""Financial education: concept cards the agent retrieves to explain terms (ADR-039)."""
+"""Financial education: concept cards the agent retrieves to explain terms (ADR-040)."""

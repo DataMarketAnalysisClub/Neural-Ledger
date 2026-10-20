@@ -6,7 +6,7 @@ Changes from Spec v0 (see docs/DECISIONS.md):
   * verify_recommendation is not a tool: verification runs on every reply automatically.
   * get_pending_actions is new (T0) so the agent can find the authorization the user confirmed.
   * get_transactions arrives with the ledger-backed model source (Role C).
-  * search_financial_concepts (T0) explains a term from the concept cards (ADR-039).
+  * search_financial_concepts (T0) explains a term from the concept cards (ADR-040).
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ def build_registry(
         ),
         Tool("get_spending_status", Tier.T0, lambda a, c: documents.spending_status(c.user_id)),
         Tool("get_latest_document", Tier.T0, lambda a, c: documents.latest_document(c.user_id)),
-        # Education (ADR-039): retrieval over the team's concept cards; validated in the use case, never advice.
+        # Education (ADR-040): retrieval over the team's concept cards; validated in the use case, never advice.
         Tool(
             "search_financial_concepts",
             Tier.T0,

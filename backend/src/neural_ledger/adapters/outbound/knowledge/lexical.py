@@ -1,4 +1,4 @@
-"""KnowledgeBase on BM25 over the concept cards, standard library only (ADR-039). The offline default and the fallback.
+"""KnowledgeBase on BM25 over the concept cards, standard library only (ADR-040). The offline default and the fallback.
 
 Each card is one bag of words: title and aliases count three times (they are what people type), then tags and body.
 Words are case- and accent-folded ("Interés" = "interes"), Spanish and English stopwords and question words

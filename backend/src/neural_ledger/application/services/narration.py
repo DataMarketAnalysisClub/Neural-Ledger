@@ -30,7 +30,7 @@ GREETING = (
     "Hi! I can check whether a purchase fits your future commitments, show your cash-flow forecast, "
     "and help you set up a savings rule."
 )
-# Explanations come from the concept cards (ADR-039): the top passage, then this sentence in the card's language.
+# Explanations come from the concept cards (ADR-040): the top passage, then this sentence in the card's language.
 NOT_ADVICE_SENTENCE = {
     "es": "Esto es información general, no es una recomendación para tu situación.",
     "en": "This is general information, not a recommendation for your situation.",

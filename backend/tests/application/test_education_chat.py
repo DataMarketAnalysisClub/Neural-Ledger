@@ -1,4 +1,4 @@
-"""EXPLAIN turns answer from the concept cards (ADR-039), in Spanish and English, with the not-advice caveat."""
+"""EXPLAIN turns answer from the concept cards (ADR-040), in Spanish and English, with the not-advice caveat."""
 
 from __future__ import annotations
 
