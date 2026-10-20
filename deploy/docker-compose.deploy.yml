@@ -8,6 +8,14 @@
 # No host port is published: Cloudflare edge (TLS) -> cloudflared -> web:3000 -> api:8000. Offline mode only.
 services:
   api:
+    # OCR for photos (EasyOCR on CPU torch, weights in the image, no pymupdf): see deploy/api-ocr.Dockerfile.
+    build:
+      dockerfile: ../deploy/api-ocr.Dockerfile
+      args:
+        EXTRAS: api,pdf,ml,receipts
+    environment:
+      # Here and not in app/.env: an empty NL_OCR_MODEL_DIR= copied from .env.example would point at ~/.EasyOCR.
+      NL_OCR_MODEL_DIR: /app/models/easyocr
     ports: !reset []
     restart: unless-stopped
 

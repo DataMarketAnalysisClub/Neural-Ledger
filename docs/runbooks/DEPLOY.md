@@ -29,7 +29,7 @@ browser --https--> Cloudflare edge: TLS, rate limit rule, DNS (proxied CNAME neu
 /opt/neural-ledger/app      the deployed commit, from git archive (not a working checkout); the Compose project directory
 /opt/neural-ledger/app/.env       mode 600, read by api
 /opt/neural-ledger/app/DEPLOYED_COMMIT
-/opt/neural-ledger/deploy   docker-compose.deploy.yml, nginx.deploy.conf, .env.tunnel (mode 600, read by cloudflared only),
+/opt/neural-ledger/deploy   docker-compose.deploy.yml, api-ocr.Dockerfile, nginx.deploy.conf, .env.tunnel (mode 600, read by cloudflared only),
                             compose.env (mode 600: NL_DATA_KEY_SECRET_FILE, read by Compose only)
 /opt/neural-ledger/secrets  root, mode 700: nl_data_key (owner 10001, mode 400), the SQLite data key (deploy/secrets/README.md)
 ```
@@ -90,6 +90,25 @@ Releases before 7012f41 kept an offline key file next to the database (`/app/var
 4. `nlc up -d </dev/null`. `/health` must answer, and `audit_chain_ok` must stay true.
 
 Rotating the key later uses the same command with `--old-key-file` (docs/SECURITY.md, "Data at rest and key management").
+
+### OCR for photos (since 2026-10-20)
+
+The override builds the api from `deploy/api-ocr.Dockerfile` instead of `backend/Dockerfile`, so a photographed statement or receipt is read by OCR. It is a copy of `backend/Dockerfile` (keep both in sync when either changes) that adds:
+
+- CPU-only torch and torchvision, installed first, otherwise easyocr pulls the CUDA build;
+- the extras `api,pdf,ml,receipts` plus easyocr, Pillow and numpy: the `ocr` extra **without pymupdf**, which is AGPL-3.0 and stays out of the public service (as `backend/pyproject.toml` asks). The build fails if pymupdf gets in;
+- the EasyOCR weights for Spanish, built into `/app/models/easyocr`, so the container never downloads them. `NL_OCR_MODEL_DIR` is set in the override, not in `app/.env`, where an empty value copied from `.env.example` would point at `~/.EasyOCR`.
+
+Photos (JPEG, PNG) are read. A scanned PDF needs pymupdf to rasterize it, so it gets the API's "needs OCR" error; text-layer PDFs and Excel exports are unaffected. Reading scanned PDFs would need `rasterize()` (and `receipts/stamp.py`) moved to pypdfium2 in the code first.
+
+The image is about 2.4 GB (0.7 GB without OCR). The first OCR request loads the model (about 3 s); a full statement page took about 20 s on nixbox, under Cloudflare's 100 s limit for a proxied request. Check after a build:
+
+```sh
+nlc exec api python -c "from neural_ledger.adapters.outbound.statements.ocr_tabular import ocr_reader; ocr_reader(model_dir='/app/models/easyocr'); print('OCR ok')"
+nlc exec api pip show pymupdf                                  # must say: not found
+```
+
+To drop OCR, remove the `build` and `NL_OCR_MODEL_DIR` entries from the api in the override and `nlc up -d --build api`; before rebuilding, the previous image is kept as `neural-ledger-api:pre-ocr`.
 
 ## Verify
 
