@@ -21,7 +21,7 @@ dev = ["pytest>=8", "jsonschema>=4.21", "httpx>=0.27", "ruff>=0.6", "hypothesis>
 # scans and easyocr (+ torch, install the CPU wheel first) to read them. Keep AGPL code out of `pdf` and the image.
 pdf = ["pdfplumber>=0.11"]
 ocr = ["neural-ledger[pdf]", "pymupdf>=1.24", "Pillow>=10", "numpy>=1.26", "easyocr>=1.7"]
-# Receipts (ADR-038): decode the SII stamp (PDF417) with zxing-cpp (Apache-2.0). Optional: without it a receipt is
+# Receipts (ADR-039): decode the SII stamp (PDF417) with zxing-cpp (Apache-2.0). Optional: without it a receipt is
 # read from its print alone. A PDF's stamp also needs pymupdf (`ocr` or `dev`) to rasterize the page.
 receipts = ["zxing-cpp>=2.2", "Pillow>=10", "numpy>=1.26"]
 # Spending categories for imported statement lines (naive Bayes, trained at first use from package data).

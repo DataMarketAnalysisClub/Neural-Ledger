@@ -1,4 +1,4 @@
-"""Spending check-in: logged spending against what the forecast already counts on (ADR-038).
+"""Spending check-in: logged spending against what the forecast already counts on (ADR-039).
 
 The conservative forecast assumes the P80 of every spending category in each pay cycle. The check-in looks at the
 cycle the user is in today (payday to the eve of the next payday) and compares the spending logged in it (receipts

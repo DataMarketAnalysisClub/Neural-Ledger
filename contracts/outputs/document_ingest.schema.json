@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/outputs/document_ingest.schema.json",
   "title": "DocumentIngest",
-  "description": "data of POST /v1/documents (ADR-038): a file dropped on the copilot, routed to the statement import or read as a receipt, with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.",
+  "description": "data of POST /v1/documents (ADR-039): a file dropped on the copilot, routed to the statement import or read as a receipt, with every workflow step for the UI and the spending check-in that follows. Models only route the file and guess a category; amounts come from the document and every figure from the engine. A receipt's store name is untrusted third-party text.",
   "type": "object",
   "required": ["kind", "steps", "statement", "receipt", "spending"],
   "properties": {

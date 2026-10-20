@@ -190,7 +190,7 @@ export function useAudit(sessionId?: string) {
   });
 }
 
-/** The spending check-in for the pay cycle of today (ADR-038): the same figures the copilot's get_spending_status reads. */
+/** The spending check-in for the pay cycle of today (ADR-039): the same figures the copilot's get_spending_status reads. */
 export function useSpending() {
   const { identity } = usePersona();
   return useQuery({ queryKey: [identity.user_id, "spending"], queryFn: () => requestEnvelope<SpendingStatus>("/v1/spending", { identity }) });
@@ -270,7 +270,7 @@ export function useImportStatement() {
 }
 
 /**
- * A file dropped on the copilot (ADR-038): the server decides whether it is a statement or a receipt, reads it,
+ * A file dropped on the copilot (ADR-039): the server decides whether it is a statement or a receipt, reads it,
  * records it once and answers with every workflow step and the spending check-in.
  */
 export function useIngestDocument() {
@@ -292,7 +292,7 @@ export type ReceiptView = Receipts[number];
 export type { ExpenseProposal };
 
 /**
- * The user confirms an expense the copilot prepared from what they said (ADR-038), completing what it could not
+ * The user confirms an expense the copilot prepared from what they said (ADR-039), completing what it could not
  * tell (cash or card, the category). The amount is the proposal's: this sends no amount. Nothing is stored before.
  */
 export function useConfirmExpense() {
@@ -312,7 +312,7 @@ export function useConfirmExpense() {
 }
 
 /**
- * The user's correction of a receipt's total or date (ADR-038). Not optimistic: the receipt, the spending figure and
+ * The user's correction of a receipt's total or date (ADR-039). Not optimistic: the receipt, the spending figure and
  * the receipts list are re-read when the API answers. Only this form corrects a receipt; the copilot only asks.
  */
 export function useCorrectReceipt() {

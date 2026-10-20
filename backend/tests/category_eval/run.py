@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", choices=("naive_bayes", "jev", "chain"), default="naive_bayes")
     parser.add_argument("--model-id", default="jev-1.14-20261014", help="Jev version (pinned; see ADR-026)")
     parser.add_argument("--out", type=Path, default=None, help="write the full report as JSON")
-    parser.add_argument("--examples", type=Path, default=EXAMPLES, help="the set to score (receipts.jsonl: store names, ADR-038)")
+    parser.add_argument("--examples", type=Path, default=EXAMPLES, help="the set to score (receipts.jsonl: store names, ADR-039)")
     args = parser.parse_args(argv)
 
     examples = load_examples(args.examples)

@@ -212,7 +212,7 @@ def test_chat_reply_lists_every_domain_intent():
 
 
 def test_document_outputs_match_contracts(services):
-    """ADR-038: a receipt (stamped, then a duplicate, then one that does not add up) and a statement dropped on the copilot."""
+    """ADR-039: a receipt (stamped, then a duplicate, then one that does not add up) and a statement dropped on the copilot."""
     pytest.importorskip("pymupdf")
     pytest.importorskip("pdfplumber")
     from tests.receipt_samples import Boleta, boleta_pdf

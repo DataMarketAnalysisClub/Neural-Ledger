@@ -118,7 +118,7 @@ class DocumentText:
 
 @runtime_checkable
 class ReceiptReader(Protocol):
-    """Reads documents dropped on the copilot: their text to route them, and a receipt's fields (ADR-038).
+    """Reads documents dropped on the copilot: their text to route them, and a receipt's fields (ADR-039).
 
     Never decides whether a receipt may be trusted: that is domain/receipts `check`. Raises StatementUnreadable
     for a file it cannot read and StatementReaderUnavailable when an extra it needs (OCR) is missing.

@@ -1,4 +1,4 @@
-"""Drop any document on the copilot: route it, read it, record it, and say what it changes (ADR-038).
+"""Drop any document on the copilot: route it, read it, record it, and say what it changes (ADR-039).
 
     file ─► peek (format + first page's text)
          ─► route: a spreadsheet is a statement; else the printed words (domain rules); else the decision chain

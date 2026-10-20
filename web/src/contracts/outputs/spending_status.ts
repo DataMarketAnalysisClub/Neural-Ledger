@@ -1,7 +1,7 @@
 /* Generated from contracts/ by web/scripts/gen-contracts.mjs. Do not edit by hand. */
 
 /**
- * data of GET /v1/spending and of the copilot's get_spending_status tool (T0, ADR-038): the spending check-in for the first projected cycle and the latest receipt. Receipts a statement charge already records are counted once, as that charge.
+ * data of GET /v1/spending and of the copilot's get_spending_status tool (T0, ADR-039): the spending check-in for the first projected cycle and the latest receipt. Receipts a statement charge already records are counted once, as that charge.
  */
 export interface SpendingStatus {
   check: SpendingCheck;

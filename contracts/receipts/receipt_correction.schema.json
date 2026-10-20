@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://neural-ledger.local/contracts/receipts/receipt_correction.schema.json",
   "title": "ReceiptCorrection",
-  "description": "Body of PATCH /v1/receipts/{receipt_id} (ADR-038): the total or the date of a receipt as the user typed it, when the reader could not read it or read it with doubt. Sent by the app's form only: the copilot asks for the value but no agent tool corrects a receipt. The answer is the receipt as it now stands (outputs/document_ingest.schema.json#/$defs/receipt).",
+  "description": "Body of PATCH /v1/receipts/{receipt_id} (ADR-039): the total or the date of a receipt as the user typed it, when the reader could not read it or read it with doubt. Sent by the app's form only: the copilot asks for the value but no agent tool corrects a receipt. The answer is the receipt as it now stands (outputs/document_ingest.schema.json#/$defs/receipt).",
   "type": "object",
   "properties": {
     "session_id": {"type": "string", "maxLength": 120},

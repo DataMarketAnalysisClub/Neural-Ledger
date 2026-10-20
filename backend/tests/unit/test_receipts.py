@@ -1,4 +1,4 @@
-"""ADR-038: what a receipt may prove, how it is identified, and when a statement charge already records it."""
+"""ADR-039: what a receipt may prove, how it is identified, and when a statement charge already records it."""
 
 from __future__ import annotations
 
