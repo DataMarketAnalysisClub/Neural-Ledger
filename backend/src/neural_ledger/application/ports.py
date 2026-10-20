@@ -21,9 +21,9 @@ from ..domain.actions.terms import (
 )
 from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
-from ..domain.education.concepts import Passage
 from ..domain.connections.bank import BankAccount, BankMovement
 from ..domain.connections.model import Connection, ConnectionSnapshot
+from ..domain.education.concepts import Passage
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.privacy.redaction import Span
