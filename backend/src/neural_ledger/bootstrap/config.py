@@ -59,6 +59,10 @@ class Settings:
     cookie_secure: str = "auto"  # auto | true | false: the Secure flag on the session cookie
     demo_personas: bool = True  # accounts mode: allow POST /v1/auth/demo-session for camila and diego
     email_checks: tuple[str, ...] = ("disposable",)  # sign-up email domains, see EMAIL_CHECKS in container.py; dns needs the network
+    knowledge_bases: tuple[str, ...] = ("lexical",)  # concept cards (ADR-040), tried in order, e.g. ("chroma", "lexical"); see KNOWLEDGE_BASES
+    kb_dir: str = "./var/chroma"  # the Chroma index (embedded mode) and the embedding model's weights
+    kb_url: str | None = None  # a Chroma server, e.g. http://chroma:8000 (docker compose --profile rag); None = embedded in kb_dir
+    kb_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     connectors: str = "fixture"  # fixture (synthetic MCP server and bank) | live (real servers the user adds, Fintoc), ADR-047
     connectors_live: bool = False  # NL_DEPLOYMENT=deployed turns live connectors off unless this is true
     mcp_allow_private: bool = False  # local development only: lets an MCP server on http://localhost be added
@@ -109,6 +113,7 @@ class Settings:
 
         chain = tuple(part.strip() for part in get("NL_DECISION_CHAIN", "rules").split(",") if part.strip())
         classifiers = tuple(part.strip() for part in get("NL_CLASSIFIER", "naive_bayes").split(",") if part.strip())
+        knowledge_bases = tuple(part.strip() for part in get("NL_KNOWLEDGE_BASE", "lexical").split(",") if part.strip())
         email_checks = tuple(part.strip() for part in get("NL_EMAIL_CHECKS", "disposable").split(",") if part.strip() not in ("", "none"))
         return cls(
             persona=get("NL_PERSONA", cls.persona),
@@ -143,6 +148,10 @@ class Settings:
             cookie_secure=get("NL_COOKIE_SECURE", cls.cookie_secure),
             demo_personas=_flag(get("NL_DEMO_PERSONAS", "true"), "NL_DEMO_PERSONAS"),
             email_checks=email_checks,
+            knowledge_bases=knowledge_bases or cls.knowledge_bases,
+            kb_dir=get("NL_KB_DIR", cls.kb_dir),
+            kb_url=get("NL_KB_URL", "") or None,
+            kb_embedding_model=get("NL_KB_EMBEDDING_MODEL", cls.kb_embedding_model),
             connectors=get("NL_CONNECTORS", cls.connectors),
             connectors_live=_flag(get("NL_CONNECTORS_LIVE", "false"), "NL_CONNECTORS_LIVE"),
             mcp_allow_private=_flag(get("NL_MCP_ALLOW_PRIVATE", "false"), "NL_MCP_ALLOW_PRIVATE"),

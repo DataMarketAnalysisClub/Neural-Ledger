@@ -7,8 +7,12 @@ output always passes the verifier (tests/application/test_narration.py checks th
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+
+from ...domain.agent.verification import verify_explanation
+from ...domain.shared.envelope import Fact
 
 Payload = Mapping[str, Any]
 
@@ -26,11 +30,33 @@ GREETING = (
     "Hi! I can check whether a purchase fits your future commitments, show your cash-flow forecast, "
     "and help you set up a savings rule."
 )
-EXPLAIN = (
-    "A cuota is one installment of a purchase paid over several months, like buy-now-pay-later. "
-    "Your protected surplus is the money that could leave your account today without any month in the "
-    "conservative forecast falling below your minimum balance."
-)
+# Explanations come from the concept cards (ADR-040): the top passage, then this sentence in the card's language.
+NOT_ADVICE_SENTENCE = {
+    "es": "Esto es información general, no es una recomendación para tu situación.",
+    "en": "This is general information, not a recommendation for your situation.",
+}
+_NO_CARD = {
+    "es": (
+        "No tengo una ficha que explique ese término, así que no lo voy a explicar de memoria. Sí puedo revisar si "
+        "una compra calza con tus compromisos futuros, mostrarte tu proyección y lo que realmente tienes disponible, "
+        "o preparar una regla de ahorro."
+    ),
+    "en": (
+        "I don't have a card that explains that term, so I won't explain it from memory. I can check whether a "
+        "purchase fits your future commitments, show your forecast and what is really available, or set up a savings rule."
+    ),
+}
+_NO_CARDS_NOW = {
+    "es": "Mis fichas de conceptos no están disponibles en este momento, así que no lo voy a explicar de memoria.",
+    "en": "My concept cards are not available right now, so I won't explain it from memory.",
+}
+MAX_PASSAGE_SENTENCES = 2
+
+
+def no_concept_card(lang: str = "en", unavailable: bool = False) -> str:
+    """What the copilot says when no concept card explains the question: never a definition from memory."""
+    table = _NO_CARDS_NOW if unavailable else _NO_CARD
+    return table.get(lang, table["en"])
 NO_RESULT = "I couldn't get a result for that. Could you rephrase?"
 
 _BLOCK_SENTENCES = {
@@ -101,12 +127,16 @@ def _narrate_one(name: str, payload: Payload, cur: str) -> list[str]:
         return [_BLOCK_SENTENCES.get(reason, "I can't do that.") + " The attempt was logged."]
     if status == "INVALID_INPUT":
         return [f"I couldn't use that input ({payload.get('field')}): {payload.get('message')}"]
+    if status == "INSUFFICIENT_DATA" and name == "search_financial_concepts":
+        return [no_concept_card("en", unavailable="knowledge_base" in payload.get("missing", ()))]
     if status == "INSUFFICIENT_DATA":
-        missing = ", ".join(payload.get("missing", ())) or "some data"
+        missing =", ".join(payload.get("missing", ())) or "some data"
         return [f"I don't have enough data to answer that yet (missing: {missing}), so I won't guess."]
     handler = _HANDLERS.get(name)
     if handler is None:
         return []
+    if name in _SAYS_ITS_OWN_CAVEATS:
+        return handler(payload, cur)
     return handler(payload, cur) + _caveat_sentences(payload)
 
 
@@ -390,6 +420,33 @@ def _expense(p: Payload, cur: str) -> list[str]:
     return [f"I prepared the expense: {_money(d['amount'], cur)} on {d['spent_on']}{how}{kind}. Check it and confirm it in the card below; nothing is saved until you do."]
 
 
+_MARKDOWN = re.compile(r"\*\*|__|`|^\s*(?:#+|[-*>]|\d+[.)])\s+", re.M)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[\"'(¿¡A-ZÁÉÍÓÚÑ])")
+
+
+def _passage_sentences(text: str) -> list[str]:
+    """The passage as plain sentences: headings dropped, Markdown marks removed, whitespace collapsed."""
+    lines = [line for line in text.splitlines() if not line.lstrip().startswith("#")]
+    plain = re.sub(r"\s+", " ", " ".join(_MARKDOWN.sub("", line).strip() for line in lines)).strip()
+    return [s for s in _SENTENCE_END.split(plain) if s]
+
+
+def _concepts(p: Payload, cur: str) -> list[str]:
+    """The top passage, deterministically: its title, its first sentences and the not-advice sentence.
+
+    Card text is untrusted data: it is quoted, never obeyed. A sentence with a figure that is not a fact of the
+    payload is left out, so the narration always passes the verifier.
+    """
+    top = p["data"]["concepts"][0]
+    lang = top["lang"] if top["lang"] in NOT_ADVICE_SENTENCE else "en"
+    facts = tuple(Fact(**f) for f in p.get("facts", ()))
+    sentences = _passage_sentences(top["passage"]["untrusted_text"])
+    kept = [s for s in sentences if verify_explanation(s, facts, (), money_units=frozenset({cur})).ok]
+    body = " ".join(kept[:MAX_PASSAGE_SENTENCES])
+    title = " ".join(str(top["title"]).split())
+    return [f"{title}: {body}" if body else f"{title}.", NOT_ADVICE_SENTENCE[lang]]
+
+
 def _fact(payload: Payload, key: str) -> Any:
     for fact in payload.get("facts", ()):
         if fact["key"] == key:
@@ -417,4 +474,6 @@ _HANDLERS = {
     "get_connected_data": _connected,
     "get_latest_document": _document,
     "propose_expense": _expense,
+    "search_financial_concepts": _concepts,
 }
+_SAYS_ITS_OWN_CAVEATS = {"search_financial_concepts"}  # the not-advice sentence, in the card's language

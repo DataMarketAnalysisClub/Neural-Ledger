@@ -22,7 +22,9 @@ from ....application.conversation import (
     last_user_text,
 )
 from ....application.services import narration
-from ..text.lexicon import installments, mentioned_month, money_amounts
+from ..text.lexicon import installments, language_of, mentioned_month, money_amounts
+
+MAX_CONCEPT_QUERY = 300  # contracts/tools/search_financial_concepts.input.schema.json
 
 ASK_PURCHASE = "Tell me the price and how many cuotas you want, and I'll check it against your forecast."
 ASK_EXPENSE = "How much did you spend, and on what? I'll prepare it for you to confirm."
@@ -59,6 +61,8 @@ class ScriptedLanguageModel:
         def call(name: str, **arguments: Any) -> ToolCall:
             return ToolCall(f"call_{n + 1}", name, arguments)
 
+        if intent == "explain" and "search_financial_concepts" not in done and text.strip():
+            return call("search_financial_concepts", query=text.strip()[:MAX_CONCEPT_QUERY], lang=language_of(text), k=3)
         if CONNECTED.search(text) and "get_connected_data" not in done:
             return call("get_connected_data")
         if intent == "afford_purchase" and "simulate_purchase" not in done:
@@ -113,6 +117,9 @@ class ScriptedLanguageModel:
         intent = request.context.intent
         if intent == "execute_action" and [r.name for r in results] == ["get_pending_actions"]:
             return NOTHING_TO_EXECUTE
+        if intent == "explain" and [r.name for r in results] == ["search_financial_concepts"] and results[0].payload.get("status") == "INSUFFICIENT_DATA":
+            unavailable = "knowledge_base" in results[0].payload.get("missing", ())
+            return narration.no_concept_card(language_of(last_user_text(request.entries)), unavailable)
         if len(results) > 1:
             results = [r for r in results if r.name != "get_pending_actions"]
         if results:
@@ -126,7 +133,7 @@ class ScriptedLanguageModel:
         if intent == "log_expense":
             return ASK_EXPENSE
         if intent == "explain":
-            return narration.EXPLAIN
+            return narration.no_concept_card(language_of(last_user_text(request.entries)))
         if intent == "out_of_scope":
             return narration.REFUSAL_SCOPE
         return narration.GREETING

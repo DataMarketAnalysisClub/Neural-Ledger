@@ -6,6 +6,7 @@ Changes from Spec v0 (see docs/DECISIONS.md):
   * verify_recommendation is not a tool: verification runs on every reply automatically.
   * get_pending_actions is new (T0) so the agent can find the authorization the user confirmed.
   * get_transactions arrives with the ledger-backed model source (Role C).
+  * search_financial_concepts (T0) explains a term from the concept cards (ADR-040).
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from .use_cases.actions import ActionUseCases, ActorContext
 from .use_cases.audit import AuditUseCases
 from .use_cases.connections import ConnectionUseCases
 from .use_cases.documents import DocumentUseCases
+from .use_cases.education import EducationUseCases
 from .use_cases.financial import FinancialUseCases
 from .use_cases.profile import ProfileUseCases
 
@@ -71,6 +73,7 @@ def build_registry(
     profiles: ProfileUseCases,
     audit_queries: AuditUseCases,
     documents: DocumentUseCases,
+    education: EducationUseCases,
     definitions: Mapping[str, ToolDefinition],
     audit: AuditLog,
     clock: Clock,
@@ -91,6 +94,12 @@ def build_registry(
         ),
         Tool("get_spending_status", Tier.T0, lambda a, c: documents.spending_status(c.user_id)),
         Tool("get_latest_document", Tier.T0, lambda a, c: documents.latest_document(c.user_id)),
+        # Education (ADR-040): retrieval over the team's concept cards; validated in the use case, never advice.
+        Tool(
+            "search_financial_concepts",
+            Tier.T0,
+            lambda a, c: education.explain(c.user_id, a.get("query"), a.get("lang"), a.get("k", 3)),
+        ),
         # Reads what the user's last sync stored; nothing reaches a connected service from here (ADR-047).
         Tool("get_connected_data", Tier.T0, lambda a, c: _connected(connections, c)),
         # T1: analyze and suggest

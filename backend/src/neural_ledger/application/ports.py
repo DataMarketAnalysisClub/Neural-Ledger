@@ -23,6 +23,7 @@ from ..domain.agent.questions import Judgment, Question
 from ..domain.audit.events import AuditDraft, AuditEvent
 from ..domain.connections.bank import BankAccount, BankMovement
 from ..domain.connections.model import Connection, ConnectionSnapshot
+from ..domain.education.concepts import Passage
 from ..domain.finance.model import FinancialModel
 from ..domain.ledger.categorization import CategoryGuess, PostedTransaction
 from ..domain.privacy.redaction import Span
@@ -55,6 +56,10 @@ class ClassifierUnavailable(PortUnavailable):
 
 class DetectorUnavailable(PortUnavailable):
     """The personal-data detector could not answer. The domain rules still redact; the import is flagged as degraded."""
+
+
+class KnowledgeBaseUnavailable(PortUnavailable):
+    """The concept index cannot answer (e.g. the `rag` extra or its embedding model is missing). The fallback takes over."""
 
 
 class ConnectorUnavailable(PortUnavailable):
@@ -191,6 +196,20 @@ class TransactionClassifier(Protocol):
 
     def classify(self, descriptions: Sequence[str]) -> Sequence[CategoryGuess]:
         """One guess per description, in the same order."""
+        ...
+
+
+@runtime_checkable
+class KnowledgeBase(Protocol):
+    """Finds the concept cards that explain a question (ADR-040). Retrieval only: it never writes an answer.
+
+    Swap the method by registering another adapter in bootstrap (KNOWLEDGE_BASES); nothing else changes.
+    """
+
+    name: str  # method + embedder + corpus hash; recorded on every explanation, changes when any of them change
+
+    def search(self, query: str, lang: str, k: int) -> Sequence[Passage]:
+        """Up to k passages, best first, preferring cards in `lang`; scores in [0, 1]."""
         ...
 
 
