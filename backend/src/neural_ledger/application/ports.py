@@ -408,6 +408,10 @@ class ActionRepository(Protocol):
 
     def for_session(self, session_id: str) -> tuple[tuple[Proposal, ...], tuple[Authorization, ...]]: ...
 
+    def for_user(self, user_id: str) -> tuple[tuple[Proposal, ...], tuple[Authorization, ...]]:
+        """Every proposal (any status) and authorization of this user, in the order stored (the data export, G02)."""
+        ...
+
 
 @runtime_checkable
 class AuditLog(Protocol):
